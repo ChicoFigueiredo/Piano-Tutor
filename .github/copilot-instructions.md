@@ -1,0 +1,3 @@
+# GitHub Copilot — Piano Tutor
+
+Projeto Rust local-first de aprendizagem musical. Leia `AGENTS.md` e a ficha de fase Fxx antes de modificar código. A shell é `bancada-casca` de um repositório privado separado; não copiar a implementação. MIDI/áudio independentes de Python; IA só gera rascunhos sujeitos a revisão humana. Sem testes/medidas inventadas. Toda mudança deve citar critérios de aceite e evidência reproduzível. Priorizar F00 e depois F01; evitar iniciar F10–F14 antes dos gates.

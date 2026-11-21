@@ -1,0 +1,3 @@
+# Claude Code — Piano Tutor
+
+Siga `AGENTS.md` como instrução principal, `docs/equipe/WORKFLOW.md` para processo, e somente a ficha Fxx ativa. Os agentes especializados estão em `.claude/agents/`. Antes de atuar, identifique a fase e seus critérios ainda não aceitos. Nunca afirmar que um hardware ou modelo foi testado se não foi. A instalação de skills é local ao projeto (`scripts/instalar-skills.sh` ou `.ps1`); não duplicar plugins com `skills.sh`.
