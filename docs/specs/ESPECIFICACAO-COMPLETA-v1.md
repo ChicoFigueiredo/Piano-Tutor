@@ -998,3 +998,55 @@ O dispositivo MIDI **não pode** ser certificado somente por teste sintético. O
 
 - [Chess Studio](https://github.com/ChicoFigueiredo/Chess-Studio) — origem de design e Ribbon.
 - [bancada](https://github.com/ChicoFigueiredo/bancada) — biblioteca pronta, README e exemplo `bancada-casca`.
+- [Seu Bolso Feliz](https://github.com/ChicoFigueiredo/Seu-Bolso-Feliz) — ADR-018 e implementação `AppSbf` sobre `AppCasca`.
+
+**Protocolo, notação e áudio:**
+
+- [midir](https://docs.rs/crate/midir/latest) — entradas e saídas MIDI cross-platform.
+- [midly](https://docs.rs/midly/latest/midly/) — parser e gravador MIDI.
+- [RustySynth](https://github.com/sinshu/rustysynth) — sintetizador SoundFont SF2.
+- [CPAL](https://github.com/RustAudio/cpal) — áudio cross-platform.
+- [Kira](https://github.com/tesselode/kira) — clocks, som e mixer.
+- [MusicXML 4.0](https://www.w3.org/2021/06/musicxml40/) e [MXL](https://www.w3.org/2021/06/musicxml40/tutorial/compressed-mxl-files/) — intercâmbio de notação.
+- [Bravura](https://github.com/steinbergmedia/bravura) — glifos SMuFL / OFL-1.1.
+- [FreePats — acordeon Hohner](https://freepats.zenvoid.org/Organ/accordion.html) — CC0 SFZ.
+- [MuseScore — SoundFonts](https://musescore.org/en/handbook/3/soundfonts-and-sfz-files) e [Mutopia Project](https://www.mutopiaproject.org/).
+
+**IA, mídia e scripting:**
+
+- [Transkun](https://github.com/Yujia-Yan/Transkun) — AMT piano.
+- [Basic Pitch](https://github.com/spotify/basic-pitch) — AMT baseline.
+- [MuScriptor código](https://github.com/muscriptor/muscriptor) e [modelo Small](https://huggingface.co/MuScriptor/muscriptor-small) — diferenciar MIT código de CC BY-NC pesos.
+- [Whisper](https://github.com/openai/whisper) — ASR.
+- [MediaPipe Hand Landmarker](https://ai.google.dev/edge/mediapipe/solutions/vision/hand_landmarker) — landmarks das mãos.
+- [OpenCV](https://opencv.org/), [FFmpeg](https://ffmpeg.org/), [Demucs](https://github.com/facebookresearch/demucs), [music21](https://www.music21.org/), [mlua](https://github.com/mlua-rs/mlua).
+- [Autokit](https://github.com/Hornfisk/autokit), [Hydrogen](https://github.com/hydrogen-music/hydrogen), [Giada](https://github.com/monocasual/giada) — **referências**, não dependências escolhidas.
+
+**Atualidade das referências:** verificadas para planejamento em novembro de 2026. APIs, releases, pesos e licenças devem ser revalidados **no commit/artefato fixado no momento de cada implementação**, não só pelo texto deste documento.
+
+---
+
+## 17. Critério de aceite final do produto — contrato com o usuário
+
+O Piano Tutor só será chamado de **completo para o escopo desta especificação** quando uma pessoa puder executar, num computador doméstico, o roteiro abaixo sem abrir um editor de código:
+
+1. Instalar o aplicativo Rust e abrir a interface Ribbon da `bancada-casca`.
+2. Conectar o REVAS KB-330; selecionar porta e confirmar o mapeamento físico de 61 teclas.
+3. Pressionar Dó e ver a tecla virtual correta acender; segurar acorde e ver múltiplas notas.
+4. Escolher piano, depois acordeon, e ouvir sons correspondentes nos fones do computador, com latência confortável e sem nota presa.
+5. Fazer exercícios de identificação, escala, arpejo, acorde e ritmo, com indicação de acerto/erro adequada.
+6. Gravar uma sequência MIDI, reproduzi-la em outro timbre e salvar/reabrir a sessão.
+7. Importar MusicXML/MXL, ler claves sol/fá, acompanhar a pauta e exportar partitura sem alterações silenciosas.
+8. Contar/estudar compassos com metrônomo em 3/4, 4/4 e 6/8; escolher bateria/pads e tocar sincronizado.
+9. Importar uma aula em vídeo autorizada vista de cima, selecionar 30–60 s e gerar transcrição de fala e **hipóteses** de notas, ritmo, compasso e dedos quando visíveis.
+10. Revisar/corrigir a transcrição, aprovar e criar uma lição, apertar **Praticar este trecho** e receber avaliação baseada **na partitura aprovada**.
+11. Consultar suas tentativas e retomar o estudo offline, com dados persistidos e sem depender de Python para tocar.
+12. Acessar os relatórios por fase, licenças, limitações e evidências sem informações enganosas sobre precisão da IA.
+
+### Ordem final de implementação
+
+**F0 → F1 → F2 → F3 → F4 → F5 → F6 → F7 → F8 → F9 → F10 → F11 → F12 → F13 → F14.**
+
+A equipe pode fazer **pesquisa e experimentos isolados** de ML antes de F11, mas não pode declarar o produto concluído nem incorporar IA como requisito para o teclado tocar. A regra de ouro é avançar sempre de uma função musical **demonstrável e aprovada** para a seguinte.
+
+> **Resumo da decisão tecnológica:** **Rust + `bancada-casca` + `midir` + `rustysynth` + `cpal` + MusicXML/MIDI + SQLite** formam o aplicativo; **Python** executa os módulos **opcionais de ML** (Whisper/Transkun/Basic Pitch/MediaPipe e, condicionalmente, MuScriptor); **Luau** é uma alternativa para pequenas regras de lições, **não** para substituir o ecossistema de ML. Partituras e extrações geradas por IA passam por **revisão humana** antes de se tornarem gabaritos.
