@@ -15,6 +15,8 @@ name = "piano-tutor-app"
 path = "src/main.rs"
 
 [dependencies]
+# Núcleo musical puro (teclado de 61 teclas, nomes de nota, modo simulação).
+piano-tutor-core = { path = "../piano-tutor-core" }
 # Shell compartilhada (ADR-0002/0004), repositório público MIT OR Apache-2.0, fixada por SHA.
 bancada-casca = { git = "https://github.com/ChicoFigueiredo/bancada", rev = "94818fd95dc74b5a42a7757b1d258ed17822ed06" }
 

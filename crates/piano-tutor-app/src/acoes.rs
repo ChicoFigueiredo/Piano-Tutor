@@ -6,16 +6,11 @@ use bancada_casca::{Aba, Acao, Atalho, Grupo, ids as ids_casca};
 
 /// Ações que ainda não existem: nascem desabilitadas, com o motivo e a fase em que chegam.
 /// `(id, rótulo, motivo)`. O rótulo termina em "(em breve)" para ninguém achar que funcionam.
-pub const EM_BREVE: [(&str, &str, &str); 3] = [
+pub const EM_BREVE: [(&str, &str, &str); 2] = [
     (
         ids::MONITOR_MIDI,
         "Monitor MIDI (em breve)",
         "Chega na fase F01, com o REVAS e o MIDI real.",
-    ),
-    (
-        ids::TECLADO_61,
-        "Teclado de 61 teclas (em breve)",
-        "Chega na fase F02, com o espelho do teclado.",
     ),
     (
         ids::TIMBRES,
@@ -31,6 +26,9 @@ pub fn acoes(estado: &EstadoApp) -> Vec<Acao> {
     for (id, rotulo, motivo) in EM_BREVE {
         lista.push(Acao::nova(id, rotulo).desabilitada(motivo));
     }
+    lista.push(Acao::nova(ids::TECLADO_61, "Teclado de 61 teclas").dica(
+        "Abre o espelho do teclado (por enquanto só em simulação, com mouse e teclado do PC)",
+    ));
     lista.push(
         Acao::nova(ids::SOBRE, "Sobre o Piano Tutor")
             .dica("Mostra a página \"Sobre\" no centro da janela"),
@@ -136,6 +134,10 @@ mod testes {
     fn acoes_reais_estao_habilitadas() {
         let l = lista();
         assert!(l.esta_habilitada(ids::SOBRE));
+        let teclado = l.get(ids::TECLADO_61).expect("registrada");
+        assert!(teclado.esta_habilitada());
+        assert!(!teclado.rotulo.contains("em breve"), "{}", teclado.rotulo);
+        assert!(l.esta_habilitada(ids::TECLADO_61));
         assert!(l.esta_habilitada(ids::TEMA_ALTERNAR));
     }
 

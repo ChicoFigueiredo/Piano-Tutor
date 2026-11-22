@@ -1,7 +1,9 @@
 //! Liga o estado e as ações do app à `bancada-casca` (trait `AppCasca`).
 
 use crate::acoes;
-use crate::estado::{BOAS_VINDAS, Efeito, EstadoApp, TEMAS, VERSAO};
+use crate::espelho::EstadoEspelho;
+use crate::estado::{BOAS_VINDAS, Efeito, EstadoApp, ROTA_TECLADO, TEMAS, VERSAO};
+use crate::tela_espelho;
 use crate::{TEMAS_JSON, TOKENS_JSON};
 use bancada_casca::casca::Preferencias;
 use bancada_casca::{
@@ -19,6 +21,9 @@ pub const TITULO: &str = "Piano Tutor";
 #[derive(Debug, Default)]
 pub struct AppPianoTutor {
     pub estado: EstadoApp,
+    /// Estado da tela Espelho (F02). O gerenciador MIDI, quando existir, chama
+    /// `espelho.aplicar_evento(..)`.
+    pub espelho: EstadoEspelho,
 }
 
 impl AppPianoTutor {
@@ -51,8 +56,7 @@ impl AppCasca for AppPianoTutor {
                 ItemNavegacao::novo(ROTA_SOBRE, "Sobre", "sobre"),
                 ItemNavegacao::novo("monitor-midi", "Monitor MIDI", "midi")
                     .indisponivel("F01", "Chega na fase F01, com o REVAS e o MIDI real."),
-                ItemNavegacao::novo("teclado", "Teclado de 61 teclas", "teclado")
-                    .indisponivel("F02", "Chega na fase F02, com o espelho do teclado."),
+                ItemNavegacao::novo(ROTA_TECLADO, "Teclado de 61 teclas", "teclado"),
             ],
         )]
     }
@@ -64,12 +68,21 @@ impl AppCasca for AppPianoTutor {
     fn trilha(&self, rota: &Rota) -> Vec<Elo> {
         match rota.como_texto() {
             ROTA_SOBRE => vec![Elo::link("Início", ROTA_INICIO), Elo::texto("Sobre")],
+            ROTA_TECLADO => vec![
+                Elo::link("Início", ROTA_INICIO),
+                Elo::texto("Teclado de 61 teclas"),
+            ],
             _ => vec![Elo::texto("Início")],
         }
     }
 
     fn desenhar_pagina(&mut self, ui: &mut egui::Ui, rota: &Rota, _local: Local) {
+        if rota.como_texto() != ROTA_TECLADO {
+            // Fora da tela Espelho ninguém recebe o "solta": não deixa nota presa.
+            self.espelho.liberar_simulacao();
+        }
         match rota.como_texto() {
+            ROTA_TECLADO => tela_espelho::desenhar_tela(ui, &mut self.espelho),
             ROTA_SOBRE => {
                 ui.heading("Sobre o Piano Tutor");
                 ui.add_space(8.0);
@@ -232,6 +245,62 @@ mod testes {
             }
         }
         assert!(c.estado.erros.is_empty(), "{:?}", c.estado.erros);
+    }
+
+    #[test]
+    fn item_de_navegacao_do_teclado_esta_disponivel_e_sem_em_breve() {
+        let app = AppPianoTutor::novo();
+        let itens: Vec<ItemNavegacao> = app.navegacao().into_iter().flat_map(|g| g.itens).collect();
+        let teclado = itens
+            .iter()
+            .find(|i| i.rota.como_texto() == ROTA_TECLADO)
+            .expect("item do teclado");
+        assert!(teclado.indisponivel.is_none());
+        assert!(!teclado.rotulo.contains("em breve"));
+        let midi = itens
+            .iter()
+            .find(|i| i.rota.como_texto() == "monitor-midi")
+            .expect("item do monitor MIDI");
+        assert!(
+            midi.indisponivel.is_some(),
+            "só o teclado deixa de ser em breve"
+        );
+    }
+
+    #[test]
+    fn a_acao_do_ribbon_abre_a_tela_espelho_e_ela_mostra_o_aviso_de_simulacao() {
+        let mut c = casca();
+        let ctx = Context::default();
+        quadro(&mut c, &ctx, Vec::new(), Modifiers::NONE);
+        assert_eq!(c.estado.historico.atual().como_texto(), ROTA_INICIO);
+
+        bancada_casca::executar(&ctx, crate::estado::ids::TECLADO_61);
+        for _ in 0..3 {
+            quadro(&mut c, &ctx, Vec::new(), Modifiers::NONE);
+        }
+        assert_eq!(c.estado.historico.atual().como_texto(), ROTA_TECLADO);
+        let resumo = c
+            .app
+            .espelho
+            .ultimo_desenho
+            .as_ref()
+            .expect("desenhou o espelho");
+        assert_eq!(resumo.desenhadas, 61);
+        assert!(resumo.aviso_simulacao_visivel);
+        assert!(c.estado.erros.is_empty(), "{:?}", c.estado.erros);
+    }
+
+    #[test]
+    fn sair_da_tela_espelho_solta_as_notas_da_simulacao() {
+        let mut c = casca();
+        let ctx = Context::default();
+        c.abrir(&ctx, ROTA_TECLADO.into(), Local::Centro);
+        quadro(&mut c, &ctx, Vec::new(), Modifiers::NONE);
+        apertar(&mut c, &ctx, Key::A, Modifiers::NONE);
+        assert_eq!(c.app.espelho.teclas().quantidade(), 1);
+        c.abrir(&ctx, ROTA_INICIO.into(), Local::Centro);
+        quadro(&mut c, &ctx, Vec::new(), Modifiers::NONE);
+        assert_eq!(c.app.espelho.teclas().quantidade(), 0);
     }
 
     #[test]
