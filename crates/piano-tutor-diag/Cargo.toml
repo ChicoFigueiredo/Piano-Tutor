@@ -1,0 +1,18 @@
+[package]
+name = "piano-tutor-diag"
+description = "Diagnóstico de ambiente Linux (SO, Rust, MIDI e áudio) do Piano Tutor"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+publish = false
+build = "build.rs"
+
+[dependencies]
+# Versões fixadas (=) e licenças conferidas: ver docs/seguranca/LICENCAS-E-DADOS.md
+midir = "=0.11.1"                # MIT
+cpal = "=0.18.2"                 # Apache-2.0
+tracing = "=0.1.44"              # MIT
+tracing-subscriber = { version = "=0.3.23", default-features = false, features = ["fmt", "ansi", "std"] } # MIT
+
+[lints]
+workspace = true
