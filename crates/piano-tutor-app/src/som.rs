@@ -798,8 +798,14 @@ pub(crate) mod apoio_testes {
     }
 
     /// Grava o SF2 sintético (programas 0 e 19) num arquivo temporário.
+    /// Cada chamada usa uma subpasta própria: testes em paralelo que pedem o
+    /// mesmo nome não podem ler um arquivo ainda sendo escrito por outro.
     pub fn sf2_sintetico_em_arquivo(nome: &str) -> PathBuf {
-        let pasta = std::env::temp_dir().join(format!("piano-tutor-testes-{}", std::process::id()));
+        static SEQ: std::sync::atomic::AtomicUsize = std::sync::atomic::AtomicUsize::new(0);
+        let n = SEQ.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+        let pasta = std::env::temp_dir()
+            .join(format!("piano-tutor-testes-{}", std::process::id()))
+            .join(format!("sf2-{n}"));
         let _ = std::fs::create_dir_all(&pasta);
         let caminho = pasta.join(nome);
         std::fs::write(&caminho, sf2_sintetico::gerar()).unwrap_or_else(|e| panic!("{e}"));
