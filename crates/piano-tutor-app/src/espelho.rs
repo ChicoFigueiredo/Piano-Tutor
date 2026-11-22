@@ -224,6 +224,8 @@ pub struct EstadoEspelho {
     pub ultimo_desenho: Option<ResumoDesenho>,
     /// Teclas-guia (acorde, escala ou exercício a tocar), marcadas em verde.
     pub guias: Vec<NotaMidi>,
+    /// Ponto de divisão do som (mão esquerda em azul abaixo dele), copiado do serviço de som.
+    pub divisao: Option<u8>,
 }
 
 impl Default for EstadoEspelho {
@@ -260,6 +262,7 @@ impl EstadoEspelho {
             simulados: Vec::new(),
             ultimo_desenho: None,
             guias: Vec::new(),
+            divisao: None,
         }
     }
 

@@ -1,49 +1,32 @@
 //! Tela Espelho (F02, #34): desenha as 61 teclas, o painel "nota atual" e liga o mouse e o
 //! teclado do PC ao [`EstadoEspelho`] como fonte de **simulação**.
 //!
-//! Acessibilidade: a cor nunca é o único sinal. Tecla ligada muda de cor, ganha contorno
-//! grosso e uma marca de forma própria (círculo na branca, losango na preta) e o nome da nota.
+//! O desenho das teclas é do componente [`crate::teclado_visual`]; esta tela cuida do mouse, do
+//! teclado do PC e das opções. Acessibilidade: a cor nunca é o único sinal. Tecla ligada afunda,
+//! ganha contorno grosso e uma marca de forma própria (círculo na branca, losango na preta).
 
 use crate::espelho::{
-    ALTURA_BRANCA, BRANCA, BRANCA_PRESSIONADA, CONTORNO_BRANCA_PRESSIONADA,
-    CONTORNO_PRETA_PRESSIONADA, EstadoEspelho, GeometriaTecla, MARGEM, PRETA, PRETA_PRESSIONADA,
-    ResumoDesenho, Rgb, ZOOM_MAX, ZOOM_MIN, geometria, largura_total, tecla_em, texto_frequencia,
+    EstadoEspelho, ResumoDesenho, ZOOM_MAX, ZOOM_MIN, geometria, texto_frequencia,
+};
+use crate::teclado_visual::{
+    EstiloTeclado, Rotulos, area_das_teclas, fase_do_pulso, largura_branca_ajustada,
+    pintar_teclado, tamanho_do_teclado, tecla_no_ponto,
 };
 use bancada_casca::egui::containers::scroll_area;
 use bancada_casca::egui::{
-    self, Align2, Color32, CornerRadius, Event, FontId, Frame, Margin, Painter, Pos2, Rect,
-    RichText, ScrollArea, Sense, Shape, Slider, Stroke, StrokeKind, Ui, vec2,
+    self, Color32, CornerRadius, Event, Frame, Margin, RichText, ScrollArea, Sense, Slider, Stroke,
+    Ui,
 };
 use piano_tutor_core::NotaMidi;
-use piano_tutor_core::teclado::{
-    Acidente, ConfigNomes, ConvencaoOitava, CorTecla, Idioma, nome_sem_oitava, rotulo,
-};
+use piano_tutor_core::teclado::{Acidente, ConfigNomes, ConvencaoOitava, Idioma, rotulo};
 use piano_tutor_core::teoria::{descrever_intervalo, identificar_acorde};
+use std::time::Duration;
 
-/// Largura de uma tecla branca com zoom 1,0, em pixels.
-pub const LARGURA_BRANCA_BASE_PX: f32 = 24.0;
-/// Espaço abaixo das teclas para a marca do Dó central, em pixels.
-const FAIXA_DO_CENTRAL_PX: f32 = 30.0;
-/// Largura mínima de tecla para escrever rótulos nela.
-const LARGURA_MIN_ROTULO_PX: f32 = 15.0;
+pub use crate::teclado_visual::{LARGURA_BRANCA_BASE_PX, retangulo_da_tecla};
 
+/// Cor dos avisos de simulação (âmbar).
 const AMBAR: Color32 = Color32::from_rgb(255, 214, 102);
-/// Cor das teclas-guia.
-pub const GUIA: Color32 = Color32::from_rgb(70, 200, 110);
 const TINTA_SOBRE_AMBAR: Color32 = Color32::from_rgb(20, 14, 0);
-
-fn cor(c: Rgb) -> Color32 {
-    Color32::from_rgb(c[0], c[1], c[2])
-}
-
-/// Retângulo (px) de uma tecla, dada a área das teclas e a largura da branca.
-pub fn retangulo_da_tecla(area: Rect, largura_branca: f32, g: &GeometriaTecla) -> Rect {
-    let origem = area.min + vec2(MARGEM * largura_branca, 0.0);
-    Rect::from_min_size(
-        origem + vec2(g.x * largura_branca, 0.0),
-        vec2(g.largura * largura_branca, g.altura * largura_branca),
-    )
-}
 
 /// Desenha a tela inteira (título, avisos, opções, teclado e painel).
 pub fn desenhar_tela(ui: &mut Ui, e: &mut EstadoEspelho) {
@@ -142,7 +125,6 @@ fn desenhar_avisos(ui: &mut Ui, e: &EstadoEspelho) -> bool {
 }
 
 fn desenhar_opcoes(ui: &mut Ui, e: &mut EstadoEspelho) {
-    let largura_disponivel = ui.available_width();
     ui.horizontal_wrapped(|ui| {
         ui.label("Nomes:");
         ui.selectable_value(&mut e.nomes.idioma, Idioma::PtBr, "PT-BR (Dó, Ré…)");
@@ -160,21 +142,29 @@ fn desenhar_opcoes(ui: &mut Ui, e: &mut EstadoEspelho) {
         ui.selectable_value(&mut e.nomes.convencao, ConvencaoOitava::Do4, "C4 (MIDI 60)");
         ui.selectable_value(&mut e.nomes.convencao, ConvencaoOitava::Do3, "C3 (MIDI 60)");
     });
+    let mut opcoes = opcoes_visuais(ui.ctx());
     ui.horizontal_wrapped(|ui| {
         ui.spacing_mut().slider_width = 160.0;
-        let mut zoom = e.zoom();
-        let r = ui.add(Slider::new(&mut zoom, ZOOM_MIN..=ZOOM_MAX).text("Zoom"));
-        if r.changed() {
-            e.definir_zoom(zoom);
-        }
-        if ui.button("Ajustar à largura").clicked() {
-            let ideal = largura_disponivel / (largura_total(e.teclado()) * LARGURA_BRANCA_BASE_PX);
-            e.definir_zoom(ideal);
-        }
-        if ui.button("Zoom 100%").clicked() {
-            e.definir_zoom(1.0);
-        }
+        ui.add_enabled_ui(!opcoes.ajustar_a_largura, |ui| {
+            let mut zoom = e.zoom();
+            let r = ui.add(Slider::new(&mut zoom, ZOOM_MIN..=ZOOM_MAX).text("Zoom"));
+            if r.changed() {
+                e.definir_zoom(zoom);
+            }
+            if ui.button("Zoom 100%").clicked() {
+                e.definir_zoom(1.0);
+            }
+        });
+        ui.checkbox(&mut opcoes.ajustar_a_largura, "Ajustar à largura");
+        ui.separator();
+        ui.label("Nomes nas teclas:");
+        ui.selectable_value(&mut opcoes.rotulos, Rotulos::SoGuias, "Só guias");
+        ui.selectable_value(&mut opcoes.rotulos, Rotulos::SoDo, "Dós");
+        ui.selectable_value(&mut opcoes.rotulos, Rotulos::Todas, "Todas");
+        ui.selectable_value(&mut opcoes.rotulos, Rotulos::Nenhum, "Nenhum");
+        ui.checkbox(&mut opcoes.pulso, "Pulso da guia");
     });
+    guardar_opcoes(ui.ctx(), opcoes);
 }
 
 // ---------------------------------------------------------------------------------------------
@@ -186,14 +176,59 @@ pub fn desenhar_teclado_embutido(ui: &mut Ui, e: &mut EstadoEspelho) {
     let aviso = e.aviso_simulacao().is_some();
     desenhar_teclado(ui, e, aviso);
 }
+/// Preferências visuais do teclado, guardadas na memória temporária do egui (valem para todas
+/// as telas que desenham o teclado).
+#[derive(Clone, Copy, Debug, PartialEq)]
+struct OpcoesVisuais {
+    ajustar_a_largura: bool,
+    rotulos: Rotulos,
+    pulso: bool,
+}
+
+impl Default for OpcoesVisuais {
+    fn default() -> Self {
+        Self {
+            ajustar_a_largura: false,
+            rotulos: Rotulos::SoGuias,
+            pulso: true,
+        }
+    }
+}
+
+fn id_opcoes() -> egui::Id {
+    egui::Id::new("piano-tutor-teclado-opcoes")
+}
+
+fn opcoes_visuais(ctx: &egui::Context) -> OpcoesVisuais {
+    ctx.data(|d| d.get_temp::<OpcoesVisuais>(id_opcoes()))
+        .unwrap_or_default()
+}
+
+fn guardar_opcoes(ctx: &egui::Context, o: OpcoesVisuais) {
+    ctx.data_mut(|d| d.insert_temp(id_opcoes(), o));
+}
 
 fn desenhar_teclado(ui: &mut Ui, e: &mut EstadoEspelho, aviso_simulacao_visivel: bool) {
     let geo = geometria(e.teclado());
+    let opcoes = opcoes_visuais(ui.ctx());
+    let mut estilo = EstiloTeclado::para_visuals(ui.visuals());
+    estilo.divisao = e.divisao;
+    estilo.rotulos = opcoes.rotulos;
+    estilo.ajustar_a_largura = opcoes.ajustar_a_largura;
+    if !e.guias.is_empty() && opcoes.pulso {
+        let t = ui.input(|i| i.time);
+        estilo.pulso = Some(fase_do_pulso(t));
+        ui.ctx().request_repaint_after(Duration::from_millis(33));
+    } else if !opcoes.pulso {
+        estilo.pulso = None;
+    }
+
+    if estilo.ajustar_a_largura {
+        let w = largura_branca_ajustada(e, ui.available_width());
+        e.definir_zoom(w / LARGURA_BRANCA_BASE_PX);
+    }
     let w = LARGURA_BRANCA_BASE_PX * e.zoom();
-    let tamanho = vec2(
-        largura_total(e.teclado()) * w,
-        ALTURA_BRANCA * w + FAIXA_DO_CENTRAL_PX,
-    );
+    let tamanho = tamanho_do_teclado(e, w);
 
     ScrollArea::horizontal()
         .scroll_source(
@@ -202,14 +237,12 @@ fn desenhar_teclado(ui: &mut Ui, e: &mut EstadoEspelho, aviso_simulacao_visivel:
         .auto_shrink([false, true])
         .show(ui, |ui| {
             let (rect, resposta) = ui.allocate_exact_size(tamanho, Sense::click_and_drag());
-            let area = Rect::from_min_size(rect.min, vec2(tamanho.x, ALTURA_BRANCA * w));
+            let area = area_das_teclas(rect, w);
 
             // Mouse: só vale se o botão foi apertado sobre o teclado e segue apertado.
             let alvo = if resposta.is_pointer_button_down_on() {
-                ui.input(|i| i.pointer.interact_pos()).and_then(|p| {
-                    let origem = area.min + vec2(MARGEM * w, 0.0);
-                    tecla_em(&geo, (p.x - origem.x) / w, (p.y - origem.y) / w)
-                })
+                ui.input(|i| i.pointer.interact_pos())
+                    .and_then(|p| tecla_no_ponto(&geo, area, w, p))
             } else {
                 None
             };
@@ -217,7 +250,7 @@ fn desenhar_teclado(ui: &mut Ui, e: &mut EstadoEspelho, aviso_simulacao_visivel:
 
             let destacadas: Vec<usize> = e.teclas().indices_ligados().collect();
             if ui.is_rect_visible(rect) {
-                pintar(ui.painter(), ui, e, &geo, area, w, &destacadas);
+                pintar_teclado(ui.painter(), area, w, e, &estilo);
             }
             e.ultimo_desenho = Some(ResumoDesenho {
                 area_teclas: area,
@@ -229,206 +262,14 @@ fn desenhar_teclado(ui: &mut Ui, e: &mut EstadoEspelho, aviso_simulacao_visivel:
         });
 }
 
-fn pintar(
-    p: &Painter,
-    ui: &Ui,
-    e: &EstadoEspelho,
-    geo: &[GeometriaTecla],
-    area: Rect,
-    w: f32,
-    ligadas: &[usize],
-) {
-    let com_rotulos = w >= LARGURA_MIN_ROTULO_PX;
-    let tinta = ui.visuals().text_color();
-    // Brancas primeiro, pretas por cima.
-    for passo in [CorTecla::Branca, CorTecla::Preta] {
-        for g in geo.iter().filter(|g| g.cor == passo) {
-            let r = retangulo_da_tecla(area, w, g);
-            let ligada = ligadas.contains(&g.indice);
-            match g.cor {
-                CorTecla::Branca => pintar_branca(p, e, g, r, w, ligada, com_rotulos),
-                CorTecla::Preta => pintar_preta(p, e, g, r, w, ligada, com_rotulos),
-            }
-        }
-    }
-    // Guias: anel verde com ponto, acima da marca de tecla ligada (forma própria, não só cor).
-    for g in geo.iter().filter(|g| e.guias.contains(&g.nota)) {
-        let r = retangulo_da_tecla(area, w, g);
-        let y = match g.cor {
-            CorTecla::Branca => r.bottom() - 2.4 * w,
-            CorTecla::Preta => r.bottom() - 1.3 * w,
-        };
-        let c = Pos2::new(r.center().x, y);
-        p.circle(
-            c,
-            0.3 * w,
-            GUIA,
-            Stroke::new(2.0, Color32::from_rgb(10, 60, 30)),
-        );
-        p.circle_filled(c, 0.1 * w, Color32::from_rgb(10, 60, 30));
-    }
-    // Dó central: triângulo e texto sob a tecla.
-    if let Some(i) = e.teclado().indice_do_central()
-        && let Some(g) = geo.get(i)
-    {
-        let r = retangulo_da_tecla(area, w, g);
-        let topo = Pos2::new(r.center().x, r.bottom() + 4.0);
-        p.add(Shape::convex_polygon(
-            vec![topo, topo + vec2(-7.0, 12.0), topo + vec2(7.0, 12.0)],
-            AMBAR,
-            Stroke::new(1.5, tinta),
-        ));
-        let texto = match e.nomes.idioma {
-            Idioma::PtBr => format!("Dó central ({})", rotulo_tela(g.nota, e.nomes)),
-            Idioma::Internacional => format!("Middle C ({})", rotulo_tela(g.nota, e.nomes)),
-        };
-        p.text(
-            Pos2::new(r.center().x, r.bottom() + 17.0),
-            Align2::CENTER_TOP,
-            texto,
-            FontId::proportional(12.0),
-            tinta,
-        );
-    }
-}
-
 /// O egui embutido não tem os glifos ♯ e ♭ (aparecem como quadrado): na tela vão como `#` e
 /// `b`. O núcleo continua com ♯ e ♭.
 pub fn texto_tela(s: &str) -> String {
     s.replace('♯', "#").replace('♭', "b")
 }
 
-fn rotulo_tela(nota: NotaMidi, nomes: ConfigNomes) -> String {
+pub(crate) fn rotulo_tela(nota: NotaMidi, nomes: ConfigNomes) -> String {
     texto_tela(&rotulo(nota, nomes))
-}
-
-fn rotulo_de_c(e: &EstadoEspelho, g: &GeometriaTecla) -> Option<String> {
-    g.nota
-        .numero()
-        .is_multiple_of(12)
-        .then(|| rotulo_tela(g.nota, e.nomes))
-}
-
-fn pintar_branca(
-    p: &Painter,
-    e: &EstadoEspelho,
-    g: &GeometriaTecla,
-    r: Rect,
-    w: f32,
-    ligada: bool,
-    com_rotulos: bool,
-) {
-    let canto = CornerRadius {
-        nw: 0,
-        ne: 0,
-        sw: 3,
-        se: 3,
-    };
-    let (preenchimento, traco, texto) = if ligada {
-        (
-            cor(BRANCA_PRESSIONADA),
-            Stroke::new(3.0, cor(CONTORNO_BRANCA_PRESSIONADA)),
-            cor(BRANCA),
-        )
-    } else {
-        (cor(BRANCA), Stroke::new(1.0, cor(PRETA)), cor(PRETA))
-    };
-    p.rect_filled(r, canto, preenchimento);
-    p.rect_stroke(r, canto, traco, StrokeKind::Inside);
-
-    if ligada {
-        // Marca de forma: círculo com anel, perto da base.
-        let centro = Pos2::new(r.center().x, r.bottom() - 1.1 * w);
-        p.circle(
-            centro,
-            0.34 * w,
-            cor(BRANCA),
-            Stroke::new(2.0, cor(CONTORNO_BRANCA_PRESSIONADA)),
-        );
-    }
-    if com_rotulos {
-        let mut y = r.bottom() - 4.0;
-        if ligada {
-            p.text(
-                Pos2::new(r.center().x, r.bottom() - 1.6 * w),
-                Align2::CENTER_BOTTOM,
-                texto_tela(nome_sem_oitava(g.nota, e.nomes)),
-                FontId::proportional(11.0),
-                texto,
-            );
-            return;
-        }
-        if let Some(t) = rotulo_de_c(e, g) {
-            p.text(
-                Pos2::new(r.center().x, y),
-                Align2::CENTER_BOTTOM,
-                t,
-                FontId::proportional(10.0),
-                texto,
-            );
-            y -= 13.0;
-        }
-        if let Some(l) = e.letra_pc_da_nota(g.nota) {
-            p.text(
-                Pos2::new(r.center().x, y - 2.0),
-                Align2::CENTER_BOTTOM,
-                l,
-                FontId::monospace(10.0),
-                Color32::from_rgb(110, 110, 120),
-            );
-        }
-    }
-}
-
-fn pintar_preta(
-    p: &Painter,
-    e: &EstadoEspelho,
-    g: &GeometriaTecla,
-    r: Rect,
-    w: f32,
-    ligada: bool,
-    com_rotulos: bool,
-) {
-    let canto = CornerRadius {
-        nw: 0,
-        ne: 0,
-        sw: 2,
-        se: 2,
-    };
-    let (preenchimento, traco) = if ligada {
-        (
-            cor(PRETA_PRESSIONADA),
-            Stroke::new(3.0, cor(CONTORNO_PRETA_PRESSIONADA)),
-        )
-    } else {
-        (cor(PRETA), Stroke::new(1.0, Color32::from_rgb(90, 90, 104)))
-    };
-    p.rect_filled(r, canto, preenchimento);
-    p.rect_stroke(r, canto, traco, StrokeKind::Inside);
-
-    if ligada {
-        // Marca de forma própria: losango escuro.
-        let c = Pos2::new(r.center().x, r.bottom() - 0.55 * w);
-        let d = 0.3 * w;
-        p.add(Shape::convex_polygon(
-            vec![
-                c + vec2(0.0, -d),
-                c + vec2(d, 0.0),
-                c + vec2(0.0, d),
-                c + vec2(-d, 0.0),
-            ],
-            cor(CONTORNO_PRETA_PRESSIONADA),
-            Stroke::new(1.0, cor(BRANCA)),
-        ));
-    } else if com_rotulos && let Some(l) = e.letra_pc_da_nota(g.nota) {
-        p.text(
-            Pos2::new(r.center().x, r.bottom() - 4.0),
-            Align2::CENTER_BOTTOM,
-            l,
-            FontId::monospace(10.0),
-            Color32::from_rgb(190, 190, 205),
-        );
-    }
 }
 
 // ---------------------------------------------------------------------------------------------
@@ -536,6 +377,8 @@ mod testes {
     use super::*;
     use crate::espelho::AVISO_SIMULACAO;
     use bancada_casca::egui::{Context, Key, Modifiers, PointerButton, RawInput};
+    use bancada_casca::egui::{Pos2, Rect, vec2};
+    use piano_tutor_core::teclado::CorTecla;
 
     fn n(x: u8) -> NotaMidi {
         NotaMidi::nova(x).expect("nota válida")

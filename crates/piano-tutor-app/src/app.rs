@@ -309,6 +309,7 @@ impl AppPianoTutor {
         self.encaminhar_simulacao();
         self.som.atualizar();
         self.aplicar_preferencias();
+        self.espelho.divisao = self.som.config_teclado().divisao;
         self.ritmo.atualizar(&mut self.som);
         self.gravacao.atualizar(&mut self.som);
         self.conferir_desafio();
