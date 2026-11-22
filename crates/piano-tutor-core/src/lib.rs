@@ -73,7 +73,9 @@ mod testes {
     #[test]
     fn cobre_limites_midi() {
         assert_eq!(
-            NotaMidi::nova(127).expect("limite superior válido").numero(),
+            NotaMidi::nova(127)
+                .expect("limite superior válido")
+                .numero(),
             127
         );
         assert_eq!(NotaMidi::nova(128), None);
