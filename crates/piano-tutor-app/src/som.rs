@@ -45,12 +45,18 @@ pub fn sf2_inicial(var: Option<&str>, existe: impl Fn(&Path) -> bool) -> PathBuf
     if let Some(v) = var.map(str::trim).filter(|v| !v.is_empty()) {
         return PathBuf::from(v);
     }
+    sf2_encontrado(None, existe).unwrap_or_else(|| PathBuf::from(SF2_PADRAO))
+}
+
+/// O primeiro SF2 padrão que existe: os caminhos do sistema e, depois, o `baixado` (pasta de
+/// dados do usuário). `None` quando não há nenhum e é preciso baixar.
+pub fn sf2_encontrado(baixado: Option<&Path>, existe: impl Fn(&Path) -> bool) -> Option<PathBuf> {
     CANDIDATOS_SF2
         .iter()
         .map(Path::new)
+        .chain(baixado)
         .find(|p| existe(p))
-        .unwrap_or(Path::new(SF2_PADRAO))
-        .to_path_buf()
+        .map(Path::to_path_buf)
 }
 
 /// Programa GM do piano acústico de cauda.
@@ -942,9 +948,10 @@ fn mensagem_sf2_ausente(caminho: &Path, ha_anterior: bool) -> String {
     };
     if caminho == Path::new(SF2_PADRAO) {
         format!(
-            "SoundFont padrão não encontrado em {SF2_PADRAO}. Instale com \
-             \"sudo apt install fluid-soundfont-gm\" e clique em \"Usar o padrão\" na tela Timbres, ou informe outro \
-             arquivo .sf2 (também pela variável {VAR_SF2}). {continua}"
+            "SoundFont padrão não encontrado em {SF2_PADRAO}. Clique em \"Usar o padrão\" na \
+             tela Timbres para o app baixar o FluidR3_GM (148 MB, uma vez só), instale o pacote \
+             fluid-soundfont-gm ou informe outro arquivo .sf2 (também pela variável {VAR_SF2}). \
+             {continua}"
         )
     } else {
         format!(
@@ -1275,6 +1282,20 @@ mod testes {
     #[test]
     fn sf2_inicial_sem_nenhum_arquivo_cai_no_padrao_para_a_mensagem_citar_o_pacote() {
         assert_eq!(sf2_inicial(None, |_| false), PathBuf::from(SF2_PADRAO));
+    }
+
+    #[test]
+    fn sf2_encontrado_usa_o_baixado_so_depois_do_sistema() {
+        let baixado = Path::new("/dados/piano-tutor/soundfonts/FluidR3_GM.sf2");
+        assert_eq!(
+            sf2_encontrado(Some(baixado), |p| p == baixado),
+            Some(baixado.to_path_buf())
+        );
+        assert_eq!(
+            sf2_encontrado(Some(baixado), |_| true),
+            Some(PathBuf::from(SF2_PADRAO))
+        );
+        assert_eq!(sf2_encontrado(Some(baixado), |_| false), None);
     }
 
     #[test]

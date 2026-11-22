@@ -95,3 +95,15 @@ Nota: o texto MIT acima e o padrao MIT; a lista de titulares vem da copia Debian
 - Tamanho do SF2 MuseScore General (arquivo descompactado) nao foi confirmado; apenas o .deb.
 - Copia do COPYING do GitHub do MuseScore retornou erro do site; a licenca MIT foi confirmada pela copia Debian e pelo arquivo de licenca do pacote openSUSE.
 - Nenhum arquivo grande foi baixado. Nenhuma alteracao no repositorio. Nenhum commit.
+
+## Atualização 2026-11-22: download na primeira execução
+
+Para funcionar nas três plataformas sem `sudo`, o app procura o SF2 nos caminhos comuns do
+sistema (`CANDIDATOS_SF2` em `crates/piano-tutor-app/src/som.rs`) e, se não achar nenhum, baixa
+o `FluidR3_GM.sf2` original (MIT, Frank Wen; pacote Ubuntu `fluid-soundfont-gm` 3.1-5.3build1)
+da release `soundfont-fluidr3-gm-1` deste repositório, com a licença ao lado
+(`LICENSE-FluidR3_GM.txt`). O download confere tamanho (148 398 306 bytes) e SHA-256
+(`74594e8f4250680adf590507a306655a299935343583256f3b722c48a1bc1cb0`), grava como `.part` e só
+renomeia depois de conferido. Destino: `dirs::data_dir()/piano-tutor/soundfonts/` (Linux
+`~/.local/share`, Windows `%APPDATA%`, macOS `~/Library/Application Support`).
+`PIANO_TUTOR_SF2` escolhe outro arquivo. Código: `crates/piano-tutor-app/src/baixar_sf2.rs`.

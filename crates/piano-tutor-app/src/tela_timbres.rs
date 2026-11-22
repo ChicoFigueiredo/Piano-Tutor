@@ -15,12 +15,15 @@ const AMBAR: Color32 = Color32::from_rgb(255, 214, 102);
 const PANICO_FUNDO: Color32 = Color32::from_rgb(178, 34, 34);
 
 /// Estado da tela (campos digitados).
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq)]
 pub struct EstadoTimbres {
     pub campo_caminho: String,
     pub filtro: String,
     /// Último erro de escolha de timbre (preset inexistente etc.).
     pub erro_timbre: Option<String>,
+    /// Download do SoundFont padrão: texto e fração (0–1) enquanto baixa, preenchidos pelo app.
+    pub download_texto: Option<String>,
+    pub download_fracao: Option<f32>,
 }
 
 impl Default for EstadoTimbres {
@@ -29,6 +32,8 @@ impl Default for EstadoTimbres {
             campo_caminho: SF2_PADRAO.to_owned(),
             filtro: String::new(),
             erro_timbre: None,
+            download_texto: None,
+            download_fracao: None,
         }
     }
 }
@@ -37,6 +42,8 @@ impl Default for EstadoTimbres {
 #[derive(Debug, Clone, PartialEq)]
 pub enum AcaoTimbres {
     CarregarSf2(String),
+    /// Usa o SF2 padrão encontrado no sistema ou baixado; se não houver, baixa.
+    UsarPadrao,
     Timbre {
         banco: u16,
         programa: u8,
@@ -144,13 +151,24 @@ fn desenhar_soundfont(
         }
         if ui
             .button("Usar o padrão")
-            .on_hover_text(format!("FluidR3_GM (MIT), de {SF2_PADRAO}"))
+            .on_hover_text(
+                "FluidR3_GM (MIT): do sistema, ou baixado uma vez para a sua pasta de dados",
+            )
             .clicked()
         {
-            t.campo_caminho = SF2_PADRAO.to_owned();
-            pedidos.push(AcaoTimbres::CarregarSf2(SF2_PADRAO.to_owned()));
+            pedidos.push(AcaoTimbres::UsarPadrao);
         }
     });
+    if let Some(texto) = &t.download_texto {
+        ui.label(RichText::new(texto).color(AMBAR));
+    }
+    if let Some(f) = t.download_fracao {
+        ui.add(
+            egui::ProgressBar::new(f)
+                .show_percentage()
+                .desired_width(460.0),
+        );
+    }
 }
 
 fn desenhar_controles(

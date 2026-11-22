@@ -15,6 +15,7 @@
 
 use crate::acoes;
 use crate::acordes::EstadoAcordes;
+use crate::baixar_sf2::{BaixadorSf2, FLUIDR3_GM, abridor_http, caminho_baixado};
 use crate::calibracao::{Calibracao, PerfilTeclado};
 use crate::espelho::EstadoEspelho;
 use crate::estado::{
@@ -26,7 +27,7 @@ use crate::gravacao::EstadoGravacao;
 use crate::monitor::{EstadoMonitor, pasta_de_sessoes_do_ambiente};
 use crate::preferencias::PreferenciasSom;
 use crate::ritmo::EstadoRitmo;
-use crate::som::{EstadoSom, ServicoSom, abridor_cpal, carregador_arquivo};
+use crate::som::{EstadoSom, ServicoSom, abridor_cpal, carregador_arquivo, sf2_encontrado};
 use crate::tela_calibracao::{AcaoCalibracao, ContextoCalibracao};
 use crate::tela_gravacao;
 use crate::tela_partitura::{self, EstadoPartitura};
@@ -61,6 +62,8 @@ pub struct Dispositivos {
     pub relogio: Arc<dyn Relogio>,
     pub som: ServicoSom,
     pub pasta_sessoes: Option<PathBuf>,
+    /// Baixa o SF2 padrão quando ele não existe. `None` nos testes sem rede.
+    pub baixador_sf2: Option<BaixadorSf2>,
 }
 
 impl Dispositivos {
@@ -72,6 +75,7 @@ impl Dispositivos {
             som: ServicoSom::inativo(Arc::clone(&relogio)),
             relogio,
             pasta_sessoes: None,
+            baixador_sf2: None,
         }
     }
 
@@ -80,13 +84,23 @@ impl Dispositivos {
     pub fn do_sistema() -> Self {
         let relogio: Arc<dyn Relogio> = Arc::new(RelogioMonotonico::novo());
         let mut som = ServicoSom::novo(Arc::clone(&relogio), abridor_cpal(), carregador_arquivo());
+        let mut baixador = BaixadorSf2::novo(FLUIDR3_GM, abridor_http());
         let var = std::env::var(crate::som::VAR_SF2).ok();
-        som.carregar_sf2(crate::som::sf2_inicial(var.as_deref(), Path::is_file));
+        let pedido = var.as_deref().map(str::trim).filter(|v| !v.is_empty());
+        match pedido {
+            Some(v) => som.carregar_sf2(v),
+            None => match sf2_encontrado(caminho_baixado().as_deref(), Path::is_file) {
+                Some(p) => som.carregar_sf2(p),
+                // Nenhum SF2 no sistema: baixa uma vez para a pasta de dados do usuário.
+                None => baixador.iniciar(caminho_baixado()),
+            },
+        }
         Self {
             fonte_midi: Box::new(FonteMidir::nova()),
             som,
             relogio,
             pasta_sessoes: pasta_de_sessoes_do_ambiente(),
+            baixador_sf2: Some(baixador),
         }
     }
 }
@@ -100,6 +114,7 @@ pub struct AppPianoTutor {
     pub monitor: EstadoMonitor,
     /// Som (F03): SoundFont, saída, timbre, volume e pânico.
     pub som: ServicoSom,
+    baixador_sf2: Option<BaixadorSf2>,
     pub timbres: EstadoTimbres,
     /// Metrônomo, bateria e exercício de pulso.
     pub ritmo: EstadoRitmo,
@@ -171,6 +186,7 @@ impl AppPianoTutor {
             espelho,
             monitor: EstadoMonitor::novo(d.fonte_midi, Arc::clone(&d.relogio), d.pasta_sessoes),
             som: d.som,
+            baixador_sf2: d.baixador_sf2,
             timbres: EstadoTimbres::default(),
             ritmo: EstadoRitmo::novo(pasta_dados.clone()),
             acordes: EstadoAcordes::default(),
@@ -297,7 +313,12 @@ impl AppPianoTutor {
         }
         self.tick();
         let mut proximo = self.monitor.proxima_varredura_em();
-        if self.som.carregando().is_some() {
+        if self.som.carregando().is_some()
+            || self
+                .baixador_sf2
+                .as_ref()
+                .is_some_and(BaixadorSf2::baixando)
+        {
             proximo = proximo.min(Duration::from_millis(250));
         }
         if self.ritmo.tocando()
@@ -316,6 +337,7 @@ impl AppPianoTutor {
         let saidas = self.monitor.atualizar();
         self.rotear(saidas);
         self.encaminhar_simulacao();
+        self.atualizar_download();
         self.som.atualizar();
         self.aplicar_preferencias();
         self.espelho.divisao = self.som.config_teclado().divisao;
@@ -323,6 +345,34 @@ impl AppPianoTutor {
         self.gravacao.atualizar(&mut self.som);
         self.partitura.atualizar(&mut self.som);
         self.conferir_desafio();
+    }
+
+    /// Download do SF2 padrão: carrega quando termina e publica o progresso na tela Timbres.
+    fn atualizar_download(&mut self) {
+        let Some(b) = self.baixador_sf2.as_mut() else {
+            return;
+        };
+        if let Some(p) = b.atualizar() {
+            self.timbres.campo_caminho = p.display().to_string();
+            self.som.carregar_sf2(p);
+        }
+        self.timbres.download_texto = b.texto();
+        self.timbres.download_fracao = b.fracao();
+    }
+
+    /// "Usar o padrão": o SF2 do sistema ou o já baixado; se não houver nenhum, baixa.
+    fn usar_sf2_padrao(&mut self) {
+        let baixado = caminho_baixado();
+        match sf2_encontrado(baixado.as_deref(), Path::is_file) {
+            Some(p) => {
+                self.timbres.campo_caminho = p.display().to_string();
+                self.som.carregar_sf2(p);
+            }
+            None => match self.baixador_sf2.as_mut() {
+                Some(b) => b.iniciar(baixado),
+                None => self.som.carregar_sf2(crate::som::SF2_PADRAO),
+            },
+        }
     }
 
     /// Desafio de acordes: confere as teclas seguradas (físicas ou simuladas).
@@ -427,6 +477,10 @@ impl AppPianoTutor {
                 AcaoTimbres::CarregarSf2(caminho) => {
                     self.timbres.erro_timbre = None;
                     self.som.carregar_sf2(caminho);
+                }
+                AcaoTimbres::UsarPadrao => {
+                    self.timbres.erro_timbre = None;
+                    self.usar_sf2_padrao();
                 }
                 AcaoTimbres::Timbre { banco, programa } => {
                     self.timbres.erro_timbre = self.som.selecionar_timbre(banco, programa).err();
@@ -649,7 +703,13 @@ impl AppCasca for AppPianoTutor {
             .monitor
             .detalhe_estado()
             .unwrap_or_else(|| "Clique para abrir o Monitor MIDI".to_owned());
+        let baixando = self
+            .baixador_sf2
+            .as_ref()
+            .filter(|b| b.baixando())
+            .and_then(BaixadorSf2::texto);
         let (tom_audio, dica_audio) = match self.som.estado() {
+            _ if baixando.is_some() => (Tom::Info, baixando.clone().unwrap_or_default()),
             EstadoSom::Pronto => (
                 Tom::Sucesso,
                 self.som.descricao_saida().unwrap_or_default().to_owned(),
@@ -660,8 +720,9 @@ impl AppCasca for AppPianoTutor {
                 self.som
                     .erro_saida()
                     .or(self.som.erro_sf2())
-                    .unwrap_or("Sem som")
-                    .to_owned(),
+                    .map(str::to_owned)
+                    .or_else(|| self.baixador_sf2.as_ref().and_then(BaixadorSf2::texto))
+                    .unwrap_or_else(|| "Sem som".to_owned()),
             ),
         };
         vec![
@@ -670,10 +731,17 @@ impl AppCasca for AppPianoTutor {
                 .tom(tom_midi)
                 .dica(dica_midi)
                 .clicavel(),
-            SegmentoStatus::novo("audio", self.som.texto_status())
-                .tom(tom_audio)
-                .dica(dica_audio)
-                .clicavel(),
+            SegmentoStatus::novo(
+                "audio",
+                if baixando.is_some() {
+                    "Áudio: baixando SoundFont…"
+                } else {
+                    self.som.texto_status()
+                },
+            )
+            .tom(tom_audio)
+            .dica(dica_audio)
+            .clicavel(),
             SegmentoStatus::novo("ribbon", ribbon)
                 .a_direita()
                 .dica("Ctrl+F1 recolhe ou expande o Ribbon"),
@@ -780,6 +848,7 @@ mod testes {
             relogio: comum,
             som,
             pasta_sessoes: None,
+            baixador_sf2: None,
         });
         Bancada {
             app,
@@ -930,6 +999,46 @@ mod testes {
         assert_eq!(b.motor.notas_ativas(), 0);
         assert_eq!(b.app.espelho.teclas().quantidade(), 0);
         assert_eq!(b.app.som.panicos(), 1);
+    }
+
+    #[test]
+    fn sf2_baixado_em_segundo_plano_e_carregado_e_tela_mostra_progresso() {
+        use crate::baixar_sf2::{AbridorDownload, BaixadorSf2, FonteSf2};
+        use sha2::{Digest, Sha256};
+        let bytes = piano_tutor_audio::sf2_sintetico::gerar();
+        let sha: String = Sha256::digest(&bytes)
+            .iter()
+            .map(|b| format!("{b:02x}"))
+            .collect();
+        let fonte = FonteSf2 {
+            nome: "Baixado.sf2",
+            url: "https://exemplo.invalido/Baixado.sf2",
+            tamanho: bytes.len() as u64,
+            sha256: Box::leak(sha.into_boxed_str()),
+        };
+        let abridor: AbridorDownload = Arc::new(move |_| {
+            Ok(Box::new(std::io::Cursor::new(bytes.clone())) as Box<dyn std::io::Read + Send>)
+        });
+        let destino = std::env::temp_dir()
+            .join(format!("pt-app-baixado-{}", std::process::id()))
+            .join("Baixado.sf2");
+        let _ = std::fs::remove_file(&destino);
+        let mut baixador = BaixadorSf2::novo(fonte, abridor);
+        baixador.iniciar(Some(destino.clone()));
+        let mut b = bancada();
+        b.app.baixador_sf2 = Some(baixador);
+        b.app.tick();
+        let fim = std::time::Instant::now() + std::time::Duration::from_secs(5);
+        while b.app.som.caminho_sf2() != Some(destino.as_path()) {
+            assert!(
+                std::time::Instant::now() < fim,
+                "SF2 baixado não foi carregado"
+            );
+            std::thread::sleep(std::time::Duration::from_millis(5));
+            b.app.tick();
+        }
+        assert_eq!(b.app.timbres.download_texto, None);
+        assert_eq!(b.app.timbres.campo_caminho, destino.display().to_string());
     }
 
     #[test]
