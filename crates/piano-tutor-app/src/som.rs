@@ -17,6 +17,7 @@ use piano_tutor_audio::{
     Acao, ComandoAudio, ConfigRusty, ConfigSaida, ControleAudio, ErroAudio, PresetSf2, Quando,
     Relogio, SaidaAudio, SintetizadorRusty, SoundFont, Telemetria, listar_presets,
 };
+use piano_tutor_core::NotaMidi;
 use piano_tutor_core::midi::{CanalMidi, EventoMidi};
 use piano_tutor_core::teclado::{AcaoTecla, EventoTecla};
 use std::path::{Path, PathBuf};
@@ -38,6 +39,17 @@ pub const CANAL_PERCUSSAO: u8 = 9;
 /// Velocidade das notas da simulação (mouse e teclado do PC). Constante declarada: a
 /// simulação não tem velocity e não finge ter.
 pub const VELOCIDADE_SIMULACAO: u8 = 100;
+/// Canal da mão direita (timbre principal).
+pub const CANAL_PRINCIPAL: u8 = 0;
+/// Canal da mão esquerda quando o teclado está dividido.
+pub const CANAL_ESQUERDA: u8 = 1;
+/// Canal da camada (segundo timbre somado ao principal).
+pub const CANAL_CAMADA: u8 = 2;
+/// Canal das demonstrações do app (ouvir acorde, escala, exercício).
+pub const CANAL_DEMONSTRACAO: u8 = 3;
+/// Controles MIDI de efeito (GM): reverberação e coro.
+pub const CC_REVERB: u8 = 91;
+pub const CC_CORO: u8 = 93;
 /// Volume mestre inicial (ganho 1,0, o mesmo dos WAV de escuta da F03).
 pub const VOLUME_PADRAO: f32 = 1.0;
 
@@ -114,6 +126,49 @@ impl Timbre {
     };
 }
 
+/// Como o teclado toca: divisão (split), camada (layer), transposição e efeitos.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub struct ConfigTeclado {
+    /// Ponto de divisão: notas abaixo dele tocam o timbre da mão esquerda.
+    pub divisao: Option<u8>,
+    pub timbre_esquerda: Timbre,
+    /// Segundo timbre somado ao principal (só na zona da mão direita quando dividido).
+    pub camada: Option<Timbre>,
+    /// Semitons somados ao som (o Espelho continua mostrando a tecla física).
+    pub transposicao: i8,
+    /// Envio de reverberação 0–127 (CC91).
+    pub reverb: u8,
+    /// Envio de coro 0–127 (CC93).
+    pub coro: u8,
+    /// Timbre das demonstrações do app (ouvir acorde, escala); `None` segue o principal.
+    pub timbre_demonstracao: Option<Timbre>,
+}
+
+impl Default for ConfigTeclado {
+    fn default() -> Self {
+        Self {
+            divisao: None,
+            timbre_esquerda: Timbre {
+                banco: 0,
+                programa: 32,
+            },
+            camada: None,
+            transposicao: 0,
+            reverb: 40,
+            coro: 0,
+            timbre_demonstracao: None,
+        }
+    }
+}
+
+/// Para onde foi uma tecla física apertada (para soltar no mesmo lugar).
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+struct Rota {
+    canal: u8,
+    nota: NotaMidi,
+    camada: bool,
+}
+
 /// Resumo do estado do som, para a barra de status.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum EstadoSom {
@@ -151,6 +206,8 @@ pub struct ServicoSom {
     erro_saida: Option<String>,
     descricao_saida: Option<String>,
     timbre: Timbre,
+    config: ConfigTeclado,
+    rotas: [Option<Rota>; 128],
     volume: f32,
     comandos_perdidos: u64,
     panicos: u64,
@@ -188,6 +245,8 @@ impl ServicoSom {
             erro_saida: None,
             descricao_saida: None,
             timbre: Timbre::PIANO,
+            config: ConfigTeclado::default(),
+            rotas: [None; 128],
             volume: VOLUME_PADRAO,
             comandos_perdidos: 0,
             panicos: 0,
@@ -412,34 +471,184 @@ impl ServicoSom {
     /// Evento do teclado físico. Notas e controles são agendados pelo timestamp monotônico do
     /// evento (mesmo relógio da saída). Mudança de programa e seleção de banco vindas do
     /// dispositivo **não** trocam o timbre (quem escolhe é a tela Timbres); ficam só no Monitor.
+    ///
+    /// As notas passam pela [`ConfigTeclado`]: canal da mão direita ou esquerda, camada e
+    /// transposição. Controles (pedal etc.) vão para os três canais do teclado.
     pub fn evento_midi(&mut self, evento: &EventoMidi) {
+        let quando = Quando::Instante(evento.timestamp_monotonico_ns());
         match *evento {
             EventoMidi::ProgramaMudou { .. } | EventoMidi::Desconhecido { .. } => {}
             EventoMidi::ControleMudou { controle, .. } if controle == 0 || controle == 32 => {}
-            _ => {
-                if let Some(c) = ComandoAudio::de_evento_midi(evento) {
-                    self.enviar(c);
+            EventoMidi::ControleMudou {
+                controle, valor, ..
+            } => {
+                for c in [CANAL_PRINCIPAL, CANAL_ESQUERDA, CANAL_CAMADA] {
+                    self.enviar(ComandoAudio::novo(
+                        quando,
+                        Acao::Controle {
+                            canal: canal(c),
+                            controle,
+                            valor,
+                        },
+                    ));
+                }
+            }
+            EventoMidi::NotaLigada {
+                nota, velocidade, ..
+            } => self.tocar_tecla(quando, nota, Some(velocidade)),
+            EventoMidi::NotaDesligada { nota, .. } => self.tocar_tecla(quando, nota, None),
+        }
+    }
+
+    /// Nota da simulação (mouse e teclado do PC): velocidade constante, no próximo bloco de
+    /// áudio (sem timestamp de captura). Passa pela mesma divisão/camada do teclado físico.
+    pub fn nota_simulada(&mut self, evento: EventoTecla) {
+        let vel = match evento.acao {
+            AcaoTecla::Ligar => Some(VELOCIDADE_SIMULACAO),
+            AcaoTecla::Desligar => None,
+        };
+        self.tocar_tecla(Quando::Imediato, evento.nota, vel);
+    }
+
+    /// Liga (`Some(velocidade)`) ou solta (`None`) uma tecla física, pela rota configurada.
+    fn tocar_tecla(&mut self, quando: Quando, tecla: NotaMidi, velocidade: Option<u8>) {
+        let i = usize::from(tecla.numero());
+        match velocidade {
+            Some(velocidade) => {
+                // Religar sem soltar: solta a rota anterior antes.
+                if let Some(r) = self.rotas[i].take() {
+                    self.soltar_rota(quando, r);
+                }
+                let Some(rota) = self.rota_para(tecla) else {
+                    return;
+                };
+                self.rotas[i] = Some(rota);
+                self.enviar(ComandoAudio::novo(
+                    quando,
+                    Acao::NotaLigada {
+                        canal: canal(rota.canal),
+                        nota: rota.nota,
+                        velocidade,
+                    },
+                ));
+                if rota.camada {
+                    self.enviar(ComandoAudio::novo(
+                        quando,
+                        Acao::NotaLigada {
+                            canal: canal(CANAL_CAMADA),
+                            nota: rota.nota,
+                            velocidade,
+                        },
+                    ));
+                }
+            }
+            None => {
+                let rota = self.rotas[i].take().or_else(|| self.rota_para(tecla));
+                if let Some(r) = rota {
+                    self.soltar_rota(quando, r);
                 }
             }
         }
     }
 
-    /// Nota da simulação (mouse e teclado do PC): canal 1, velocidade constante, no próximo
-    /// bloco de áudio (sem timestamp de captura).
-    pub fn nota_simulada(&mut self, evento: EventoTecla) {
-        let canal = canal(0);
-        let acao = match evento.acao {
-            AcaoTecla::Ligar => Acao::NotaLigada {
-                canal,
-                nota: evento.nota,
-                velocidade: VELOCIDADE_SIMULACAO,
+    fn soltar_rota(&mut self, quando: Quando, r: Rota) {
+        self.enviar(ComandoAudio::novo(
+            quando,
+            Acao::NotaDesligada {
+                canal: canal(r.canal),
+                nota: r.nota,
             },
-            AcaoTecla::Desligar => Acao::NotaDesligada {
-                canal,
-                nota: evento.nota,
+        ));
+        if r.camada {
+            self.enviar(ComandoAudio::novo(
+                quando,
+                Acao::NotaDesligada {
+                    canal: canal(CANAL_CAMADA),
+                    nota: r.nota,
+                },
+            ));
+        }
+    }
+
+    fn rota_para(&self, tecla: NotaMidi) -> Option<Rota> {
+        let soada = i16::from(tecla.numero()) + i16::from(self.config.transposicao);
+        let nota = u8::try_from(soada).ok().and_then(NotaMidi::nova)?;
+        let esquerda = self.config.divisao.is_some_and(|d| tecla.numero() < d);
+        Some(Rota {
+            canal: if esquerda {
+                CANAL_ESQUERDA
+            } else {
+                CANAL_PRINCIPAL
             },
+            nota,
+            camada: !esquerda && self.config.camada.is_some(),
+        })
+    }
+
+    // --- Agendamento (ritmo, demonstrações) ------------------------------------------------
+
+    /// Agora, no relógio comum (o mesmo dos eventos MIDI).
+    pub fn agora_ns(&self) -> u64 {
+        self.relogio.agora_ns()
+    }
+
+    /// Agenda uma ação para o instante `ns` do relógio comum (metrônomo, bateria). Devolve
+    /// `false` se não há saída ou a fila está cheia.
+    pub fn agendar(&mut self, instante_ns: u64, acao: Acao) -> bool {
+        self.enviar(ComandoAudio::novo(Quando::Instante(instante_ns), acao))
+    }
+
+    /// Toca notas no canal de demonstração: ligam em `inicio_ns` e soltam `duracao` depois.
+    pub fn demonstrar(&mut self, notas: &[NotaMidi], inicio_ns: u64, duracao: Duration) {
+        let fim = inicio_ns.saturating_add(u64::try_from(duracao.as_nanos()).unwrap_or(u64::MAX));
+        let c = canal(CANAL_DEMONSTRACAO);
+        for n in notas {
+            self.agendar(
+                inicio_ns,
+                Acao::NotaLigada {
+                    canal: c,
+                    nota: *n,
+                    velocidade: 96,
+                },
+            );
+            self.agendar(fim, Acao::NotaDesligada { canal: c, nota: *n });
+        }
+    }
+
+    /// Configuração atual do teclado (divisão, camada, transposição, efeitos).
+    pub fn config_teclado(&self) -> ConfigTeclado {
+        self.config
+    }
+
+    /// Troca a configuração do teclado. Notas soando são cortadas antes (nada fica preso com
+    /// rota antiga) e timbres/efeitos são reenviados.
+    pub fn definir_config_teclado(&mut self, config: ConfigTeclado) -> Result<(), String> {
+        let validos = [
+            Some(config.timbre_esquerda),
+            config.camada,
+            config.timbre_demonstracao,
+        ];
+        if self.sf2.is_some() {
+            for t in validos.into_iter().flatten() {
+                if !self.tem_preset(t.banco, t.programa) {
+                    return Err(format!(
+                        "O preset {}:{} não existe neste SoundFont.",
+                        t.banco, t.programa
+                    ));
+                }
+            }
+        }
+        if !(-24..=24).contains(&config.transposicao) {
+            return Err("A transposição vai de -24 a +24 semitons.".to_owned());
+        }
+        self.config = ConfigTeclado {
+            reverb: config.reverb.min(127),
+            coro: config.coro.min(127),
+            ..config
         };
-        self.enviar(ComandoAudio::novo(Quando::Imediato, acao));
+        self.rotas = [None; 128];
+        self.silenciar_e_reaplicar();
+        Ok(())
     }
 
     /// Dispositivo desconectado ou porta trocada: silencia tudo já (pânico do motor, que não
@@ -461,6 +670,7 @@ impl ServicoSom {
             return false;
         };
         s.controle().panico();
+        self.rotas = [None; 128];
         self.aplicar_timbre();
         self.aplicar_volume();
         true
@@ -493,12 +703,24 @@ impl ServicoSom {
         Ok(())
     }
 
+    /// Timbre de cada canal melódico: 0 principal, 1 esquerda (se dividido), 2 camada (se
+    /// houver), 3 demonstração; os demais recebem o principal. O 10 (percussão) fica de fora.
+    fn timbre_do_canal(&self, c: u8) -> Timbre {
+        match c {
+            CANAL_ESQUERDA if self.config.divisao.is_some() => self.config.timbre_esquerda,
+            CANAL_CAMADA => self.config.camada.unwrap_or(self.timbre),
+            CANAL_DEMONSTRACAO => self.config.timbre_demonstracao.unwrap_or(self.timbre),
+            _ => self.timbre,
+        }
+    }
+
     fn aplicar_timbre(&mut self) {
-        let Timbre { banco, programa } = self.timbre;
-        let Ok(banco) = u8::try_from(banco) else {
-            return;
-        };
+        let (reverb, coro) = (self.config.reverb, self.config.coro);
         for c in (0..16).filter(|c| *c != CANAL_PERCUSSAO) {
+            let Timbre { banco, programa } = self.timbre_do_canal(c);
+            let Ok(banco) = u8::try_from(banco) else {
+                continue;
+            };
             let canal = canal(c);
             for acao in [
                 Acao::Controle {
@@ -512,9 +734,31 @@ impl ServicoSom {
                     valor: 0,
                 },
                 Acao::Programa { canal, programa },
+                Acao::Controle {
+                    canal,
+                    controle: CC_REVERB,
+                    valor: reverb,
+                },
+                Acao::Controle {
+                    canal,
+                    controle: CC_CORO,
+                    valor: coro,
+                },
             ] {
                 self.enviar(ComandoAudio::novo(Quando::Imediato, acao));
             }
+        }
+        // Percussão: mesmo envio de efeito, sem troca de programa (kit padrão).
+        let p = canal(CANAL_PERCUSSAO);
+        for (controle, valor) in [(CC_REVERB, reverb / 2), (CC_CORO, 0)] {
+            self.enviar(ComandoAudio::novo(
+                Quando::Imediato,
+                Acao::Controle {
+                    canal: p,
+                    controle,
+                    valor,
+                },
+            ));
         }
     }
 
@@ -1070,7 +1314,8 @@ mod testes {
         });
         motor.renderizar(BLOCO * 8, 0);
         let novos = &motor.registro()[antes..];
-        assert_eq!(novos.len(), 1, "{novos:?}");
+        // Só o pedal passa, repetido nos três canais do teclado (direita, esquerda, camada).
+        assert_eq!(novos.len(), 3, "{novos:?}");
         assert!(matches!(
             novos[0],
             RegistroFalso::Controle {
@@ -1130,6 +1375,121 @@ mod testes {
         assert_eq!(s.selecionar_timbre(0, PROGRAMA_ACORDEON), Ok(()));
         println!("segundo timbre = {:?}", s.nome_do_timbre());
         motor.renderizar(BLOCO, 0);
+        assert_eq!(motor.notas_ativas(), 0);
+    }
+
+    fn ligadas_por_canal(r: &[RegistroFalso]) -> Vec<(u8, u8)> {
+        r.iter()
+            .filter_map(|e| match *e {
+                RegistroFalso::Ligada { canal, nota, .. } => Some((canal, nota)),
+                _ => None,
+            })
+            .collect()
+    }
+
+    fn sim(n: u8, ligar: bool) -> EventoTecla {
+        EventoTecla {
+            origem: OrigemEventos::Simulacao,
+            acao: if ligar {
+                AcaoTecla::Ligar
+            } else {
+                AcaoTecla::Desligar
+            },
+            nota: nota(n),
+        }
+    }
+
+    #[test]
+    fn divisao_camada_e_transposicao_roteiam_e_soltam_no_mesmo_lugar() {
+        let (mut s, motor) = servico_pronto(relogio());
+        motor.renderizar(BLOCO, 0);
+        let cfg = ConfigTeclado {
+            divisao: Some(60),
+            timbre_esquerda: Timbre {
+                banco: 0,
+                programa: PROGRAMA_SENOIDE,
+            },
+            camada: Some(Timbre {
+                banco: 0,
+                programa: PROGRAMA_SENOIDE,
+            }),
+            transposicao: 2,
+            ..ConfigTeclado::default()
+        };
+        s.definir_config_teclado(cfg)
+            .unwrap_or_else(|e| panic!("{e}"));
+        motor.renderizar(BLOCO, 0);
+        let antes = motor.registro().len();
+        s.nota_simulada(sim(48, true)); // esquerda
+        s.nota_simulada(sim(64, true)); // direita + camada
+        motor.renderizar(BLOCO, 0);
+        let r = motor.registro();
+        let l = ligadas_por_canal(&r[antes..]);
+        assert_eq!(
+            l,
+            vec![
+                (CANAL_ESQUERDA, 50),
+                (CANAL_PRINCIPAL, 66),
+                (CANAL_CAMADA, 66)
+            ]
+        );
+        assert_eq!(motor.notas_ativas(), 3);
+
+        // Mudar a transposição com teclas seguradas corta tudo antes: nada fica preso.
+        s.definir_config_teclado(ConfigTeclado {
+            transposicao: 0,
+            ..cfg
+        })
+        .unwrap_or_else(|e| panic!("{e}"));
+        s.nota_simulada(sim(48, false));
+        s.nota_simulada(sim(64, false));
+        motor.renderizar(BLOCO, 0);
+        assert_eq!(motor.notas_ativas(), 0);
+    }
+
+    #[test]
+    fn soltar_usa_a_rota_de_quando_ligou() {
+        let (mut s, motor) = servico_pronto(relogio());
+        s.nota_simulada(sim(64, true));
+        s.nota_simulada(sim(64, false));
+        motor.renderizar(BLOCO, 0);
+        assert_eq!(motor.notas_ativas(), 0);
+    }
+
+    #[test]
+    fn preset_inexistente_na_configuracao_e_recusado_e_transposicao_limitada() {
+        let (mut s, _motor) = servico_pronto(relogio());
+        let ruim = ConfigTeclado {
+            camada: Some(Timbre {
+                banco: 0,
+                programa: PROGRAMA_ACORDEON,
+            }),
+            ..ConfigTeclado::default()
+        };
+        assert!(s.definir_config_teclado(ruim).is_err());
+        let ruim = ConfigTeclado {
+            transposicao: 30,
+            timbre_esquerda: Timbre {
+                banco: 0,
+                programa: PROGRAMA_SENOIDE,
+            },
+            ..ConfigTeclado::default()
+        };
+        assert!(s.definir_config_teclado(ruim).is_err());
+    }
+
+    #[test]
+    fn demonstracao_liga_e_solta_no_canal_proprio() {
+        let (mut s, motor) = servico_pronto(relogio());
+        motor.renderizar(BLOCO, 0);
+        let antes = motor.registro().len();
+        s.demonstrar(&[nota(60), nota(64)], 0, Duration::from_millis(1));
+        motor.renderizar(BLOCO * 4, 0);
+        let r = &motor.registro()[antes..];
+        assert_eq!(
+            ligadas_por_canal(r),
+            vec![(CANAL_DEMONSTRACAO, 60), (CANAL_DEMONSTRACAO, 64)]
+        );
         assert_eq!(motor.notas_ativas(), 0);
     }
 }
