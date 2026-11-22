@@ -51,7 +51,7 @@ A IA **não** entra no caminho crítico MIDI → áudio. O aplicativo deve tocar
 - `backlog/fases/`: 15 fichas executáveis, cada uma com seus critérios de aceite.
 - `docs/aceite/`: matriz e regras de homologação.
 - `docs/arquitetura/` e `docs/decisoes/`: arquitetura e ADRs iniciais.
-- `docs/skills/`: seleção, política e instalação das skills Matt Pocock.
+- `docs/skills/`: política de skills; 8 skills Matt Pocock versionadas em `.agents/skills/` (Codex) e `.claude/skills/` (Claude Code).
 - `.github/agents/`, `.claude/agents/`, `AGENTS.md`: instruções dos agentes.
 - `crates/piano-tutor-core`: primeiro núcleo puro em Rust, **sem hardware nem áudio**.
 - `scripts/`: verificação, preparação da equipe, publicação e geração de issues.
@@ -66,14 +66,16 @@ cargo fmt --all --check
 cargo clippy --workspace --all-targets -- -D warnings
 cargo test --workspace
 
-# Instala as skills no repositório, quando houver Internet:
+# As oito skills fundamentais já estão versionadas. Para instalar outras do upstream (opcional):
 ./scripts/instalar-skills.sh
 ```
 
-Para criar automaticamente o repositório **privado** e publicar todos os arquivos na `main`, use `./scripts/publicar-github.sh` (Linux/WSL2) ou `./scripts/publicar-github.ps1` (PowerShell), após instalar GitHub CLI e autenticar com `gh auth login`. O script instala as skills via `npx` e cria as 15 issues correspondentes às fases. Não força push nem reescreve commits remotos.
+**Publicação:** este repositório já foi inicializado diretamente na `main`, com as 15 issues F00–F14 abertas para acompanhamento. As skills essenciais foram incorporadas e versionadas diretamente do repositório de Matt Pocock, com licença MIT preservada e revisão de origem fixa. Os scripts `instalar-skills` permitem atualizar ou acrescentar outras skills via `npx` (ação opcional não executada aqui). Os scripts `publicar-github` agora fazem apenas sincronização segura, nunca force-push.
+
+**Visibilidade atual:** o GitHub indica que este repositório está **público**. Não adicionar cursos, mídia protegida, segredos ou dados pessoais; se desejar projeto privado, alterar a visibilidade nas configurações do repositório.
 
 A shell reutilizável é **privada**: [`ChicoFigueiredo/bancada`](https://github.com/ChicoFigueiredo/bancada), `crates/bancada-casca`; a integração real será implementada em F00/F02, com dependência fixada e política de acesso da CI. Não copiar código de Chess Studio para criar uma segunda shell.
 
 ## Licenciamento, privacidade e segurança
 
-Projeto inicialmente **privado**, sem licença aberta atribuída ao código do novo aplicativo até decisão explícita do titular. Bibliotecas e modelos têm **licenças próprias**; não subir vídeos comprados, SoundFonts de terceiros, pesos restritos, chaves, datasets pessoais ou gravações sem permissão. Consulte [Política de conteúdo e dependências](docs/seguranca/LICENCAS-E-DADOS.md).
+Projeto **sem licença aberta atribuída**, com repositório atualmente público; código autoral não recebe licença de terceiros automaticamente. Sem licença aberta atribuída ao código do novo aplicativo até decisão explícita do titular. Bibliotecas e modelos têm **licenças próprias**; não subir vídeos comprados, SoundFonts de terceiros, pesos restritos, chaves, datasets pessoais ou gravações sem permissão. Consulte [Política de conteúdo e dependências](docs/seguranca/LICENCAS-E-DADOS.md).
