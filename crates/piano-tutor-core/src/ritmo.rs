@@ -192,6 +192,19 @@ pub const INSTRUMENTOS: [Instrumento; 12] = [
     },
 ];
 
+/// Grupo de corte (*choke*) do chimbal: o chimbal fechado (42) e o pedal (44) calam o aberto.
+pub const CHIMBAL_FECHADO: u8 = 42;
+pub const CHIMBAL_ABERTO: u8 = 46;
+
+/// Nota que deve ser calada quando `nota` começa (grupo de corte), se houver.
+pub const fn corta_nota(nota: u8) -> Option<u8> {
+    if nota == CHIMBAL_FECHADO {
+        Some(CHIMBAL_ABERTO)
+    } else {
+        None
+    }
+}
+
 /// Notas GM do metrônomo (wood block agudo e grave).
 pub const CLIQUE_FORTE: u8 = 76;
 pub const CLIQUE_FRACO: u8 = 77;
@@ -909,6 +922,18 @@ mod testes {
             a.desvio_do_pulso(500_000_000 - 90_000_000),
             Some(-90_000_000)
         );
+    }
+
+    #[test]
+    fn chimbal_fechado_corta_o_aberto_e_so_ele() {
+        assert_eq!(corta_nota(CHIMBAL_FECHADO), Some(CHIMBAL_ABERTO));
+        for i in INSTRUMENTOS.iter().filter(|i| i.nota_gm != CHIMBAL_FECHADO) {
+            assert_eq!(corta_nota(i.nota_gm), None, "{}", i.nome);
+        }
+        // As duas notas do grupo existem como peças de bateria.
+        for n in [CHIMBAL_FECHADO, CHIMBAL_ABERTO] {
+            assert!(INSTRUMENTOS.iter().any(|i| i.nota_gm == n));
+        }
     }
 
     #[test]

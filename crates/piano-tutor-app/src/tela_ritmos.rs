@@ -62,7 +62,7 @@ pub fn desenhar_tela(ui: &mut Ui, r: &mut EstadoRitmo, som: &mut ServicoSom) {
             desenhar_pulsos(ui, r, som);
             ui.add_space(6.0);
             ui.separator();
-            desenhar_padroes(ui, r);
+            desenhar_padroes(ui, r, som);
             ui.add_space(6.0);
             desenhar_grade(ui, r, som);
             ui.add_space(6.0);
@@ -73,7 +73,7 @@ pub fn desenhar_tela(ui: &mut Ui, r: &mut EstadoRitmo, som: &mut ServicoSom) {
 
 fn alternar(r: &mut EstadoRitmo, som: &mut ServicoSom) {
     if r.tocando() {
-        r.parar();
+        r.parar_e_silenciar(som);
     } else {
         r.tocar(som);
     }
@@ -197,7 +197,7 @@ fn desenhar_pulsos(ui: &mut Ui, r: &EstadoRitmo, som: &ServicoSom) {
     ui.label(RichText::new(f.explicacao()).weak());
 }
 
-fn desenhar_padroes(ui: &mut Ui, r: &mut EstadoRitmo) {
+fn desenhar_padroes(ui: &mut Ui, r: &mut EstadoRitmo, som: &mut ServicoSom) {
     ui.label(RichText::new("Padrões").strong());
     ui.horizontal_wrapped(|ui| {
         let mut escolhido = None;
@@ -235,7 +235,7 @@ fn desenhar_padroes(ui: &mut Ui, r: &mut EstadoRitmo) {
             });
         if formula != r.padrao.formula || compassos != r.padrao.compassos {
             if formula != r.padrao.formula {
-                r.parar();
+                r.parar_e_silenciar(som);
             }
             r.padrao.redimensionar(formula, compassos);
         }
@@ -299,6 +299,23 @@ fn desenhar_grade(ui: &mut Ui, r: &mut EstadoRitmo, som: &mut ServicoSom) {
                         {
                             r.pad(som, i);
                         }
+                        let lado_ms = vec2(lado, lado);
+                        if ui
+                            .add(botao_ms("M", r.mudo[i], AMBAR, lado_ms))
+                            .on_hover_text(
+                                "Mudo: cala esta peça na bateria (não é salvo no padrão)",
+                            )
+                            .clicked()
+                        {
+                            r.mudo[i] = !r.mudo[i];
+                        }
+                        if ui
+                            .add(botao_ms("S", r.solo[i], VERDE, lado_ms))
+                            .on_hover_text("Solo: só as peças em solo tocam (vence o mudo)")
+                            .clicked()
+                        {
+                            r.solo[i] = !r.solo[i];
+                        }
                         for passo in 0..passos {
                             if passo > 0 && passo % por_pulso == 0 {
                                 ui.add_space(4.0);
@@ -346,8 +363,22 @@ fn desenhar_grade(ui: &mut Ui, r: &mut EstadoRitmo, som: &mut ServicoSom) {
                 });
         });
     ui.label(
-        RichText::new("Clique num passo: vazio, depois normal (x), depois acentuado (X).").weak(),
+        RichText::new(
+            "Clique num passo: vazio, depois normal (x), depois acentuado (X). \
+             M cala a peça, S deixa só as peças em solo (o solo vence o mudo).",
+        )
+        .weak(),
     );
+}
+
+/// Botão pequeno de alternância (M de mudo, S de solo).
+fn botao_ms(letra: &str, ligado: bool, cor: Color32, tamanho: egui::Vec2) -> Button<'static> {
+    let b = if ligado {
+        Button::new(RichText::new(letra).strong().color(Color32::BLACK)).fill(cor)
+    } else {
+        Button::new(RichText::new(letra).weak())
+    };
+    b.min_size(tamanho)
 }
 
 fn desenhar_exercicio(ui: &mut Ui, r: &mut EstadoRitmo) {
@@ -468,5 +499,22 @@ mod testes {
             quadro(&ctx, &mut som, &mut r);
             r.parar();
         }
+    }
+
+    #[test]
+    fn desenha_com_mudo_e_solo_ligados_e_para_silenciando() {
+        let ctx = Context::default();
+        let relogio = Arc::new(RelogioManual::novo());
+        let (mut som, _m) = servico_pronto(relogio.clone());
+        let mut r = EstadoRitmo::novo(None);
+        r.mudo[0] = true;
+        r.solo[1] = true;
+        r.config.bateria = true;
+        r.tocar(&mut som);
+        relogio.avancar(Duration::from_millis(250));
+        quadro(&ctx, &mut som, &mut r);
+        r.parar_e_silenciar(&mut som);
+        quadro(&ctx, &mut som, &mut r);
+        assert!(!r.tocando());
     }
 }
