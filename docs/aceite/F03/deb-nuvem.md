@@ -98,3 +98,17 @@ A dependência `fluid-soundfont-gm` já estava instalada no container (`dpkg -l`
 - `.deb` instalado no cerebro, abrindo o app (X11/Wayland reais).
 - Tocar MIDI com o SoundFont FluidR3_GM via `fluid-soundfont-gm` no equipamento de referência, sem Python.
 - Critérios de latência, jitter e checklist de escuta do F03 (ADR-0006).
+
+## Atualização: app da M1 (Monitor MIDI, roteamento e Timbres)
+
+Regenerado na nuvem com `scripts/empacotar-deb.sh` depois de o app passar a usar `piano-tutor-midi` (`midir`) e `piano-tutor-audio` (`cpal`, `rustysynth`):
+
+```
+Finished `release` profile [optimized] target(s)
+target/debian/piano-tutor_0.1.0-1_amd64.deb   (4 584 516 bytes)
+Depends: fluid-soundfont-gm, libasound2t64 (>= 1.1.0), libc6 (>= 2.39)
+./usr/bin/piano-tutor (15 972 504 bytes), .desktop e README como antes
+```
+
+A dependência `libasound2t64` agora aparece sozinha (`$auto`), porque o binário liga a ALSA. O binário de release abriu sob Xvfb e mostrou a tela Timbres com o FluidR3_GM carregado e `Áudio: indisponível` (sem placa de som). **NÃO VERIFICADO:** instalar no cerebro, abrir no KDE e tocar MIDI + SF2.
+
