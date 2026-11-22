@@ -61,6 +61,10 @@ Detalhes em [PLANO-DE-MARCOS.md](docs/planejamento/PLANO-DE-MARCOS.md); vocabul�
 A v1 é desenvolvida e homologada **somente em Linux**, no PC de referência **cerebro** (Kubuntu 26.04), com o REVAS em USB nativo (ALSA/PipeWire) e áudio onboard via PipeWire.
 
 ```bash
+# Pré-requisitos do sistema (apt, PipeWire e rustup):
+./scripts/bootstrap-linux.sh        # checar (não instala nada)
+./scripts/bootstrap-linux.sh --sim  # instalar pacotes via apt
+
 # Com Rust/Cargo instalado:
 cargo fmt --all --check
 cargo clippy --workspace --all-targets -- -D warnings
