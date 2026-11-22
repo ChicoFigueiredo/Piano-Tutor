@@ -159,7 +159,7 @@ impl EstadoApp {
 
 /// Parágrafos da página inicial (central).
 pub const BOAS_VINDAS: [&str; 5] = [
-    "Marco M1: teclado físico → MIDI → Espelho + som, no Linux.",
+    "Marco M1: teclado físico, MIDI, Espelho e som, no Linux.",
     "Monitor MIDI: escolha a porta do teclado, conecte e acompanhe os eventos e o log da sessão. Sem dispositivo, o teclado de 61 teclas funciona em simulação (mouse e teclado do PC).",
     "Timbres: SoundFont, piano ou segundo timbre, volume e Pânico (Ctrl+. corta todo o som).",
     "Ctrl+F1 recolhe ou expande o Ribbon. Ctrl+T alterna o tema. Ctrl+K abre a paleta de ações.",

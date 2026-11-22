@@ -693,6 +693,20 @@ mod testes {
     }
 
     #[test]
+    fn a_fonte_da_janela_tem_os_glifos_usados_nos_textos_das_telas() {
+        let mut c = casca();
+        let ctx = Context::default();
+        quadro(&mut c, &ctx, Vec::new(), Modifiers::NONE);
+        quadro(&mut c, &ctx, Vec::new(), Modifiers::NONE);
+        let fonte = egui::FontId::proportional(14.0);
+        let faltam: String = "·ÁÉÓÚàáâãçéêíóôõú—–…"
+            .chars()
+            .filter(|ch| !ctx.fonts_mut(|f| f.has_glyph(&fonte, *ch)))
+            .collect();
+        assert!(faltam.is_empty(), "glifos ausentes: {faltam:?}");
+    }
+
+    #[test]
     fn catalogo_de_temas_do_app_bate_com_a_lista_do_estado() {
         let catalogo = CatalogoDeTemas::ler(TOKENS_JSON, TEMAS_JSON).expect("tokens e temas");
         let do_json: Vec<&str> = catalogo.temas().iter().map(|t| t.id.as_str()).collect();

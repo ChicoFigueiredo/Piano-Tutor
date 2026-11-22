@@ -155,6 +155,7 @@ pub struct ServicoSom {
     comandos_perdidos: u64,
     panicos: u64,
     reaberturas: u64,
+    reabertura_automatica_usada: bool,
 }
 
 impl std::fmt::Debug for ServicoSom {
@@ -191,6 +192,7 @@ impl ServicoSom {
             comandos_perdidos: 0,
             panicos: 0,
             reaberturas: 0,
+            reabertura_automatica_usada: false,
         }
     }
 
@@ -291,6 +293,7 @@ impl ServicoSom {
                     presets,
                 });
                 self.erro_sf2 = None;
+                self.reabertura_automatica_usada = false;
                 self.abrir_saida();
             }
             Err(e) => {
@@ -342,6 +345,7 @@ impl ServicoSom {
     pub fn reabrir_saida(&mut self) {
         self.fechar_saida();
         self.reaberturas += 1;
+        self.reabertura_automatica_usada = false;
         self.abrir_saida();
     }
 
@@ -365,11 +369,20 @@ impl ServicoSom {
             .as_ref()
             .is_some_and(|s| s.telemetria().dispositivo_falhou)
         {
-            self.reabrir_saida();
+            // Uma reabertura automática por episódio: abrir pode bloquear (tempo limite do
+            // host), então nada de tentar a cada quadro.
+            if self.reabertura_automatica_usada {
+                self.fechar_saida();
+            } else {
+                self.reabertura_automatica_usada = true;
+                self.fechar_saida();
+                self.reaberturas += 1;
+                self.abrir_saida();
+            }
             if self.saida.is_none() {
                 self.erro_saida = Some(
-                    "O dispositivo de áudio falhou ou foi removido. Use \"Reabrir saída\" \
-                     quando ele voltar; o resto do app funciona sem som."
+                    "O dispositivo de áudio falhou ou foi removido. Use \"Reabrir saída de \
+                     áudio\" quando ele voltar; o resto do app funciona sem som."
                         .to_owned(),
                 );
             }
@@ -666,6 +679,7 @@ pub(crate) mod apoio_testes {
     use piano_tutor_audio::{
         ConfigMotor, EstadoMotor, MotorAudio, SintetizadorFalso, TaxaAmostragem,
     };
+    use std::sync::atomic::{AtomicBool, Ordering};
     use std::sync::{Mutex, PoisonError};
 
     pub const TAXA_HZ: u32 = 48_000;
@@ -678,6 +692,7 @@ pub(crate) mod apoio_testes {
     struct SaidaDeTeste {
         controle: ControleAudio,
         estado: Arc<EstadoMotor>,
+        falha_em_execucao: Arc<AtomicBool>,
     }
 
     impl SaidaSom for SaidaDeTeste {
@@ -685,7 +700,9 @@ pub(crate) mod apoio_testes {
             &mut self.controle
         }
         fn telemetria(&self) -> Telemetria {
-            self.estado.telemetria()
+            let mut t = self.estado.telemetria();
+            t.dispositivo_falhou |= self.falha_em_execucao.load(Ordering::SeqCst);
+            t
         }
         fn descricao(&self) -> String {
             "saída de teste (offline)".to_owned()
@@ -699,7 +716,10 @@ pub(crate) mod apoio_testes {
         /// O relógio que o serviço entregou ao abrir a saída (o "callback" o lê).
         relogio: Arc<Mutex<Option<Arc<dyn Relogio>>>>,
         pub aberturas: Arc<Mutex<u32>>,
+        /// Abrir a saída falha (sem placa de som).
         pub falhar: Arc<Mutex<bool>>,
+        /// A saída aberta informa falha do dispositivo (cabo removido, fluxo invalidado).
+        pub falha_em_execucao: Arc<AtomicBool>,
     }
 
     impl MotorDeTeste {
@@ -715,7 +735,11 @@ pub(crate) mod apoio_testes {
                 let estado = motor.estado();
                 *m.motor.lock().unwrap_or_else(PoisonError::into_inner) = Some(motor);
                 *m.aberturas.lock().unwrap_or_else(PoisonError::into_inner) += 1;
-                Ok(Box::new(SaidaDeTeste { controle, estado }) as Box<dyn SaidaSom>)
+                Ok(Box::new(SaidaDeTeste {
+                    controle,
+                    estado,
+                    falha_em_execucao: Arc::clone(&m.falha_em_execucao),
+                }) as Box<dyn SaidaSom>)
             })
         }
 
@@ -984,6 +1008,35 @@ mod testes {
                 .iter()
                 .all(|(_, p)| *p == PROGRAMA_SENOIDE)
         );
+    }
+
+    #[test]
+    fn falha_do_dispositivo_em_execucao_reabre_uma_vez_e_depois_fica_indisponivel() {
+        use std::sync::PoisonError;
+        use std::sync::atomic::Ordering;
+        let (mut s, motor) = servico_pronto(relogio());
+        let aberturas = || {
+            *motor
+                .aberturas
+                .lock()
+                .unwrap_or_else(PoisonError::into_inner)
+        };
+        assert_eq!(aberturas(), 1);
+        motor.falha_em_execucao.store(true, Ordering::SeqCst);
+        s.atualizar();
+        assert_eq!(aberturas(), 2, "uma reabertura automática");
+        // A saída nova também falha: fecha e fica indisponível, sem tentar a cada quadro.
+        for _ in 0..5 {
+            s.atualizar();
+        }
+        assert_eq!(aberturas(), 2);
+        assert_eq!(s.estado(), EstadoSom::Indisponivel);
+        assert!(s.erro_saida().is_some_and(|e| e.contains("falhou")));
+        // O dispositivo volta: o botão reabre.
+        motor.falha_em_execucao.store(false, Ordering::SeqCst);
+        s.reabrir_saida();
+        assert_eq!(s.estado(), EstadoSom::Pronto);
+        assert_eq!(aberturas(), 3);
     }
 
     #[test]

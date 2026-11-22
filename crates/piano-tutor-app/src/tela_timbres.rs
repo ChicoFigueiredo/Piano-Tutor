@@ -269,7 +269,7 @@ fn desenhar_diagnostico(ui: &mut Ui, som: &ServicoSom) {
     );
     ui.label(
         RichText::new(
-            "Latência MIDI→áudio não é medida aqui: a medição por captura/loopback é feita no \
+            "Latência MIDI-áudio não é medida aqui: a medição por captura/loopback é feita no \
              PC de referência.",
         )
         .weak(),
