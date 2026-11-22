@@ -5,6 +5,7 @@ members = [
     "crates/piano-tutor-diag",
     "crates/piano-tutor-app",
     "crates/piano-tutor-midi",
+    "crates/piano-tutor-audio",
 ]
 
 [workspace.package]

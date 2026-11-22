@@ -40,3 +40,21 @@ Versões fixadas com `=` em `crates/piano-tutor-midi/Cargo.toml`; licenças conf
 | `serde_json` | 1.0.154 | MIT OR Apache-2.0 | **somente dev-dependency**: validar o NDJSON nos testes |
 
 O log NDJSON de sessão (`sessao-midi-<segundos-unix>.ndjson`) grava apenas timestamp monotônico, tipo, canal, nota, velocidade/valor e nomes de porta sanitizados (`piano_tutor_core::sanitizar`); bytes de SysEx e de mensagens desconhecidas não são gravados. Transitivas de `serde_json` não auditadas uma a uma: **NÃO VERIFICADO**.
+## Dependências do `piano-tutor-audio` (F03, ticket #37)
+
+Versões fixadas com `=` em `crates/piano-tutor-audio/Cargo.toml`; licenças conferidas em `cargo info` (2026-11-22).
+
+| Crate | Versão | Licença | Uso |
+| --- | --- | --- | --- |
+| `cpal` | 0.18.2 | Apache-2.0 | Saída de áudio (mesma versão do `piano-tutor-diag`) |
+| `rustysynth` | 1.3.8 | MIT | Sintetizador SF2, Rust puro, sem dependências |
+| `rtrb` | 0.4.1 | MIT OR Apache-2.0 | Fila SPSC sem lock entre controle e callback, sem dependências |
+
+Transitivas novas: nenhuma além das do `cpal` (alsa, alsa-sys, libc, dasp_sample, bitflags, cfg-if), já listadas como **NÃO VERIFICADO** acima.
+
+## SoundFonts
+
+- **Nenhum SF2 é versionado nem embutido.** Testes na nuvem usam um SF2 **sintético** gerado em memória pelo próprio código (`crates/piano-tutor-audio/src/sf2_sintetico.rs`: onda quadrada e senoide calculadas, sem amostras de terceiros).
+- O teste de integração com SF2 real só roda com `PT_SF2` apontando para um arquivo instalado no sistema.
+- **FluidR3_GM** (`/usr/share/sounds/sf2/FluidR3_GM.sf2`, pacote Debian main `fluid-soundfont-gm` 3.1-5.3): licença MIT, © 2000-2002, 2008 Frank Wen e © 2008 Toby Smithe (conforme `/usr/share/doc/fluid-soundfont-gm/copyright`). Decisão de empacotamento: o `.deb` declara `Depends: fluid-soundfont-gm` e **não** embute o SF2. Escolha final do SF2 e auditoria: ticket #36.
+- `docs/aceite/F03/f03-gm000-piano-c4.wav` e `f03-gm021-acordeon-c4.wav` são renders curtos (2 s, mono, 16 bits, 44,1 kHz) feitos a partir do FluidR3_GM, só para escuta e checklist; atribuição MIT acima, aplicável a essas cópias.
