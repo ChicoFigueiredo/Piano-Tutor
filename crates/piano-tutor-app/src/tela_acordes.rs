@@ -313,3 +313,108 @@ fn grau(semitons: u8) -> String {
         G[usize::from(semitons)].to_owned()
     }
 }
+
+#[cfg(test)]
+mod testes {
+    use super::*;
+    use crate::som::apoio_testes::servico_pronto;
+    use bancada_casca::egui::{Context, FontId, RawInput, Rect, pos2, vec2};
+    use piano_tutor_audio::RelogioManual;
+    use std::sync::Arc;
+
+    fn quadro(ctx: &Context, a: &mut EstadoAcordes, e: &mut EstadoEspelho, som: &mut ServicoSom) {
+        let entrada = RawInput {
+            screen_rect: Some(Rect::from_min_size(pos2(0.0, 0.0), vec2(1280.0, 800.0))),
+            ..Default::default()
+        };
+        ctx.run_ui(entrada, |ui| desenhar_tela(ui, a, e, som))
+            .drop_without_applying_deltas();
+    }
+
+    #[test]
+    fn desenha_cada_modo_com_servico_inativo_e_pronto() {
+        let ctx = Context::default();
+        let mut a = EstadoAcordes::default();
+        let mut e = EstadoEspelho::novo();
+        let mut inativo = ServicoSom::inativo(Arc::new(RelogioManual::novo()));
+        let (mut pronto, _m) = servico_pronto(Arc::new(RelogioManual::novo()));
+        for modo in [Modo::Dicionario, Modo::Escalas, Modo::Desafio] {
+            a.modo = modo;
+            for _ in 0..2 {
+                quadro(&ctx, &mut a, &mut e, &mut inativo);
+                quadro(&ctx, &mut a, &mut e, &mut pronto);
+            }
+        }
+    }
+
+    #[test]
+    fn desenha_dicionario_com_cada_qualidade_e_inversao() {
+        let ctx = Context::default();
+        let mut a = EstadoAcordes::default();
+        let mut e = EstadoEspelho::novo();
+        let (mut som, _m) = servico_pronto(Arc::new(RelogioManual::novo()));
+        a.modo = Modo::Dicionario;
+        for q in Qualidade::TODAS {
+            a.qualidade = q;
+            for i in 0..q.intervalos().len() {
+                a.inversao = i;
+                quadro(&ctx, &mut a, &mut e, &mut som);
+            }
+        }
+    }
+
+    #[test]
+    fn desenha_escalas_e_campo_harmonico_de_cada_tipo() {
+        let ctx = Context::default();
+        let mut a = EstadoAcordes::default();
+        let mut e = EstadoEspelho::novo();
+        let (mut som, _m) = servico_pronto(Arc::new(RelogioManual::novo()));
+        a.modo = Modo::Escalas;
+        for t in TipoEscala::TODAS {
+            a.escala = t;
+            quadro(&ctx, &mut a, &mut e, &mut som);
+        }
+    }
+
+    #[test]
+    fn desenha_desafio_em_cada_conjunto_com_e_sem_alvo() {
+        let ctx = Context::default();
+        let mut a = EstadoAcordes::default();
+        let mut e = EstadoEspelho::novo();
+        let (mut som, _m) = servico_pronto(Arc::new(RelogioManual::novo()));
+        a.modo = Modo::Desafio;
+        quadro(&ctx, &mut a, &mut e, &mut som);
+        for c in Conjunto::TODOS {
+            a.conjunto = c;
+            a.semear(som.agora_ns());
+            a.sortear(som.agora_ns());
+            for de_ouvido in [false, true] {
+                a.de_ouvido = de_ouvido;
+                quadro(&ctx, &mut a, &mut e, &mut som);
+            }
+        }
+    }
+
+    #[test]
+    fn os_glifos_usados_nos_textos_das_telas_existem_na_fonte() {
+        let ctx = Context::default();
+        let mut a = EstadoAcordes::default();
+        let mut e = EstadoEspelho::novo();
+        let mut som = ServicoSom::inativo(Arc::new(RelogioManual::novo()));
+        quadro(&ctx, &mut a, &mut e, &mut som);
+        quadro(&ctx, &mut a, &mut e, &mut som);
+        // Textos das três telas e do núcleo que as telas exibem (♯ e ♭ saem como # e b).
+        let usados = format!(
+            "·—…ªº°ÁÉÓÚàáâãçéêíóôõú{}{}",
+            GRAUS_ROMANOS.concat(),
+            "1ª inversão 2ª inversão 3ª inversão"
+        );
+        let fonte = FontId::proportional(14.0);
+        let faltam: String = usados
+            .chars()
+            .filter(|ch| !ch.is_whitespace())
+            .filter(|ch| !ctx.fonts_mut(|f| f.has_glyph(&fonte, *ch)))
+            .collect();
+        assert!(faltam.is_empty(), "glifos ausentes: {faltam:?}");
+    }
+}

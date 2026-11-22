@@ -397,3 +397,76 @@ fn desenhar_exercicio(ui: &mut Ui, r: &mut EstadoRitmo) {
         }
     });
 }
+
+#[cfg(test)]
+mod testes {
+    use super::*;
+    use crate::som::apoio_testes::servico_pronto;
+    use bancada_casca::egui::{Context, RawInput, Rect, pos2, vec2};
+    use piano_tutor_audio::RelogioManual;
+    use std::sync::Arc;
+    use std::time::Duration;
+
+    fn quadro(ctx: &Context, som: &mut ServicoSom, r: &mut EstadoRitmo) {
+        let entrada = RawInput {
+            screen_rect: Some(Rect::from_min_size(pos2(0.0, 0.0), vec2(1280.0, 800.0))),
+            ..Default::default()
+        };
+        ctx.run_ui(entrada, |ui| desenhar_tela(ui, r, som))
+            .drop_without_applying_deltas();
+    }
+
+    #[test]
+    fn desenha_inativo_e_pronto_sem_panico() {
+        let ctx = Context::default();
+        let mut r = EstadoRitmo::novo(None);
+        let mut inativo = ServicoSom::inativo(Arc::new(RelogioManual::novo()));
+        for _ in 0..2 {
+            quadro(&ctx, &mut inativo, &mut r);
+        }
+        let (mut pronto, _m) = servico_pronto(Arc::new(RelogioManual::novo()));
+        for _ in 0..2 {
+            quadro(&ctx, &mut pronto, &mut r);
+        }
+        assert!(!r.tocando(), "desenhar não deve iniciar o metrônomo");
+    }
+
+    #[test]
+    fn desenha_tocando_com_exercicio_do_pulso() {
+        let ctx = Context::default();
+        let relogio = Arc::new(RelogioManual::novo());
+        let (mut som, _m) = servico_pronto(relogio.clone());
+        let mut r = EstadoRitmo::novo(None);
+        r.tocar(&mut som);
+        assert!(r.tocando());
+        for _ in 0..3 {
+            relogio.avancar(Duration::from_millis(250));
+            quadro(&ctx, &mut som, &mut r);
+        }
+        r.exercicio = Some(ExercicioPulso::default());
+        if let Some(e) = r.exercicio.as_mut() {
+            e.toques.push((12.5, Julgamento::NoTempo));
+            e.toques.push((-80.0, Julgamento::Atrasado));
+        }
+        relogio.avancar(Duration::from_millis(250));
+        quadro(&ctx, &mut som, &mut r);
+        r.parar();
+        quadro(&ctx, &mut som, &mut r);
+    }
+
+    #[test]
+    fn desenha_cada_padrao_de_fabrica_selecionado() {
+        let ctx = Context::default();
+        let (mut som, _m) = servico_pronto(Arc::new(RelogioManual::novo()));
+        let mut r = EstadoRitmo::novo(None);
+        let padroes = r.fabrica.clone();
+        assert!(!padroes.is_empty());
+        for p in padroes {
+            r.escolher_padrao(p);
+            quadro(&ctx, &mut som, &mut r);
+            r.tocar(&mut som);
+            quadro(&ctx, &mut som, &mut r);
+            r.parar();
+        }
+    }
+}

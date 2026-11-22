@@ -43,7 +43,7 @@ Detalhes em [PLANO-DE-MARCOS.md](docs/planejamento/PLANO-DE-MARCOS.md); vocabul�
 
 ## Estado real deste repositório
 
-**Repositório de planejamento e bootstrap.** Os documentos e uma crate de domínio mínima estão prontos. **Não** afirmar que já existe conexão MIDI, sintetizador, interface final, partitura ou IA funcionando; isso só ocorre mediante implementação e homologação de cada fase.
+App Rust funcionando no Linux, **ainda sem homologação com o REVAS** (gates de hardware NÃO VERIFICADOS). Existe: Monitor MIDI, Espelho de 61 teclas, som SoundFont (FluidR3) com divisão/camada/transposição, calibração do teclado, acordes e escalas, ritmos (metrônomo, bateria de passos, pads). Gravação (F06) e exercícios (F05) em andamento. Partitura (F07) e IA (F10–F13) ainda não existem.
 
 ## Organização
 
@@ -53,7 +53,8 @@ Detalhes em [PLANO-DE-MARCOS.md](docs/planejamento/PLANO-DE-MARCOS.md); vocabul�
 - `docs/arquitetura/` e `docs/decisoes/`: arquitetura e ADRs iniciais.
 - `docs/skills/`: política de skills; 8 skills Matt Pocock versionadas em `.agents/skills/` (Codex) e `.claude/skills/` (Claude Code).
 - `.github/agents/`, `.claude/agents/`, `AGENTS.md`: instruções dos agentes.
-- `crates/piano-tutor-core`: primeiro núcleo puro em Rust, **sem hardware nem áudio**.
+- `crates/piano-tutor-core`: núcleo puro (MIDI, teclado, teoria, ritmo), sem hardware nem áudio.
+- `crates/piano-tutor-{midi,audio,app,diag}`: MIDI (midir/ALSA), áudio (cpal + rustysynth), app e diagnóstico.
 - `scripts/`: verificação, preparação da equipe, publicação e geração de issues.
 
 ## Começar no Linux (cerebro)
@@ -79,6 +80,39 @@ cargo test --workspace
 **Visibilidade atual:** o GitHub indica que este repositório está **público**. Não adicionar cursos, mídia protegida, segredos ou dados pessoais; se desejar projeto privado, alterar a visibilidade nas configurações do repositório.
 
 A shell reutilizável é [`ChicoFigueiredo/bancada`](https://github.com/ChicoFigueiredo/bancada), `crates/bancada-casca`, e **será pública (MIT OR Apache-2.0)** — *pendência do titular:* mudar a visibilidade e a licença no repositório `bancada`; só então a CI compila sem credencial. A integração real será implementada em F00/F02, com dependência fixada. Não copiar código de Chess Studio para criar uma segunda shell.
+
+## Rodar no cerebro (Linux)
+
+Antes da primeira execução, instale o SoundFont General MIDI (licença MIT, pacote Debian):
+
+```bash
+sudo apt install fluid-soundfont-gm
+```
+
+Compile e abra o aplicativo, a partir da raiz do repositório:
+
+```bash
+cargo build --release
+./target/release/piano-tutor-app
+```
+
+Para gerar o relatório de diagnóstico do equipamento, use o rótulo do PC:
+
+```bash
+./target/release/piano-tutor-diag --rotulo cerebro
+```
+
+Guia rápido das telas (menu lateral e Ribbon):
+
+- **Monitor MIDI**: escolha a porta do REVAS e clique em conectar. Mostra os eventos recebidos, o que o dispositivo transmite (o que não transmite aparece como "não suportado pelo dispositivo") e o log da sessão.
+- **Calibrar teclado**: percorra as 61 teclas, velocity e pedal. Ao final grava `teclado.txt` e o relatório `rev-as-calibracao.md` em `~/.local/share/piano-tutor/`.
+- **Teclado de 61 teclas**: espelho virtual das teclas. Sem o REVAS conectado, funciona em simulação com o mouse e o teclado do PC.
+- **Acordes e escalas**: nome do acorde ao vivo, dicionário com inversões, escalas, campo harmônico e desafio de acordes (inclui o modo de ouvido).
+- **Ritmos**: metrônomo de 40 a 220 bpm, compassos 2/4, 3/4, 4/4, 6/8 e 12/8, subdivisões, contagem inicial e tap tempo; bateria de 16 passos com 11 padrões prontos; 8 pads nas teclas 1 a 8; exercício "toque no pulso".
+- **Sons e timbres**: SoundFont, timbres favoritos, divisão e camada do teclado, transposição, reverb e chorus. As preferências são salvas automaticamente.
+- **Pânico (Ctrl+.)**: corta todo o som na hora, de qualquer tela.
+
+Gravação e Exercícios estão em andamento.
 
 ## Licenciamento, privacidade e segurança
 

@@ -255,3 +255,133 @@ fn desenhar_mapa(ui: &mut Ui, k: &Calibracao) {
         }
     });
 }
+
+#[cfg(test)]
+mod testes {
+    use super::*;
+    use crate::calibracao::{Calibracao, Etapa};
+    use bancada_casca::egui::{Context, RawInput, Rect, pos2, vec2};
+    use piano_tutor_core::NotaMidi;
+    use piano_tutor_core::midi::{CanalMidi, EventoMidi};
+
+    fn quadro(ctx: &Context, k: &mut Calibracao) -> Vec<AcaoCalibracao> {
+        let entrada = RawInput {
+            screen_rect: Some(Rect::from_min_size(pos2(0.0, 0.0), vec2(1280.0, 800.0))),
+            ..Default::default()
+        };
+        let contexto = ContextoCalibracao {
+            conectado: Some("Teclado de teste"),
+            perfil_em_uso: None,
+            mensagem: Some("mensagem de teste"),
+        };
+        let mut pedidos = Vec::new();
+        ctx.run_ui(entrada, |ui| pedidos = desenhar_tela(ui, k, &contexto))
+            .drop_without_applying_deltas();
+        pedidos
+    }
+
+    fn canal() -> CanalMidi {
+        CanalMidi::novo(0).expect("canal")
+    }
+
+    fn ligar(n: u8, velocidade: u8) -> EventoMidi {
+        EventoMidi::NotaLigada {
+            canal: canal(),
+            nota: NotaMidi::nova(n).expect("nota"),
+            velocidade,
+            timestamp_monotonico_ns: 0,
+        }
+    }
+
+    fn soltar(n: u8) -> EventoMidi {
+        EventoMidi::NotaDesligada {
+            canal: canal(),
+            nota: NotaMidi::nova(n).expect("nota"),
+            velocidade: 0,
+            timestamp_monotonico_ns: 0,
+        }
+    }
+
+    #[test]
+    fn cada_etapa_desenha_sem_pedido_espontaneo() {
+        let ctx = Context::default();
+        let mut k = Calibracao::nova("Teclado de teste");
+        assert_eq!(k.etapa, Etapa::Grave);
+        assert!(quadro(&ctx, &mut k).is_empty());
+
+        k.evento(&ligar(36, 80));
+        assert_eq!(k.etapa, Etapa::Aguda);
+        assert!(quadro(&ctx, &mut k).is_empty());
+
+        k.evento(&ligar(96, 80));
+        assert_eq!(k.etapa, Etapa::Cobertura);
+        assert!(quadro(&ctx, &mut k).is_empty());
+
+        for n in 36..=96u8 {
+            k.evento(&ligar(n, 90));
+            k.evento(&soltar(n));
+        }
+        assert_eq!(k.conferidas(), 61);
+        assert!(quadro(&ctx, &mut k).is_empty());
+        k.avancar();
+        assert_eq!(k.etapa, Etapa::Velocidade);
+
+        for v in [20u8, 64, 120] {
+            k.evento(&ligar(60, v));
+            k.evento(&soltar(60));
+        }
+        assert!(quadro(&ctx, &mut k).is_empty());
+        k.avancar();
+        assert_eq!(k.etapa, Etapa::Pedal);
+        assert!(quadro(&ctx, &mut k).is_empty());
+
+        k.evento(&EventoMidi::ControleMudou {
+            canal: canal(),
+            controle: 64,
+            valor: 127,
+            timestamp_monotonico_ns: 0,
+        });
+        assert!(quadro(&ctx, &mut k).is_empty());
+        k.avancar();
+        assert_eq!(k.etapa, Etapa::Concluida);
+        assert!(k.perfil().is_some());
+        // Só o clique em "Salvar" emite pedido; desenhar a conclusão não emite nada.
+        assert!(quadro(&ctx, &mut k).is_empty());
+    }
+
+    #[test]
+    fn etapas_intermediarias_e_pedal_recusado_sem_pedido() {
+        let ctx = Context::default();
+        let mut k = Calibracao::nova("Teclado de teste");
+        k.evento(&ligar(40, 80));
+        k.evento(&ligar(100, 80));
+        assert!(quadro(&ctx, &mut k).is_empty());
+        k.avancar();
+        k.avancar();
+        assert_eq!(k.etapa, Etapa::Pedal);
+        assert!(quadro(&ctx, &mut k).is_empty());
+        k.sem_pedal();
+        assert_eq!(k.etapa, Etapa::Concluida);
+        assert!(k.perfil().is_some(), "faixa de 61 teclas medida");
+        assert!(quadro(&ctx, &mut k).is_empty());
+
+        // Conclusão sem faixa medida: mensagem de recomeço, sem botão de salvar e sem pedido.
+        let mut sem_faixa = Calibracao::nova("Teclado de teste");
+        sem_faixa.etapa = Etapa::Concluida;
+        assert!(sem_faixa.perfil().is_none());
+        assert!(quadro(&ctx, &mut sem_faixa).is_empty());
+    }
+
+    #[test]
+    fn etapa_de_refazer_e_recomecar_nao_emitem_pedido() {
+        let ctx = Context::default();
+        let mut k = Calibracao::nova("Teclado de teste");
+        k.evento(&ligar(36, 80));
+        assert!(quadro(&ctx, &mut k).is_empty());
+        k.refazer_faixa();
+        assert!(quadro(&ctx, &mut k).is_empty());
+        k.reiniciar();
+        assert!(quadro(&ctx, &mut k).is_empty());
+        assert_eq!(k.etapa, Etapa::Grave);
+    }
+}
