@@ -4,6 +4,8 @@
 
 pub mod midi;
 
+pub mod teclado;
+
 /// Identificador de altura MIDI (0 a 127). O nome de oitava segue C4 = 60.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub struct NotaMidi(u8);
