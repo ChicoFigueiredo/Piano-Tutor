@@ -21,4 +21,4 @@ jobs:
         run: cargo clippy --workspace --all-targets -- -D warnings
       - name: Rust test
         run: cargo test --workspace
-# Não comprova ligação física REVAS, MIDI real, áudio, Windows ou modelos de IA.
+# Não comprova ligação física REVAS, MIDI real, áudio, Linux de referência ou modelos de IA.

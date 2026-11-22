@@ -1,5 +1,12 @@
 # Piano Tutor — Especificação funcional, arquitetura e plano de experimentos
 
+> **Emendas (2026-11-22):** esta especificação não foi reescrita; as decisões abaixo, registradas no repositório, prevalecem sobre o texto original.
+> - [ADR-0004](../decisoes/ADR-0004-somente-linux.md) substitui a ADR-002 (§12): a v1 é somente Linux (cerebro), não Windows primeiro.
+> - [ADR-0005](../decisoes/ADR-0005-marcos-e-ordem.md) e o [Plano de marcos](../planejamento/PLANO-DE-MARCOS.md) complementam a §7 (marcos) e alteram a ordem de execução da §6.
+> - [ADR-0006](../decisoes/ADR-0006-regras-de-gate.md) complementa §13.1/§13.2 (regras de gate).
+> - [ADR-0007](../decisoes/ADR-0007-partitura-somente-leitura.md) limita F07 a leitura e exportação, após spike de notação.
+> - [ADR-0008](../decisoes/ADR-0008-aulas-somente-locais.md) complementa a ADR-011 (Aulas só locais).
+
 > **Versão:** 1.0 — 21 de novembro de 2026  
 > **Status:** especificação inicial consolidada para execução por equipe/agentes de desenvolvimento; tecnologias candidatas sujeitas a *spikes* e homologação  
 > **Plataforma inicial:** Windows 11 nativo; Linux desktop como segunda plataforma  
@@ -867,7 +874,7 @@ return { repetir = true, andamento = math.max(50, tentativa.bpm - 5) }
 | ADR | Decisão | Justificativa |
 |---|---|---|
 | ADR-001 | Rust desktop + `bancada-casca` | Reuso do ecossistema Chess Studio/SBF e da interface Ribbon já implementada |
-| ADR-002 | Windows nativo primeiro; Linux desktop depois | Reduz risco inicial USB-MIDI, áudio e WSL2 |
+| ADR-002 | Windows nativo primeiro; Linux desktop depois | Reduz risco inicial USB-MIDI, áudio e WSL2 — **substituída por ADR-0004** |
 | ADR-003 | `midir` para dispositivo e `midly` para arquivo | Entrada ao vivo diferente de gravação/edição SMF |
 | ADR-004 | Sintetizador SF2 `rustysynth` com saída `cpal` | Núcleo simples, offline e de baixa latência |
 | ADR-005 | Clock único de áudio | Ritmo, piano e pads sincronizados e medíveis |

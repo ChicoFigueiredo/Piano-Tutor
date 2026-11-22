@@ -29,15 +29,15 @@ A IA **não** entra no caminho crítico MIDI → áudio. O aplicativo deve tocar
 
 ## Primeiras entregas
 
-| Sequência | Evidência exigida |
-|---|---|
-| F00 — Laboratório | Workspace, biblioteca `bancada-casca` validada, diagnósticos e ambiente documentados |
-| F01 — MIDI real | Eventos do REVAS detectados, calibração das 61 teclas, teste físico |
-| F02 — Espelho visual | Tecla pressionada acende e apaga corretamente, inclusive acordes |
-| F03 — SoundFont | Mesmo Dó com dois timbres, latência medida, sem estalos |
-| F04–F09 | Teoria, exercícios, gravação, partituras, metrônomo, bateria/pads |
-| F10–F13 | Vídeo, IA multimodal e lições revisáveis |
-| F14 | Homologação, empacotamento, documentação e distribuição |
+| Marco | Fases (ordem de execução) | Demonstração de aceite |
+|---|---|---|
+| M1 — Tocar com som | F00 → F01 → F02 → F03 | Instalar o `.deb`, ligar o REVAS, ver as 61 teclas acendendo e ouvir piano e um segundo timbre com p95 ≤ 50 ms |
+| M2 — O app ensina | F04 → F08 → F06 → F05 | Exercício com metrônomo, feedback com compasso e replay da Gravação |
+| M3 — Ler e ritmo | spike de notação → F07 → F09 | MusicXML licenciado em duas claves, playback e pads |
+| M4 — Fábrica de Lições | F10 → F11 → F12 → F13 | Aula local → Hipóteses → revisão → Lição → "Praticar este trecho" |
+| M5 — Homologação | F14 | 60 min de uso real, `.deb` limpo sem Python, checklist assinado |
+
+Detalhes em [PLANO-DE-MARCOS.md](docs/planejamento/PLANO-DE-MARCOS.md); vocabulário em [CONTEXT.md](CONTEXT.md). A plataforma única da v1 é **Linux** ([ADR-0004](docs/decisoes/ADR-0004-somente-linux.md)).
 
 [Abra a matriz F00–F14](docs/aceite/MATRIZ-DE-ACEITE.md) para os critérios detalhados.
 
@@ -56,9 +56,9 @@ A IA **não** entra no caminho crítico MIDI → áudio. O aplicativo deve tocar
 - `crates/piano-tutor-core`: primeiro núcleo puro em Rust, **sem hardware nem áudio**.
 - `scripts/`: verificação, preparação da equipe, publicação e geração de issues.
 
-## Começar no Windows ou WSL2
+## Começar no Linux (cerebro)
 
-O REVAS deve ser testado inicialmente no **Windows nativo**, onde a conexão USB é direta. O WSL2 pode ser usado para editor, análise e desenvolvimento, mas MIDI USB precisa ser testado no SO em que o dispositivo está efetivamente exposto.
+A v1 é desenvolvida e homologada **somente em Linux**, no PC de referência **cerebro** (Kubuntu 26.04), com o REVAS em USB nativo (ALSA/PipeWire) e áudio onboard via PipeWire.
 
 ```bash
 # Com Rust/Cargo instalado:
@@ -74,7 +74,7 @@ cargo test --workspace
 
 **Visibilidade atual:** o GitHub indica que este repositório está **público**. Não adicionar cursos, mídia protegida, segredos ou dados pessoais; se desejar projeto privado, alterar a visibilidade nas configurações do repositório.
 
-A shell reutilizável é **privada**: [`ChicoFigueiredo/bancada`](https://github.com/ChicoFigueiredo/bancada), `crates/bancada-casca`; a integração real será implementada em F00/F02, com dependência fixada e política de acesso da CI. Não copiar código de Chess Studio para criar uma segunda shell.
+A shell reutilizável é [`ChicoFigueiredo/bancada`](https://github.com/ChicoFigueiredo/bancada), `crates/bancada-casca`, e **será pública (MIT OR Apache-2.0)** — *pendência do titular:* mudar a visibilidade e a licença no repositório `bancada`; só então a CI compila sem credencial. A integração real será implementada em F00/F02, com dependência fixada. Não copiar código de Chess Studio para criar uma segunda shell.
 
 ## Licenciamento, privacidade e segurança
 
