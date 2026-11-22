@@ -27,6 +27,9 @@ pub const TEMAS: [TemaApp; 3] = [
     },
 ];
 
+/// Rota da tela Espelho do teclado (F02).
+pub const ROTA_TECLADO: &str = "teclado";
+
 /// Situação da conexão MIDI. Na F00 o app não abre MIDI: só existe "não conectado".
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum StatusMidi {
@@ -131,6 +134,9 @@ impl EstadoApp {
         if id == ids::SOBRE {
             return Some(Efeito::AbrirRota("sobre"));
         }
+        if id == ids::TECLADO_61 {
+            return Some(Efeito::AbrirRota(ROTA_TECLADO));
+        }
         let id_do_tema = id.strip_prefix(ids::PREFIXO_TEMA)?;
         if self.definir_tema(id_do_tema) {
             Some(Efeito::TrocarTema(self.tema_atual().id))
@@ -157,7 +163,7 @@ impl EstadoApp {
 /// Parágrafos da página inicial (central).
 pub const BOAS_VINDAS: [&str; 4] = [
     "Esta é a janela mínima da fase F00: prova que o aplicativo abre sobre a bancada-casca.",
-    "Ainda não há teclado, MIDI nem som. As ações marcadas \"(em breve)\" não fazem nada.",
+    "Ainda não há MIDI nem som. O teclado de 61 teclas funciona só em simulação (mouse e teclado do PC); as ações marcadas \"(em breve)\" não fazem nada.",
     "Ctrl+F1 recolhe ou expande o Ribbon. Ctrl+T alterna o tema. Ctrl+K abre a paleta de ações.",
     "A aba Exibir tem os três temas (Noite, Claro e Ébano) e os modos do Ribbon.",
 ];
@@ -221,16 +227,20 @@ mod testes {
     fn acoes_em_breve_e_desconhecidas_nao_fazem_nada() {
         let mut e = EstadoApp::novo();
         let antes = e.clone();
-        for id in [
-            ids::MONITOR_MIDI,
-            ids::TECLADO_61,
-            ids::TIMBRES,
-            "casca.ribbon.recolher",
-            "",
-        ] {
+        for id in [ids::MONITOR_MIDI, ids::TIMBRES, "casca.ribbon.recolher", ""] {
             assert_eq!(e.executar(id), None, "{id}");
         }
         assert_eq!(e, antes);
+    }
+
+    #[test]
+    fn teclado_61_abre_a_rota_do_espelho() {
+        let mut e = EstadoApp::novo();
+        assert_eq!(
+            e.executar(ids::TECLADO_61),
+            Some(Efeito::AbrirRota("teclado"))
+        );
+        assert_eq!(ROTA_TECLADO, "teclado");
     }
 
     #[test]

@@ -2590,6 +2590,7 @@ name = "piano-tutor-app"
 version = "0.1.0"
 dependencies = [
  "bancada-casca",
+ "piano-tutor-core",
 ]
 
 [[package]]
