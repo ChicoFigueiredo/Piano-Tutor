@@ -1,0 +1,24 @@
+name: CI (núcleo Rust e documentação)
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  verificar:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Verificar documentação
+        run: python3 scripts/verificar-documentacao.py
+      - name: Rust fmt
+        run: cargo fmt --all --check
+      - name: Rust clippy
+        run: cargo clippy --workspace --all-targets -- -D warnings
+      - name: Rust test
+        run: cargo test --workspace
+# Não comprova ligação física REVAS, MIDI real, áudio, Windows ou modelos de IA.

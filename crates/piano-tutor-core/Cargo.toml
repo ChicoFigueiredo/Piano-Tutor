@@ -1,0 +1,10 @@
+[package]
+name = "piano-tutor-core"
+description = "Núcleo musical mínimo e independente de hardware/UI do Piano Tutor"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+publish = false
+
+[lints]
+workspace = true
