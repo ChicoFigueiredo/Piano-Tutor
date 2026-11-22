@@ -308,6 +308,9 @@ impl AppPianoTutor {
             self.monitor
                 .gerenciador_mut()
                 .definir_aviso_de_chegada(Arc::clone(&aviso));
+            if let Some(b) = self.baixador_sf2.as_mut() {
+                b.definir_aviso(Arc::clone(&aviso));
+            }
             self.som.definir_aviso(aviso);
             self.aviso_instalado = true;
         }

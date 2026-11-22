@@ -13,8 +13,8 @@ use std::fmt;
 use std::fs::{self, File};
 use std::io::{self, BufWriter, Read, Write};
 use std::path::{Path, PathBuf};
-use std::sync::Arc;
 use std::sync::mpsc::{self, Receiver, TryRecvError};
+use std::sync::{Arc, Mutex};
 
 /// Um arquivo para baixar, com a identidade conferida.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
@@ -153,6 +153,9 @@ fn hex(bytes: &[u8]) -> String {
     bytes.iter().map(|b| format!("{b:02x}")).collect()
 }
 
+/// Pedido de um quadro à UI.
+pub type Aviso = Arc<dyn Fn() + Send + Sync>;
+
 /// Estado do download visto pela UI.
 #[derive(Clone, Debug, PartialEq)]
 pub enum EstadoDownload {
@@ -171,7 +174,8 @@ enum Msg {
 pub struct BaixadorSf2 {
     fonte: FonteSf2,
     abridor: AbridorDownload,
-    aviso: Option<Arc<dyn Fn() + Send + Sync>>,
+    /// Compartilhado com a thread: um aviso definido depois de iniciar também vale.
+    aviso: Arc<Mutex<Option<Aviso>>>,
     rx: Option<Receiver<Msg>>,
     estado: EstadoDownload,
 }
@@ -190,15 +194,17 @@ impl BaixadorSf2 {
         Self {
             fonte,
             abridor,
-            aviso: None,
+            aviso: Arc::new(Mutex::new(None)),
             rx: None,
             estado: EstadoDownload::Parado,
         }
     }
 
     /// Chamado a cada avanço (pedir um quadro à UI).
-    pub fn definir_aviso(&mut self, aviso: Arc<dyn Fn() + Send + Sync>) {
-        self.aviso = Some(aviso);
+    pub fn definir_aviso(&mut self, aviso: Aviso) {
+        if let Ok(mut a) = self.aviso.lock() {
+            *a = Some(aviso);
+        }
     }
 
     pub fn estado(&self) -> &EstadoDownload {
@@ -221,9 +227,10 @@ impl BaixadorSf2 {
         let (tx, rx) = mpsc::channel();
         let fonte = self.fonte;
         let abridor = Arc::clone(&self.abridor);
-        let aviso = self.aviso.clone();
+        let aviso = Arc::clone(&self.aviso);
         let avisar = move || {
-            if let Some(a) = &aviso {
+            let a = aviso.lock().ok().and_then(|g| g.clone());
+            if let Some(a) = a {
                 a();
             }
         };
@@ -424,6 +431,27 @@ mod testes {
         assert_eq!(p, dir.join("Teste.sf2"));
         assert_eq!(b.atualizar(), None);
         assert_eq!(b.texto(), None);
+    }
+
+    #[test]
+    fn aviso_definido_depois_de_iniciar_tambem_dispara() {
+        use std::sync::atomic::{AtomicUsize, Ordering};
+        let (libera_tx, libera_rx) = mpsc::channel::<()>();
+        let libera_rx = std::sync::Mutex::new(libera_rx);
+        let abridor: AbridorDownload = Arc::new(move |_| {
+            let _ = libera_rx.lock().map(|r| r.recv());
+            Ok(Box::new(io::Cursor::new(CONTEUDO.to_vec())) as Box<dyn Read + Send>)
+        });
+        let mut b = BaixadorSf2::novo(fonte_de_teste(), abridor);
+        b.iniciar(Some(pasta("aviso").join("Teste.sf2")));
+        let chamadas = Arc::new(AtomicUsize::new(0));
+        let c = Arc::clone(&chamadas);
+        b.definir_aviso(Arc::new(move || {
+            c.fetch_add(1, Ordering::SeqCst);
+        }));
+        let _ = libera_tx.send(());
+        assert!(esperar(&mut b).is_some());
+        assert!(chamadas.load(Ordering::SeqCst) >= 1);
     }
 
     #[test]
