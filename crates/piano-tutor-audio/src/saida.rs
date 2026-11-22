@@ -18,9 +18,7 @@ use cpal::{BufferSize, ErrorKind, FromSample, SampleFormat, SizedSample, StreamC
 use crate::comando::ControleAudio;
 use crate::erro::ErroAudio;
 use crate::motor::{ConfigMotor, EstadoMotor, MotorAudio, Telemetria};
-use crate::relogio::{
-    LeitorRelogio, RelogioMonotonico, TaxaAmostragem, frames_para_ns, ms_para_frames,
-};
+use crate::relogio::{LeitorRelogio, Relogio, TaxaAmostragem, frames_para_ns, ms_para_frames};
 use crate::sintetizador::Sintetizador;
 
 /// Pedido de configuração da saída.
@@ -71,13 +69,18 @@ pub struct SaidaAudio {
 impl SaidaAudio {
     /// Abre o dispositivo de saída padrão. `criar_sintetizador` recebe a
     /// taxa do dispositivo e roda **nesta** thread (pode carregar SF2).
-    pub fn abrir_padrao<S, F>(
+    ///
+    /// `relogio` tem de ser o **mesmo** relógio (mesma época) que carimba os
+    /// eventos MIDI: o callback o lê para ancorar frames ↔ nanossegundos. O
+    /// app passa o `Arc<dyn Relogio>` que também entrega ao gerenciador MIDI.
+    pub fn abrir_padrao<S, F, R>(
         config: ConfigSaida,
-        relogio: RelogioMonotonico,
+        relogio: R,
         criar_sintetizador: F,
     ) -> Result<Self, ErroAudio>
     where
         S: Sintetizador + 'static,
+        R: Relogio + 'static,
         F: FnOnce(TaxaAmostragem) -> Result<S, ErroAudio>,
     {
         let host = cpal::default_host();
@@ -119,7 +122,7 @@ impl SaidaAudio {
         let canais = usize::from(config_fluxo.channels);
 
         let fluxo = match formato {
-            SampleFormat::F32 => construir::<f32, S>(
+            SampleFormat::F32 => construir::<f32, S, R>(
                 &dispositivo,
                 config_fluxo,
                 motor,
@@ -128,7 +131,7 @@ impl SaidaAudio {
                 &estado,
                 config.tempo_limite,
             ),
-            SampleFormat::I16 => construir::<i16, S>(
+            SampleFormat::I16 => construir::<i16, S, R>(
                 &dispositivo,
                 config_fluxo,
                 motor,
@@ -137,7 +140,7 @@ impl SaidaAudio {
                 &estado,
                 config.tempo_limite,
             ),
-            SampleFormat::I32 => construir::<i32, S>(
+            SampleFormat::I32 => construir::<i32, S, R>(
                 &dispositivo,
                 config_fluxo,
                 motor,
@@ -146,7 +149,7 @@ impl SaidaAudio {
                 &estado,
                 config.tempo_limite,
             ),
-            SampleFormat::U16 => construir::<u16, S>(
+            SampleFormat::U16 => construir::<u16, S, R>(
                 &dispositivo,
                 config_fluxo,
                 motor,
@@ -193,18 +196,19 @@ impl SaidaAudio {
     }
 }
 
-fn construir<T, S>(
+fn construir<T, S, R>(
     dispositivo: &cpal::Device,
     config: StreamConfig,
     mut motor: MotorAudio<S>,
     canais: usize,
-    relogio: RelogioMonotonico,
+    relogio: R,
     estado: &Arc<EstadoMotor>,
     tempo_limite: Option<Duration>,
 ) -> Result<cpal::Stream, ErroAudio>
 where
     T: SizedSample + FromSample<f32>,
     S: Sintetizador + 'static,
+    R: Relogio + 'static,
 {
     // Buffer de conversão pré-alocado; blocos maiores são feitos em partes.
     let mut temporario = vec![0.0_f32; motor.config().max_frames_bloco * canais.max(1)];

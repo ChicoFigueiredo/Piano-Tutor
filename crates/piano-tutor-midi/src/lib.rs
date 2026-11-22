@@ -24,8 +24,8 @@ pub use fonte::{CallbackBytes, ConexaoAtiva, ErroFonte, FontePortas};
 pub use fonte_falsa::FonteFalsa;
 pub use fonte_midir::FonteMidir;
 pub use gerenciador::{
-    Contadores, EstadoConexao, GerenciadorMidi, INTERVALO_VARREDURA_MAXIMO, SaidaMidi,
-    aplicar_em_teclas,
+    AvisoDeChegada, Contadores, EstadoConexao, GerenciadorMidi, INTERVALO_VARREDURA_MAXIMO,
+    SaidaMidi, aplicar_em_teclas,
 };
 pub use registro::{MotivoDesconexao, RegistroNdjson, criar_arquivo_sessao};
 pub use relogio::{Relogio, RelogioManual, RelogioMonotonico};

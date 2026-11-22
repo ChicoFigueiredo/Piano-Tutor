@@ -19,8 +19,8 @@ use crate::relogio::Relogio;
 use piano_tutor_core::midi::{EventoMidi, Parser};
 use piano_tutor_core::teclado::EstadoTeclas;
 use std::io::Write;
-use std::sync::Arc;
 use std::sync::mpsc::{self, Receiver};
+use std::sync::{Arc, Mutex, PoisonError};
 use std::time::Duration;
 
 /// Intervalo máximo (e padrão) entre varreduras da lista de portas.
@@ -58,6 +58,11 @@ pub struct Contadores {
     pub falhas_de_listagem: u64,
 }
 
+/// Aviso chamado pela thread do backend a cada mensagem recebida (ex.: pedir
+/// um novo quadro à UI, para que `atualizar` rode logo e o som não espere o
+/// próximo quadro agendado). Deve ser curto e não pode entrar em pânico.
+pub type AvisoDeChegada = Arc<dyn Fn() + Send + Sync>;
+
 struct Mensagem {
     ts_ns: u64,
     bytes: Vec<u8>,
@@ -85,6 +90,7 @@ pub struct GerenciadorMidi {
     contadores: Contadores,
     registro: Option<RegistroNdjson<Box<dyn Write + Send>>>,
     pendentes: Vec<SaidaMidi>,
+    aviso: Arc<Mutex<Option<AvisoDeChegada>>>,
 }
 
 impl GerenciadorMidi {
@@ -106,6 +112,7 @@ impl GerenciadorMidi {
             contadores: Contadores::default(),
             registro: None,
             pendentes: Vec::new(),
+            aviso: Arc::new(Mutex::new(None)),
         }
     }
 
@@ -120,11 +127,48 @@ impl GerenciadorMidi {
     /// Liga o log NDJSON da sessão (grava a linha `sessao`).
     #[must_use]
     pub fn com_registro(mut self, saida: Box<dyn Write + Send>) -> Self {
+        self.iniciar_registro(saida);
+        self
+    }
+
+    /// Liga (ou troca) o log NDJSON em tempo de execução. Grava a linha
+    /// `sessao` e, se já houver conexão aberta, uma linha `conectado` com a
+    /// porta atual (`reconexao: false`), para o log dizer de onde vêm os
+    /// eventos. Um log anterior é descarregado e fechado.
+    pub fn iniciar_registro(&mut self, saida: Box<dyn Write + Send>) {
+        self.parar_registro();
+        let ts = self.relogio.agora_ns();
         let mut r = RegistroNdjson::novo(saida);
-        r.registrar_inicio_sessao(self.relogio.agora_ns());
+        r.registrar_inicio_sessao(ts);
+        if let Some(c) = self.conexao.as_ref() {
+            r.registrar_conexao(ts, &c.porta, false);
+        }
         r.descarregar();
         self.registro = Some(r);
-        self
+    }
+
+    /// Desliga o log, descarregando o que falta. Devolve linhas gravadas e
+    /// falhas, se havia log.
+    pub fn parar_registro(&mut self) -> Option<(u64, u64)> {
+        let mut r = self.registro.take()?;
+        r.descarregar();
+        Some((r.linhas(), r.falhas()))
+    }
+
+    /// O log NDJSON está ligado.
+    pub fn registrando(&self) -> bool {
+        self.registro.is_some()
+    }
+
+    /// Último erro de escrita do log, se houver.
+    pub fn ultimo_erro_do_registro(&self) -> Option<&str> {
+        self.registro.as_ref().and_then(|r| r.ultimo_erro())
+    }
+
+    /// Define o aviso chamado na thread do backend a cada mensagem recebida.
+    /// Vale também para a conexão já aberta.
+    pub fn definir_aviso_de_chegada(&mut self, aviso: AvisoDeChegada) {
+        *self.aviso.lock().unwrap_or_else(PoisonError::into_inner) = Some(aviso);
     }
 
     pub fn estado(&self) -> &EstadoConexao {
@@ -292,12 +336,21 @@ impl GerenciadorMidi {
             porta: real.clone(),
         });
         let (tx, rx) = mpsc::channel();
+        let aviso = Arc::clone(&self.aviso);
         let callback = Box::new(move |bytes: &[u8], ts_ns: u64| {
             // Receptor fechado = conexão encerrada; a mensagem é descartada.
-            let _ = tx.send(Mensagem {
-                ts_ns,
-                bytes: bytes.to_vec(),
-            });
+            let entregue = tx
+                .send(Mensagem {
+                    ts_ns,
+                    bytes: bytes.to_vec(),
+                })
+                .is_ok();
+            if entregue {
+                let aviso = aviso.lock().unwrap_or_else(PoisonError::into_inner).clone();
+                if let Some(a) = aviso {
+                    a();
+                }
+            }
         });
         let ts = self.relogio.agora_ns();
         match self

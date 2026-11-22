@@ -16,7 +16,11 @@ use std::sync::Arc;
 
 use piano_tutor_core::NotaMidi;
 use piano_tutor_core::midi::CanalMidi;
-use rustysynth::{SoundFont, Synthesizer, SynthesizerSettings};
+use rustysynth::{Synthesizer, SynthesizerSettings};
+
+/// SoundFont carregado (tipo do `rustysynth`), reexportado para o app não
+/// depender diretamente da crate.
+pub use rustysynth::SoundFont;
 
 use crate::erro::ErroAudio;
 use crate::relogio::TaxaAmostragem;
@@ -62,6 +66,35 @@ pub fn ler_soundfont<R: Read>(leitor: &mut R) -> Result<Arc<SoundFont>, ErroAudi
             "o parser do SF2 falhou (arquivo malformado)".to_string(),
         )),
     }
+}
+
+/// Um preset do SF2: banco, programa (0–127) e nome como está no arquivo.
+#[derive(Clone, Debug, Eq, PartialEq, Ord, PartialOrd)]
+pub struct PresetSf2 {
+    pub banco: u16,
+    pub programa: u8,
+    pub nome: String,
+}
+
+/// Presets do SoundFont, ordenados por banco e programa. Entradas com banco
+/// ou programa fora da faixa MIDI são omitidas (nunca inventadas).
+pub fn listar_presets(soundfont: &SoundFont) -> Vec<PresetSf2> {
+    let mut lista: Vec<PresetSf2> = soundfont
+        .get_presets()
+        .iter()
+        .filter_map(|p| {
+            Some(PresetSf2 {
+                banco: u16::try_from(p.get_bank_number()).ok()?,
+                programa: u8::try_from(p.get_patch_number())
+                    .ok()
+                    .filter(|v| *v <= 127)?,
+                nome: p.get_name().trim().to_string(),
+            })
+        })
+        .collect();
+    lista.sort();
+    lista.dedup_by(|a, b| a.banco == b.banco && a.programa == b.programa);
+    lista
 }
 
 /// Sintetizador SF2 atrás do trait [`Sintetizador`].

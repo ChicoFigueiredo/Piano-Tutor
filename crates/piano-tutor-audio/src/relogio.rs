@@ -13,7 +13,6 @@
 use std::num::NonZeroU32;
 use std::sync::Arc;
 use std::sync::atomic::Ordering;
-use std::time::Instant;
 
 use crate::motor::EstadoMotor;
 
@@ -82,31 +81,12 @@ pub fn frames_para_ms(frames: f64, taxa: TaxaAmostragem) -> f64 {
 /// Relógio monotônico compartilhado entre captura MIDI e callback de áudio.
 ///
 /// **Contrato:** o timestamp `timestamp_monotonico_ns` dos eventos MIDI que
-/// serão agendados precisa vir deste mesmo relógio (mesma época). O timestamp
-/// próprio do `midir` usa outra origem e não pode ser misturado.
-#[derive(Clone, Copy, Debug)]
-pub struct RelogioMonotonico {
-    epoca: Instant,
-}
-
-impl RelogioMonotonico {
-    pub fn novo() -> Self {
-        Self {
-            epoca: Instant::now(),
-        }
-    }
-
-    /// Nanossegundos desde a época. Sem alocação nem lock (seguro no callback).
-    pub fn agora_ns(&self) -> u64 {
-        u64::try_from(self.epoca.elapsed().as_nanos()).unwrap_or(u64::MAX)
-    }
-}
-
-impl Default for RelogioMonotonico {
-    fn default() -> Self {
-        Self::novo()
-    }
-}
+/// serão agendados precisa vir deste mesmo relógio (mesma época). Os tipos
+/// são os de [`piano_tutor_core::tempo`], os mesmos que `piano-tutor-midi`
+/// reexporta: o app cria uma única instância e a entrega à entrada MIDI e à
+/// [`crate::SaidaAudio`]. O timestamp próprio do `midir` usa outra origem e
+/// não pode ser misturado.
+pub use piano_tutor_core::tempo::{Relogio, RelogioManual, RelogioMonotonico};
 
 /// Parâmetros da âncora frames ↔ relógio monotônico.
 #[derive(Clone, Copy, Debug, PartialEq)]

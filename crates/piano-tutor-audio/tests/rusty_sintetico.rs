@@ -66,6 +66,20 @@ fn sf2_sintetico_lista_presets() {
 }
 
 #[test]
+fn listar_presets_do_soundfont_sem_criar_sintetizador() {
+    let bytes = sf2_sintetico::gerar();
+    let sf = ler_soundfont(&mut bytes.as_slice()).expect("SF2 sintético válido");
+    let presets = piano_tutor_audio::listar_presets(&sf);
+    let chaves: Vec<(u16, u8)> = presets.iter().map(|p| (p.banco, p.programa)).collect();
+    assert_eq!(
+        chaves,
+        vec![(0, PROGRAMA_QUADRADA), (0, PROGRAMA_SENOIDE)],
+        "{presets:?}"
+    );
+    assert!(presets.iter().all(|p| !p.nome.is_empty()));
+}
+
+#[test]
 fn silencio_sem_notas() {
     let (mut m, _c) = motor();
     let saida = render(&mut m, 48_000);

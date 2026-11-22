@@ -2,12 +2,15 @@
 //! Este módulo inicial só realiza cálculos determinísticos de nota em temperamento igual.
 //! O módulo [`midi`] adiciona o evento MIDI normalizado e o parser (código puro).
 //! O módulo [`sanitizar`] remove seriais e VID:PID de textos destinados a relatórios e logs.
+//! O módulo [`tempo`] define a base de tempo monotônico única, compartilhada por MIDI e áudio.
 
 pub mod midi;
 
 pub mod sanitizar;
 
 pub mod teclado;
+
+pub mod tempo;
 
 /// Identificador de altura MIDI (0 a 127). O nome de oitava segue C4 = 60.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]

@@ -476,3 +476,52 @@ fn ndjson_de_sessao_e_valido_e_anonimizado() {
     let bruto = String::from_utf8(b.log.0.lock().expect("log").clone()).expect("UTF-8");
     assert!(!bruto.contains("0123456789"), "serial vazou no log");
 }
+
+#[test]
+fn log_liga_e_desliga_em_tempo_de_execucao_e_marca_a_porta_atual() {
+    let fonte = FonteFalsa::nova([KB]);
+    let relogio = RelogioManual::novo();
+    let mut g = GerenciadorMidi::novo(Box::new(fonte.clone()), Arc::new(relogio.clone()));
+    assert!(!g.registrando());
+    g.selecionar_porta(KB);
+    assert!(fonte.injetar(&[0x90, 60, 100]));
+    let _ = g.atualizar();
+
+    let log = Buffer::default();
+    g.iniciar_registro(Box::new(log.clone()));
+    assert!(g.registrando());
+    assert!(fonte.injetar(&[0x80, 60, 0]));
+    let _ = g.atualizar();
+    let (linhas, falhas) = g.parar_registro().expect("havia log");
+    assert!(!g.registrando());
+    assert_eq!(falhas, 0);
+
+    let l = log.linhas();
+    assert_eq!(l.len() as u64, linhas);
+    let tipos: Vec<&str> = l.iter().filter_map(|v| v["tipo"].as_str()).collect();
+    // O NoteOn anterior ao log não entra; o log diz de qual porta vêm os eventos.
+    assert_eq!(tipos, vec!["sessao", "conectado", "nota_desligada"]);
+    assert_eq!(l[1]["reconexao"], Value::Bool(false));
+
+    // Depois de parar, nada mais é gravado.
+    assert!(fonte.injetar(&[0x90, 62, 100]));
+    let _ = g.atualizar();
+    assert_eq!(log.linhas().len(), 3);
+    assert_eq!(g.parar_registro(), None);
+}
+
+#[test]
+fn aviso_de_chegada_e_chamado_a_cada_mensagem_inclusive_em_conexao_ja_aberta() {
+    use std::sync::atomic::{AtomicU32, Ordering};
+    let mut b = bancada(&[KB]);
+    b.g.selecionar_porta(KB);
+    let contagem = Arc::new(AtomicU32::new(0));
+    let c = Arc::clone(&contagem);
+    b.g.definir_aviso_de_chegada(Arc::new(move || {
+        c.fetch_add(1, Ordering::SeqCst);
+    }));
+    assert!(b.fonte.injetar(&[0x90, 60, 100]));
+    assert!(b.fonte.injetar(&[0x80, 60, 0]));
+    assert_eq!(contagem.load(Ordering::SeqCst), 2);
+    assert_eq!(eventos(&b.g.atualizar()).len(), 2);
+}
