@@ -318,7 +318,8 @@ fn desenhar_grade(ui: &mut Ui, r: &mut EstadoRitmo, som: &mut ServicoSom) {
                         }
                         for passo in 0..passos {
                             if passo > 0 && passo % por_pulso == 0 {
-                                ui.add_space(4.0);
+                                // Separador de pulso: célula vazia (add_space não vale em Grid).
+                                ui.allocate_exact_size(vec2(4.0, lado), egui::Sense::hover());
                             }
                             let v = r.padrao.velocidade(i, passo);
                             let inicio_pulso = passo % por_pulso == 0;

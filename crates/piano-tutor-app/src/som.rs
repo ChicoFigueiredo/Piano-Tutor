@@ -28,6 +28,31 @@ use std::time::Duration;
 /// SoundFont padrão: FluidR3_GM, do pacote Debian `fluid-soundfont-gm` (dependência do .deb,
 /// MIT; ver `docs/aceite/F03/auditoria-sf2.md`). Não é embutido no app.
 pub const SF2_PADRAO: &str = "/usr/share/sounds/sf2/FluidR3_GM.sf2";
+/// Variável de ambiente que escolhe outro SoundFont ao abrir o app.
+pub const VAR_SF2: &str = "PIANO_TUTOR_SF2";
+/// Onde o SF2 GM costuma estar no Debian/Ubuntu/Kubuntu, em ordem de preferência.
+pub const CANDIDATOS_SF2: [&str; 4] = [
+    SF2_PADRAO,
+    "/usr/share/soundfonts/FluidR3_GM.sf2",
+    "/usr/share/sounds/sf2/default-GM.sf2",
+    "/usr/share/soundfonts/default.sf2",
+];
+
+/// SoundFont a carregar ao abrir: a variável [`VAR_SF2`] se preenchida (mesmo ausente, para o
+/// erro citar o caminho pedido); senão o primeiro de [`CANDIDATOS_SF2`] que existe; senão
+/// [`SF2_PADRAO`], para a mensagem de ausência indicar o pacote `fluid-soundfont-gm`.
+pub fn sf2_inicial(var: Option<&str>, existe: impl Fn(&Path) -> bool) -> PathBuf {
+    if let Some(v) = var.map(str::trim).filter(|v| !v.is_empty()) {
+        return PathBuf::from(v);
+    }
+    CANDIDATOS_SF2
+        .iter()
+        .map(Path::new)
+        .find(|p| existe(p))
+        .unwrap_or(Path::new(SF2_PADRAO))
+        .to_path_buf()
+}
+
 /// Programa GM do piano acústico de cauda.
 pub const PROGRAMA_PIANO: u8 = 0;
 /// Programa GM do acordeon (segundo timbre preferido, ADR-0005).
@@ -917,8 +942,9 @@ fn mensagem_sf2_ausente(caminho: &Path, ha_anterior: bool) -> String {
     };
     if caminho == Path::new(SF2_PADRAO) {
         format!(
-            "SoundFont padrão não encontrado em {SF2_PADRAO}. Instale o pacote \
-             fluid-soundfont-gm (dependência do .deb) ou informe outro arquivo .sf2. {continua}"
+            "SoundFont padrão não encontrado em {SF2_PADRAO}. Instale com \
+             \"sudo apt install fluid-soundfont-gm\" e clique em \"Usar o padrão\" na tela Timbres, ou informe outro \
+             arquivo .sf2 (também pela variável {VAR_SF2}). {continua}"
         )
     } else {
         format!(
@@ -1231,6 +1257,29 @@ mod testes {
             s.erro_sf2()
         );
         assert!(s.caminho_sf2().is_some_and(|c| c.ends_with("bom.sf2")));
+    }
+
+    #[test]
+    fn sf2_inicial_prefere_a_variavel_de_ambiente_mesmo_se_ausente() {
+        let c = sf2_inicial(Some("/meus/sons/x.sf2"), |_| false);
+        assert_eq!(c, PathBuf::from("/meus/sons/x.sf2"));
+    }
+
+    #[test]
+    fn sf2_inicial_ignora_variavel_vazia_e_usa_o_primeiro_candidato_que_existe() {
+        let alvo = Path::new("/usr/share/soundfonts/FluidR3_GM.sf2");
+        let c = sf2_inicial(Some("  "), |p| p == alvo);
+        assert_eq!(c, alvo);
+    }
+
+    #[test]
+    fn sf2_inicial_sem_nenhum_arquivo_cai_no_padrao_para_a_mensagem_citar_o_pacote() {
+        assert_eq!(sf2_inicial(None, |_| false), PathBuf::from(SF2_PADRAO));
+    }
+
+    #[test]
+    fn sf2_inicial_com_o_padrao_presente_usa_o_padrao() {
+        assert_eq!(sf2_inicial(None, |_| true), PathBuf::from(SF2_PADRAO));
     }
 
     #[test]

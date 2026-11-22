@@ -26,7 +26,7 @@ use crate::gravacao::EstadoGravacao;
 use crate::monitor::{EstadoMonitor, pasta_de_sessoes_do_ambiente};
 use crate::preferencias::PreferenciasSom;
 use crate::ritmo::EstadoRitmo;
-use crate::som::{EstadoSom, SF2_PADRAO, ServicoSom, abridor_cpal, carregador_arquivo};
+use crate::som::{EstadoSom, ServicoSom, abridor_cpal, carregador_arquivo};
 use crate::tela_calibracao::{AcaoCalibracao, ContextoCalibracao};
 use crate::tela_gravacao;
 use crate::tela_partitura::{self, EstadoPartitura};
@@ -44,7 +44,7 @@ use piano_tutor_core::teclado::{AcaoTecla, EventoTecla, OrigemEventos};
 use piano_tutor_midi::{
     EstadoConexao, FonteFalsa, FonteMidir, FontePortas, Relogio, RelogioMonotonico, SaidaMidi,
 };
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 use std::sync::Arc;
 use std::time::Duration;
 
@@ -80,7 +80,8 @@ impl Dispositivos {
     pub fn do_sistema() -> Self {
         let relogio: Arc<dyn Relogio> = Arc::new(RelogioMonotonico::novo());
         let mut som = ServicoSom::novo(Arc::clone(&relogio), abridor_cpal(), carregador_arquivo());
-        som.carregar_sf2(SF2_PADRAO);
+        let var = std::env::var(crate::som::VAR_SF2).ok();
+        som.carregar_sf2(crate::som::sf2_inicial(var.as_deref(), Path::is_file));
         Self {
             fonte_midi: Box::new(FonteMidir::nova()),
             som,

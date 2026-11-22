@@ -8,6 +8,7 @@ PACOTES=(
     build-essential pkg-config libasound2-dev
     libx11-dev libxkbcommon-dev libwayland-dev libgl1-mesa-dev
     libxcursor-dev libxrandr-dev libxi-dev
+    fluid-soundfont-gm
 )
 INSTALAR=0
 
