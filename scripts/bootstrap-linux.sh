@@ -3,7 +3,12 @@
 # Padrão: apenas checa. Com --sim: instala os pacotes apt ausentes.
 set -euo pipefail
 
-PACOTES=(build-essential pkg-config libasound2-dev)
+# ALSA (MIDI/áudio) e bibliotecas de janela/OpenGL da bancada-casca (X11 e Wayland).
+PACOTES=(
+    build-essential pkg-config libasound2-dev
+    libx11-dev libxkbcommon-dev libwayland-dev libgl1-mesa-dev
+    libxcursor-dev libxrandr-dev libxi-dev
+)
 INSTALAR=0
 
 if [[ "${1:-}" == "--sim" ]]; then

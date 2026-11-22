@@ -15,8 +15,14 @@ jobs:
       - uses: actions/checkout@v4
       - name: Verificar documentação
         run: python3 scripts/verificar-documentacao.py
-      - name: Dependências de sistema (ALSA)
-        run: sudo apt-get update && sudo apt-get install -y libasound2-dev pkg-config
+      # ALSA (diag) e bibliotecas de janela/OpenGL da bancada-casca (X11 e Wayland).
+      # A bancada é pública (MIT OR Apache-2.0): o Cargo a baixa por git, sem credencial.
+      - name: Dependências de sistema (ALSA, X11, Wayland, OpenGL)
+        run: >-
+          sudo apt-get update && sudo apt-get install -y
+          libasound2-dev pkg-config
+          libx11-dev libxkbcommon-dev libwayland-dev libgl1-mesa-dev
+          libxcursor-dev libxrandr-dev libxi-dev
       - name: Rust fmt
         run: cargo fmt --all --check
       - name: Rust clippy
