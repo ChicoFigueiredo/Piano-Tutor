@@ -1,4 +1,6 @@
-//! Sanitização de textos antes de entrarem no relatório (lógica pura).
+//! Sanitização de textos antes de entrarem em relatórios e logs (lógica pura).
+//!
+//! Usada pelo diagnóstico (F00) e pelo log NDJSON do Monitor MIDI (F01).
 //!
 //! Remove sequências que lembram números de série (hexadecimal, ou com 8 ou
 //! mais caracteres e ao menos 4 dígitos) e pares `VID:PID` (4 hex + `:` + 4 hex).

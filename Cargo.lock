@@ -2602,8 +2602,18 @@ version = "0.1.0"
 dependencies = [
  "cpal",
  "midir",
+ "piano-tutor-core",
  "tracing",
  "tracing-subscriber",
+]
+
+[[package]]
+name = "piano-tutor-midi"
+version = "0.1.0"
+dependencies = [
+ "midir",
+ "piano-tutor-core",
+ "serde_json",
 ]
 
 [[package]]

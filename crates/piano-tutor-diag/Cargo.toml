@@ -8,6 +8,7 @@ publish = false
 build = "build.rs"
 
 [dependencies]
+piano-tutor-core = { path = "../piano-tutor-core" }
 # Versões fixadas (=) e licenças conferidas: ver docs/seguranca/LICENCAS-E-DADOS.md
 midir = "=0.11.1"                # MIT
 cpal = "=0.18.2"                 # Apache-2.0

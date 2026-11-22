@@ -2,4 +2,5 @@
 
 pub mod coleta;
 pub mod relatorio;
-pub mod sanitizar;
+/// Reexportado do núcleo (única implementação).
+pub use piano_tutor_core::sanitizar;
