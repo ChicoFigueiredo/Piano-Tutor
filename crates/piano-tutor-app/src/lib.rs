@@ -16,9 +16,11 @@
 
 pub mod acoes;
 pub mod app;
+pub mod calibracao;
 pub mod espelho;
 pub mod estado;
 pub mod monitor;
+pub mod ritmo;
 pub mod som;
 pub mod tela_espelho;
 pub mod tela_monitor;

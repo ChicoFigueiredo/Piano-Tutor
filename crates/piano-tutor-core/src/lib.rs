@@ -12,6 +12,8 @@ pub mod teclado;
 
 pub mod tempo;
 
+pub mod ritmo;
+
 pub mod teoria;
 
 /// Identificador de altura MIDI (0 a 127). O nome de oitava segue C4 = 60.
