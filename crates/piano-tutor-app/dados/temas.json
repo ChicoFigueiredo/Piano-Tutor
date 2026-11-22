@@ -1,0 +1,49 @@
+{
+ "version": 1,
+ "note": "Catálogo de temas do Piano Tutor. Noite e Claro são as bases de tokens.json; Ébano troca só as cores listadas.",
+ "themes": [
+  {
+   "id": "noite",
+   "name": "Noite",
+   "base": "dark",
+   "family": "Padrão",
+   "inspiration": "Escuro azulado, para uso diário.",
+   "colors": {}
+  },
+  {
+   "id": "claro",
+   "name": "Claro",
+   "base": "light",
+   "family": "Padrão",
+   "inspiration": "Claro frio com azul profundo.",
+   "colors": {}
+  },
+  {
+   "id": "ebano",
+   "name": "Ébano",
+   "base": "dark",
+   "family": "Escuros",
+   "inspiration": "Preto de ébano com texto cor de marfim e destaque dourado.",
+   "colors": {
+    "surface-0": "#000000",
+    "surface-1": "#0b0b0b",
+    "surface-2": "#070707",
+    "surface-3": "#181818",
+    "surface-4": "#262626",
+    "border": "#262626",
+    "border-strong": "#a0a0a0",
+    "ink": "#f5f1e6",
+    "ink-muted": "#b8b2a2",
+    "ink-disabled": "#77736a",
+    "accent": "#e0b84f",
+    "accent-hover": "#ecca70",
+    "accent-pressed": "#c99f36",
+    "on-accent": "#000000",
+    "accent-subtle": "#241d0a",
+    "accent-border": "#5c4a16",
+    "accent-ink": "#f0d58a",
+    "focus-ring": "#f5f1e6"
+   }
+  }
+ ]
+}

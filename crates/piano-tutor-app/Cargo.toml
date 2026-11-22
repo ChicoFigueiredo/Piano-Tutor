@@ -1,0 +1,22 @@
+[package]
+name = "piano-tutor-app"
+description = "Aplicativo \"Olá Piano Tutor\": janela mínima sobre a bancada-casca (F00)"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+publish = false
+
+[lib]
+name = "piano_tutor_app"
+path = "src/lib.rs"
+
+[[bin]]
+name = "piano-tutor-app"
+path = "src/main.rs"
+
+[dependencies]
+# Shell compartilhada (ADR-0002/0004), repositório público MIT OR Apache-2.0, fixada por SHA.
+bancada-casca = { git = "https://github.com/ChicoFigueiredo/bancada", rev = "94818fd95dc74b5a42a7757b1d258ed17822ed06" }
+
+[lints]
+workspace = true

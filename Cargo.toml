@@ -1,6 +1,10 @@
 [workspace]
 resolver = "3"
-members = ["crates/piano-tutor-core", "crates/piano-tutor-diag"]
+members = [
+    "crates/piano-tutor-core",
+    "crates/piano-tutor-diag",
+    "crates/piano-tutor-app",
+]
 
 [workspace.package]
 version = "0.1.0"
