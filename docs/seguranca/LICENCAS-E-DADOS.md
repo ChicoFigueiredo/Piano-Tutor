@@ -20,3 +20,14 @@ Versões fixadas com `=` em `crates/piano-tutor-diag/Cargo.toml`; licenças conf
 | `tracing-subscriber` | 0.3.23 | MIT |
 
 As dependências transitivas (alsa, alsa-sys, libc etc.) não tiveram a licença auditada uma a uma: **NÃO VERIFICADO**; recomenda-se `cargo deny`/`cargo license` na CI.
+
+## Dependências do `piano-tutor-midi` (F01, ticket #32)
+
+Versões fixadas com `=` em `crates/piano-tutor-midi/Cargo.toml`; licenças conferidas na API do crates.io (2026-11-22).
+
+| Crate | Versão | Licença | Uso |
+| --- | --- | --- | --- |
+| `midir` | 0.11.1 | MIT | entrada MIDI (ALSA) |
+| `serde_json` | 1.0.154 | MIT OR Apache-2.0 | **somente dev-dependency**: validar o NDJSON nos testes |
+
+O log NDJSON de sessão (`sessao-midi-<segundos-unix>.ndjson`) grava apenas timestamp monotônico, tipo, canal, nota, velocidade/valor e nomes de porta sanitizados (`piano_tutor_core::sanitizar`); bytes de SysEx e de mensagens desconhecidas não são gravados. Transitivas de `serde_json` não auditadas uma a uma: **NÃO VERIFICADO**.
