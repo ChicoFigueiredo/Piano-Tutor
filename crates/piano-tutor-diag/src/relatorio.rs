@@ -2,8 +2,9 @@
 
 use crate::sanitizar::sanitizar;
 
-/// Frase de limitação obrigatória do relatório.
-pub const LIMITACAO_NUVEM: &str = "Execução na nuvem não comprova REVAS nem áudio real";
+/// Frase de limitação obrigatória do relatório. Vale para qualquer máquina
+/// (nuvem ou cerebro): listar portas não prova que o REVAS ou o áudio funcionam.
+pub const LIMITACAO: &str = "Este relatório só lista o que o sistema expõe; não comprova o REVAS nem o áudio real (exige ensaio no cerebro)";
 
 /// Informações do sistema operacional.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -36,7 +37,15 @@ pub struct Diagnostico {
 fn secao_dispositivos(md: &mut String, titulo: &str, enumeracao: &Enumeracao) {
     md.push_str(&format!("## {titulo}\n\n"));
     if enumeracao.itens.is_empty() {
-        md.push_str("- nenhum dispositivo encontrado\n");
+        // Zero itens só significa "nenhum dispositivo" se a enumeração terminou
+        // sem falha; caso contrário, seria um falso negativo (AGENTS.md).
+        if enumeracao.tempo_esgotado {
+            md.push_str("- NÃO VERIFICADO: tempo limite excedido (ver Limitações)\n");
+        } else if !enumeracao.erros.is_empty() {
+            md.push_str("- NÃO VERIFICADO: backend indisponível (ver Limitações)\n");
+        } else {
+            md.push_str("- nenhum dispositivo encontrado\n");
+        }
     } else {
         for item in &enumeracao.itens {
             md.push_str(&format!("- {}\n", sanitizar(item)));
@@ -66,7 +75,7 @@ pub fn montar_relatorio(d: &Diagnostico) -> String {
     secao_dispositivos(&mut md, "Áudio", &d.audio);
 
     md.push_str("## Limitações\n\n");
-    md.push_str(&format!("- {LIMITACAO_NUVEM}.\n"));
+    md.push_str(&format!("- {LIMITACAO}.\n"));
     for (classe, e) in [("MIDI", &d.midi), ("Áudio", &d.audio)] {
         for erro in &e.erros {
             md.push_str(&format!(
@@ -107,7 +116,7 @@ mod testes {
     }
 
     #[test]
-    fn tem_todas_as_secoes_e_limitacao_de_nuvem() {
+    fn tem_todas_as_secoes_e_limitacao() {
         let md = montar_relatorio(&base());
         for s in [
             "## Sistema",
@@ -118,7 +127,7 @@ mod testes {
         ] {
             assert!(md.contains(s), "faltou {s}");
         }
-        assert!(md.contains(LIMITACAO_NUVEM));
+        assert!(md.contains(LIMITACAO));
     }
 
     #[test]
@@ -151,6 +160,35 @@ mod testes {
         let mut d = base();
         d.rustc = "rustc 1.98.0 (88d9e12ae 2026-08-18)".into();
         assert!(montar_relatorio(&d).contains("(88d9e12ae 2026-08-18)"));
+    }
+
+    #[test]
+    fn backend_indisponivel_nao_vira_zero_dispositivos() {
+        let mut d = base();
+        d.midi
+            .erros
+            .push("MIDI support could not be initialized".into());
+        let md = montar_relatorio(&d);
+        let midi = md.split("## MIDI").nth(1).unwrap_or_default();
+        let midi = midi.split("## Áudio").next().unwrap_or_default();
+        assert!(!midi.contains("nenhum dispositivo encontrado"));
+        assert!(midi.contains("NÃO VERIFICADO: backend indisponível"));
+    }
+
+    #[test]
+    fn tempo_esgotado_nao_vira_zero_dispositivos() {
+        let mut d = base();
+        d.audio.tempo_esgotado = true;
+        let md = montar_relatorio(&d);
+        let audio = md.split("## Áudio").nth(1).unwrap_or_default();
+        let audio = audio.split("## Limitações").next().unwrap_or_default();
+        assert!(!audio.contains("nenhum dispositivo encontrado"));
+        assert!(audio.contains("NÃO VERIFICADO: tempo limite excedido"));
+    }
+
+    #[test]
+    fn limitacao_nao_supoe_nuvem() {
+        assert!(!LIMITACAO.contains("nuvem"));
     }
 
     #[test]
