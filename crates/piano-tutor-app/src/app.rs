@@ -19,7 +19,7 @@ use crate::calibracao::{Calibracao, PerfilTeclado};
 use crate::espelho::EstadoEspelho;
 use crate::estado::{
     BOAS_VINDAS, Efeito, EstadoApp, ROTA_ACORDES, ROTA_CALIBRACAO, ROTA_EXERCICIOS, ROTA_GRAVACAO,
-    ROTA_MONITOR, ROTA_RITMOS, ROTA_TECLADO, ROTA_TIMBRES, TEMAS, VERSAO,
+    ROTA_MONITOR, ROTA_PARTITURA, ROTA_RITMOS, ROTA_TECLADO, ROTA_TIMBRES, TEMAS, VERSAO,
 };
 use crate::exercicios::EstadoExercicios;
 use crate::gravacao::EstadoGravacao;
@@ -29,6 +29,7 @@ use crate::ritmo::EstadoRitmo;
 use crate::som::{EstadoSom, SF2_PADRAO, ServicoSom, abridor_cpal, carregador_arquivo};
 use crate::tela_calibracao::{AcaoCalibracao, ContextoCalibracao};
 use crate::tela_gravacao;
+use crate::tela_partitura::{self, EstadoPartitura};
 use crate::tela_timbres::{AcaoTimbres, EstadoTimbres};
 use crate::{TEMAS_JSON, TOKENS_JSON};
 use crate::{tela_acordes, tela_calibracao, tela_exercicios, tela_ritmos};
@@ -107,6 +108,8 @@ pub struct AppPianoTutor {
     pub exercicios: EstadoExercicios,
     /// Gravação e reprodução (F06).
     pub gravacao: EstadoGravacao,
+    /// Partitura MusicXML (F07).
+    pub partitura: EstadoPartitura,
     /// Assistente de calibração e o perfil em uso.
     pub calibracao: Calibracao,
     pub perfil: Option<PerfilTeclado>,
@@ -172,6 +175,7 @@ impl AppPianoTutor {
             acordes: EstadoAcordes::default(),
             exercicios: EstadoExercicios::novo(pasta_dados.clone()),
             gravacao: EstadoGravacao::novo(pasta_dados.clone()),
+            partitura: EstadoPartitura::novo(pasta_dados.clone()),
             calibracao: Calibracao::default(),
             perfil,
             mensagem_calibracao: None,
@@ -295,7 +299,11 @@ impl AppPianoTutor {
         if self.som.carregando().is_some() {
             proximo = proximo.min(Duration::from_millis(250));
         }
-        if self.ritmo.tocando() || self.gravacao.tocando() || self.gravacao.gravando() {
+        if self.ritmo.tocando()
+            || self.gravacao.tocando()
+            || self.gravacao.gravando()
+            || self.partitura.tocando()
+        {
             // Agenda o ritmo e anima o pulso: ~60 quadros por segundo enquanto toca.
             proximo = proximo.min(Duration::from_millis(16));
         }
@@ -312,6 +320,7 @@ impl AppPianoTutor {
         self.espelho.divisao = self.som.config_teclado().divisao;
         self.ritmo.atualizar(&mut self.som);
         self.gravacao.atualizar(&mut self.som);
+        self.partitura.atualizar(&mut self.som);
         self.conferir_desafio();
     }
 
@@ -503,6 +512,7 @@ impl AppCasca for AppPianoTutor {
                 ItemNavegacao::novo(ROTA_ACORDES, "Acordes e escalas", "teclado"),
                 ItemNavegacao::novo(ROTA_RITMOS, "Ritmos", "som"),
                 ItemNavegacao::novo(ROTA_GRAVACAO, "Gravar e ouvir", "som"),
+                ItemNavegacao::novo(ROTA_PARTITURA, "Partitura", "teclado"),
                 ItemNavegacao::novo(ROTA_TIMBRES, "Sons e timbres", "som"),
                 ItemNavegacao::novo(ROTA_SOBRE, "Sobre", "sobre"),
             ],
@@ -525,6 +535,7 @@ impl AppCasca for AppPianoTutor {
             ROTA_ACORDES => vec![inicio(), Elo::texto("Acordes e escalas")],
             ROTA_EXERCICIOS => vec![inicio(), Elo::texto("Exercícios")],
             ROTA_GRAVACAO => vec![inicio(), Elo::texto("Gravar e ouvir")],
+            ROTA_PARTITURA => vec![inicio(), Elo::texto("Partitura")],
             _ => vec![Elo::texto("Início")],
         }
     }
@@ -548,6 +559,9 @@ impl AppCasca for AppPianoTutor {
             ROTA_TIMBRES => {
                 let pedidos = tela_timbres::desenhar_tela(ui, &self.som, &mut self.timbres);
                 self.executar_timbres(pedidos);
+            }
+            ROTA_PARTITURA => {
+                tela_partitura::desenhar_tela(ui, &mut self.partitura, &mut self.som);
             }
             ROTA_GRAVACAO => tela_gravacao::desenhar_tela(ui, &mut self.gravacao, &mut self.som),
             ROTA_EXERCICIOS => tela_exercicios::desenhar_tela(
@@ -1173,4 +1187,3 @@ mod testes {
         );
     }
 }
-

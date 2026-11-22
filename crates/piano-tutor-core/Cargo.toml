@@ -8,3 +8,7 @@ publish = false
 
 [lints]
 workspace = true
+
+[dependencies]
+# Leitura de MusicXML (F07): árvore XML somente leitura, Rust puro, MIT OR Apache-2.0.
+roxmltree = "=0.21.2"

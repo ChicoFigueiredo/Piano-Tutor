@@ -58,3 +58,12 @@ Transitivas novas: nenhuma além das do `cpal` (alsa, alsa-sys, libc, dasp_sampl
 - O teste de integração com SF2 real só roda com `PT_SF2` apontando para um arquivo instalado no sistema.
 - **FluidR3_GM** (`/usr/share/sounds/sf2/FluidR3_GM.sf2`, pacote Debian main `fluid-soundfont-gm` 3.1-5.3): licença MIT, © 2000-2002, 2008 Frank Wen e © 2008 Toby Smithe (conforme `/usr/share/doc/fluid-soundfont-gm/copyright`). Decisão de empacotamento: o `.deb` declara `Depends: fluid-soundfont-gm` e **não** embute o SF2. Escolha final do SF2 e auditoria: ticket #36.
 - `docs/aceite/F03/f03-gm000-piano-c4.wav` e `f03-gm021-acordeon-c4.wav` são renders curtos (2 s, mono, 16 bits, 44,1 kHz) feitos a partir do FluidR3_GM, só para escuta e checklist; atribuição MIT acima, aplicável a essas cópias.
+
+## Dependências do `piano-tutor-core` e partituras (F07)
+
+| Item | Versão | Licença | Uso |
+| --- | --- | --- | --- |
+| `roxmltree` | 0.21.2 (fixada com `=`) | MIT OR Apache-2.0 (conferida em `cargo info`, 2026-11-22) | leitura de MusicXML; DTD permitida (os arquivos MusicXML trazem `DOCTYPE`), sem resolver entidades externas; limite de nós e de tamanho aplicado pelo próprio `piano-tutor-core` |
+| `memchr` (transitiva) | já presente no `Cargo.lock` | MIT OR Unlicense | **NÃO VERIFICADO** uma a uma |
+
+Partituras empacotadas em `assets/partituras/`: três lieder do **OpenScore Lieder Corpus** (CC0 1.0, obras em domínio público), com origem, commit e SHA-256 em `assets/partituras/LEIA-ME.md`. Nenhuma fonte musical (Bravura etc.) é embutida: a notação é desenhada com formas próprias no painter do egui.

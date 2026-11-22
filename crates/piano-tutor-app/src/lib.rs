@@ -23,6 +23,7 @@ pub mod estado;
 pub mod exercicios;
 pub mod gravacao;
 pub mod monitor;
+pub mod partitura_visual;
 pub mod preferencias;
 pub mod ritmo;
 pub mod som;
@@ -32,8 +33,10 @@ pub mod tela_espelho;
 pub mod tela_exercicios;
 pub mod tela_gravacao;
 pub mod tela_monitor;
+pub mod tela_partitura;
 pub mod tela_ritmos;
 pub mod tela_timbres;
+pub mod teclado_visual;
 
 /// `tokens.json` do app (formato lido pela casca).
 pub const TOKENS_JSON: &str = include_str!("../dados/tokens.json");

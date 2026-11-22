@@ -12,6 +12,8 @@ pub mod teclado;
 
 pub mod tempo;
 
+pub mod partitura;
+
 pub mod ritmo;
 
 pub mod teoria;

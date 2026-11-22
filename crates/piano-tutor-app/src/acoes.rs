@@ -27,6 +27,8 @@ pub fn acoes(estado: &EstadoApp) -> Vec<Acao> {
             .dica("Dez exercícios progressivos com correção na hora e progresso salvo"),
         Acao::nova(ids::GRAVACAO, "Gravar e ouvir")
             .dica("Grava o que você toca, toca de volta em outro timbre e salva .mid"),
+        Acao::nova(ids::PARTITURA, "Partitura")
+            .dica("Abre um MusicXML em duas claves e toca com o cursor acompanhando"),
         Acao::nova(ids::PANICO, "Pânico")
             .dica("Corta todo o som agora (all-notes-off imediato) e limpa o Espelho")
             .atalho(ATALHO_PANICO),
@@ -62,7 +64,13 @@ pub fn abas() -> Vec<Aba> {
             .grupo(Grupo::novo(
                 "praticar",
                 "Praticar",
-                &[ids::EXERCICIOS, ids::ACORDES, ids::RITMOS, ids::GRAVACAO],
+                &[
+                    ids::EXERCICIOS,
+                    ids::ACORDES,
+                    ids::RITMOS,
+                    ids::GRAVACAO,
+                    ids::PARTITURA,
+                ],
             ))
             .grupo(Grupo::novo("som", "Som", &[ids::TIMBRES, ids::PANICO]))
             .grupo(Grupo::novo("ajuda", "Ajuda", &[ids::SOBRE])),
@@ -112,6 +120,7 @@ mod testes {
             ids::ACORDES,
             ids::EXERCICIOS,
             ids::GRAVACAO,
+            ids::PARTITURA,
             ids::SOBRE,
             ids::TEMA_ALTERNAR,
             "piano.tema.noite",
@@ -120,7 +129,7 @@ mod testes {
         ] {
             assert!(l.get(id).is_some(), "falta a ação {id}");
         }
-        assert_eq!(l.len(), 14);
+        assert_eq!(l.len(), 15);
         let ids: HashSet<&str> = l.iter().map(|a| a.id.as_str()).collect();
         assert_eq!(ids.len(), l.len());
         assert!(ids.iter().all(|i| i.starts_with("piano.")));
