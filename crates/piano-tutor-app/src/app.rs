@@ -18,9 +18,10 @@ use crate::acordes::EstadoAcordes;
 use crate::calibracao::{Calibracao, PerfilTeclado};
 use crate::espelho::EstadoEspelho;
 use crate::estado::{
-    BOAS_VINDAS, Efeito, EstadoApp, ROTA_ACORDES, ROTA_CALIBRACAO, ROTA_MONITOR, ROTA_RITMOS,
-    ROTA_TECLADO, ROTA_TIMBRES, TEMAS, VERSAO,
+    BOAS_VINDAS, Efeito, EstadoApp, ROTA_ACORDES, ROTA_CALIBRACAO, ROTA_EXERCICIOS, ROTA_MONITOR,
+    ROTA_RITMOS, ROTA_TECLADO, ROTA_TIMBRES, TEMAS, VERSAO,
 };
+use crate::exercicios::EstadoExercicios;
 use crate::monitor::{EstadoMonitor, pasta_de_sessoes_do_ambiente};
 use crate::preferencias::PreferenciasSom;
 use crate::ritmo::EstadoRitmo;
@@ -28,7 +29,7 @@ use crate::som::{EstadoSom, SF2_PADRAO, ServicoSom, abridor_cpal, carregador_arq
 use crate::tela_calibracao::{AcaoCalibracao, ContextoCalibracao};
 use crate::tela_timbres::{AcaoTimbres, EstadoTimbres};
 use crate::{TEMAS_JSON, TOKENS_JSON};
-use crate::{tela_acordes, tela_calibracao, tela_ritmos};
+use crate::{tela_acordes, tela_calibracao, tela_exercicios, tela_ritmos};
 use crate::{tela_espelho, tela_monitor, tela_timbres};
 use bancada_casca::casca::Preferencias;
 use bancada_casca::{
@@ -100,6 +101,8 @@ pub struct AppPianoTutor {
     pub ritmo: EstadoRitmo,
     /// Dicionário de acordes, escalas e desafio.
     pub acordes: EstadoAcordes,
+    /// Exercícios progressivos (F05).
+    pub exercicios: EstadoExercicios,
     /// Assistente de calibração e o perfil em uso.
     pub calibracao: Calibracao,
     pub perfil: Option<PerfilTeclado>,
@@ -163,6 +166,7 @@ impl AppPianoTutor {
             timbres: EstadoTimbres::default(),
             ritmo: EstadoRitmo::novo(pasta_dados.clone()),
             acordes: EstadoAcordes::default(),
+            exercicios: EstadoExercicios::novo(pasta_dados.clone()),
             calibracao: Calibracao::default(),
             perfil,
             mensagem_calibracao: None,
@@ -329,6 +333,21 @@ impl AppPianoTutor {
                     {
                         self.ritmo.toque(timestamp_monotonico_ns);
                     }
+                    if self.rota_atual == ROTA_EXERCICIOS {
+                        match ev {
+                            EventoMidi::NotaLigada {
+                                nota,
+                                timestamp_monotonico_ns,
+                                ..
+                            } => self.exercicios.nota(true, nota, timestamp_monotonico_ns),
+                            EventoMidi::NotaDesligada {
+                                nota,
+                                timestamp_monotonico_ns,
+                                ..
+                            } => self.exercicios.nota(false, nota, timestamp_monotonico_ns),
+                            _ => {}
+                        }
+                    }
                     if let Some(t) = evento_tecla(&ev) {
                         // Nota fora da faixa fica registrada no Espelho; as outras não mudam.
                         let _ = self.espelho.aplicar_evento(t);
@@ -347,9 +366,13 @@ impl AppPianoTutor {
     /// Leva ao som as notas que a simulação (mouse e teclado do PC) aplicou no Espelho.
     pub fn encaminhar_simulacao(&mut self) {
         for ev in self.espelho.drenar_simulados() {
+            let agora = self.som.agora_ns();
             if ev.acao == AcaoTecla::Ligar {
-                let agora = self.som.agora_ns();
                 self.ritmo.toque(agora);
+            }
+            if self.rota_atual == ROTA_EXERCICIOS {
+                self.exercicios
+                    .nota(ev.acao == AcaoTecla::Ligar, ev.nota, agora);
             }
             self.som.nota_simulada(ev);
         }
@@ -466,6 +489,7 @@ impl AppCasca for AppPianoTutor {
                 ItemNavegacao::novo(ROTA_MONITOR, "Monitor MIDI", "midi"),
                 ItemNavegacao::novo(ROTA_CALIBRACAO, "Calibrar teclado", "midi"),
                 ItemNavegacao::novo(ROTA_TECLADO, "Teclado de 61 teclas", "teclado"),
+                ItemNavegacao::novo(ROTA_EXERCICIOS, "Exercícios", "teclado"),
                 ItemNavegacao::novo(ROTA_ACORDES, "Acordes e escalas", "teclado"),
                 ItemNavegacao::novo(ROTA_RITMOS, "Ritmos", "som"),
                 ItemNavegacao::novo(ROTA_TIMBRES, "Sons e timbres", "som"),
@@ -488,6 +512,7 @@ impl AppCasca for AppPianoTutor {
             ROTA_CALIBRACAO => vec![inicio(), Elo::texto("Calibrar teclado")],
             ROTA_RITMOS => vec![inicio(), Elo::texto("Ritmos")],
             ROTA_ACORDES => vec![inicio(), Elo::texto("Acordes e escalas")],
+            ROTA_EXERCICIOS => vec![inicio(), Elo::texto("Exercícios")],
             _ => vec![Elo::texto("Início")],
         }
     }
@@ -495,10 +520,11 @@ impl AppCasca for AppPianoTutor {
     fn desenhar_pagina(&mut self, ui: &mut egui::Ui, rota: &Rota, _local: Local) {
         self.processar_quadro(ui.ctx());
         rota.como_texto().clone_into(&mut self.rota_atual);
-        if rota.como_texto() != ROTA_ACORDES {
+        let com_teclado = [ROTA_TECLADO, ROTA_ACORDES, ROTA_EXERCICIOS];
+        if rota.como_texto() != ROTA_ACORDES && rota.como_texto() != ROTA_EXERCICIOS {
             self.espelho.guias.clear();
         }
-        if rota.como_texto() != ROTA_TECLADO && rota.como_texto() != ROTA_ACORDES {
+        if !com_teclado.contains(&rota.como_texto()) {
             // Fora da tela Espelho ninguém recebe o "solta": não deixa nota presa.
             self.espelho.liberar_simulacao();
         }
@@ -511,6 +537,12 @@ impl AppCasca for AppPianoTutor {
                 let pedidos = tela_timbres::desenhar_tela(ui, &self.som, &mut self.timbres);
                 self.executar_timbres(pedidos);
             }
+            ROTA_EXERCICIOS => tela_exercicios::desenhar_tela(
+                ui,
+                &mut self.exercicios,
+                &mut self.espelho,
+                &mut self.som,
+            ),
             ROTA_RITMOS => tela_ritmos::desenhar_tela(ui, &mut self.ritmo, &mut self.som),
             ROTA_ACORDES => {
                 tela_acordes::desenhar_tela(
