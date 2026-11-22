@@ -13,7 +13,7 @@
 
 ## MIDI
 
-- nenhum dispositivo encontrado
+- NÃO VERIFICADO: backend indisponível (ver Limitações)
 
 ## Áudio
 
@@ -21,6 +21,6 @@
 
 ## Limitações
 
-- Execução na nuvem não comprova REVAS nem áudio real.
+- Este relatório só lista o que o sistema expõe; não comprova o REVAS nem o áudio real (exige ensaio no cerebro).
 - MIDI: falha de backend: backend MIDI indisponível: MIDI support could not be initialized
 - Hostname, usuário, IPs, números de série e VID:PID não são coletados.
