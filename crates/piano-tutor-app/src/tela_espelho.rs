@@ -18,6 +18,7 @@ use piano_tutor_core::NotaMidi;
 use piano_tutor_core::teclado::{
     Acidente, ConfigNomes, ConvencaoOitava, CorTecla, Idioma, nome_sem_oitava, rotulo,
 };
+use piano_tutor_core::teoria::{descrever_intervalo, identificar_acorde};
 
 /// Largura de uma tecla branca com zoom 1,0, em pixels.
 pub const LARGURA_BRANCA_BASE_PX: f32 = 24.0;
@@ -27,6 +28,8 @@ const FAIXA_DO_CENTRAL_PX: f32 = 30.0;
 const LARGURA_MIN_ROTULO_PX: f32 = 15.0;
 
 const AMBAR: Color32 = Color32::from_rgb(255, 214, 102);
+/// Cor das teclas-guia.
+pub const GUIA: Color32 = Color32::from_rgb(70, 200, 110);
 const TINTA_SOBRE_AMBAR: Color32 = Color32::from_rgb(20, 14, 0);
 
 fn cor(c: Rgb) -> Color32 {
@@ -178,6 +181,12 @@ fn desenhar_opcoes(ui: &mut Ui, e: &mut EstadoEspelho) {
 // Teclado
 // ---------------------------------------------------------------------------------------------
 
+/// Só o teclado (mouse incluso), para outras telas (Acordes, Ritmos, Calibração).
+pub fn desenhar_teclado_embutido(ui: &mut Ui, e: &mut EstadoEspelho) {
+    let aviso = e.aviso_simulacao().is_some();
+    desenhar_teclado(ui, e, aviso);
+}
+
 fn desenhar_teclado(ui: &mut Ui, e: &mut EstadoEspelho, aviso_simulacao_visivel: bool) {
     let geo = geometria(e.teclado());
     let w = LARGURA_BRANCA_BASE_PX * e.zoom();
@@ -241,6 +250,22 @@ fn pintar(
                 CorTecla::Preta => pintar_preta(p, e, g, r, w, ligada, com_rotulos),
             }
         }
+    }
+    // Guias: anel verde com ponto, acima da marca de tecla ligada (forma própria, não só cor).
+    for g in geo.iter().filter(|g| e.guias.contains(&g.nota)) {
+        let r = retangulo_da_tecla(area, w, g);
+        let y = match g.cor {
+            CorTecla::Branca => r.bottom() - 2.4 * w,
+            CorTecla::Preta => r.bottom() - 1.3 * w,
+        };
+        let c = Pos2::new(r.center().x, y);
+        p.circle(
+            c,
+            0.3 * w,
+            GUIA,
+            Stroke::new(2.0, Color32::from_rgb(10, 60, 30)),
+        );
+        p.circle_filled(c, 0.1 * w, Color32::from_rgb(10, 60, 30));
     }
     // Dó central: triângulo e texto sob a tecla.
     if let Some(i) = e.teclado().indice_do_central()
@@ -452,6 +477,9 @@ fn desenhar_painel(ui: &mut Ui, e: &EstadoEspelho) {
         }
         let ativas: Vec<String> = e.rotulos_ativos().iter().map(|r| texto_tela(r)).collect();
         ui.add_space(4.0);
+        if let Some(t) = descrever_ligadas(e) {
+            ui.label(RichText::new(t).strong().size(18.0));
+        }
         if ativas.is_empty() {
             ui.label("Teclas ligadas: nenhuma");
         } else {
@@ -468,6 +496,31 @@ fn desenhar_painel(ui: &mut Ui, e: &EstadoEspelho) {
          W E T Y U O P as pretas; Z e X descem e sobem a oitava (Dó da base: MIDI {}).",
         e.base_pc()
     ));
+}
+
+/// "O que toquei?": acorde (com inversão) ou intervalo das teclas ligadas.
+pub fn descrever_ligadas(e: &EstadoEspelho) -> Option<String> {
+    let notas: Vec<NotaMidi> = e.teclas().notas_ligadas().collect();
+    match notas.len() {
+        0 | 1 => None,
+        2 => {
+            let a = identificar_acorde(&notas);
+            let iv = descrever_intervalo(notas[0], notas[1]);
+            Some(match a {
+                Some(a) => format!("Intervalo: {iv} ({})", a.cifra()),
+                None => format!("Intervalo: {iv}"),
+            })
+        }
+        _ => Some(match identificar_acorde(&notas) {
+            Some(a) => format!(
+                "Acorde: {} ({}, {})",
+                a.cifra(),
+                a.nome(),
+                a.texto_inversao()
+            ),
+            None => "Acorde: sem nome reconhecido".to_owned(),
+        }),
+    }
 }
 
 fn convencao_texto(n: ConfigNomes) -> &'static str {

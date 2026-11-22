@@ -36,6 +36,15 @@ pub const ROTA_MONITOR: &str = "monitor-midi";
 /// Rota da tela Timbres (F03).
 pub const ROTA_TIMBRES: &str = "timbres";
 
+/// Rota da calibração do teclado (F01).
+pub const ROTA_CALIBRACAO: &str = "calibracao";
+
+/// Rota de Ritmos (F08, F09).
+pub const ROTA_RITMOS: &str = "ritmos";
+
+/// Rota de Acordes e escalas (F04).
+pub const ROTA_ACORDES: &str = "acordes";
+
 /// O que o app pede à casca depois de executar uma ação.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Efeito {
@@ -54,6 +63,9 @@ pub mod ids {
     pub const TECLADO_61: &str = "piano.teclado-61";
     pub const TIMBRES: &str = "piano.timbres";
     pub const PANICO: &str = "piano.panico";
+    pub const CALIBRACAO: &str = "piano.calibracao";
+    pub const RITMOS: &str = "piano.ritmos";
+    pub const ACORDES: &str = "piano.acordes";
 
     /// Id da ação que escolhe um tema específico.
     pub fn tema(id_do_tema: &str) -> String {
@@ -130,6 +142,15 @@ impl EstadoApp {
         }
         if id == ids::TIMBRES {
             return Some(Efeito::AbrirRota(ROTA_TIMBRES));
+        }
+        if id == ids::CALIBRACAO {
+            return Some(Efeito::AbrirRota(ROTA_CALIBRACAO));
+        }
+        if id == ids::RITMOS {
+            return Some(Efeito::AbrirRota(ROTA_RITMOS));
+        }
+        if id == ids::ACORDES {
+            return Some(Efeito::AbrirRota(ROTA_ACORDES));
         }
         if id == ids::PANICO {
             return Some(Efeito::Panico);

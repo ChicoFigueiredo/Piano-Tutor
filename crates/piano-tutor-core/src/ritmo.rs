@@ -252,7 +252,11 @@ impl Padrao {
 
     /// Alterna um passo: vazio → normal → acento → vazio.
     pub fn alternar(&mut self, instrumento: usize, passo: usize) {
-        if let Some(v) = self.linhas.get_mut(instrumento).and_then(|l| l.get_mut(passo)) {
+        if let Some(v) = self
+            .linhas
+            .get_mut(instrumento)
+            .and_then(|l| l.get_mut(passo))
+        {
             *v = match *v {
                 0 => VEL_NORMAL,
                 v if v < VEL_ACENTO => VEL_ACENTO,
@@ -437,7 +441,10 @@ pub enum Clique {
 pub enum EventoRitmo {
     Clique(Clique),
     /// `INSTRUMENTOS[instrumento]` com a velocidade do passo.
-    Batida { instrumento: usize, velocidade: u8 },
+    Batida {
+        instrumento: usize,
+        velocidade: u8,
+    },
 }
 
 /// Configuração do que toca.
@@ -557,7 +564,7 @@ impl Agendador {
         let contagem_tiques = u64::from(config.contagem) * tiques_compasso;
         let contando = k < contagem_tiques;
         if config.metronomo || contando {
-            if k % TIQUES_POR_PULSO == 0 {
+            if k.is_multiple_of(TIQUES_POR_PULSO) {
                 let pulso = (k / TIQUES_POR_PULSO) % f.pulsos();
                 emitir(EventoRitmo::Clique(if pulso == 0 {
                     Clique::Forte
@@ -565,7 +572,7 @@ impl Agendador {
                     Clique::Pulso
                 }));
             } else if let Some(i) = config.subdivisao.intervalo_tiques(f)
-                && k % i == 0
+                && k.is_multiple_of(i)
             {
                 emitir(EventoRitmo::Clique(Clique::Subdivisao));
             }
@@ -578,7 +585,7 @@ impl Agendador {
         };
         let tpp = p.formula.tiques_por_passo();
         let kk = k - contagem_tiques;
-        if kk % tpp != 0 || p.passos() == 0 {
+        if !kk.is_multiple_of(tpp) || p.passos() == 0 {
             return;
         }
         let passo = ((kk / tpp) % p.passos() as u64) as usize;
@@ -630,7 +637,9 @@ impl Posicao {
     /// Passo do sequenciador (para destacar a coluna).
     pub fn passo(&self, p: &Padrao, contagem: u8) -> Option<usize> {
         let tiques_compasso = TIQUES_POR_PULSO * p.formula.pulsos();
-        let kk = self.tique.checked_sub(u64::from(contagem) * tiques_compasso)?;
+        let kk = self
+            .tique
+            .checked_sub(u64::from(contagem) * tiques_compasso)?;
         Some(((kk / p.formula.tiques_por_passo()) % p.passos().max(1) as u64) as usize)
     }
 }
@@ -686,7 +695,11 @@ impl TapTempo {
             return None;
         }
         let bpm = (60_000_000_000u64 + medio / 2) / medio;
-        Some(u16::try_from(bpm).unwrap_or(BPM_MAX).clamp(BPM_MIN, BPM_MAX))
+        Some(
+            u16::try_from(bpm)
+                .unwrap_or(BPM_MAX)
+                .clamp(BPM_MIN, BPM_MAX),
+        )
     }
 }
 
@@ -719,13 +732,19 @@ mod testes {
     #[test]
     fn acentos_por_formula() {
         for (f, esperado) in [
-            (Formula::TresQuatro, vec![true, false, false, true, false, false]),
+            (
+                Formula::TresQuatro,
+                vec![true, false, false, true, false, false],
+            ),
             (
                 Formula::QuatroQuatro,
                 vec![true, false, false, false, true, false],
             ),
             // 6/8 em dois pulsos compostos: acento a cada 2 pulsos, não a cada 6.
-            (Formula::SeisOito, vec![true, false, true, false, true, false]),
+            (
+                Formula::SeisOito,
+                vec![true, false, true, false, true, false],
+            ),
         ] {
             let mut a = Agendador::novo(0, 60, f);
             let mut v = Vec::new();
@@ -787,7 +806,10 @@ mod testes {
         // andamentos (sem clique duplo nem pulso pulado); depois, de 1 em 1 s.
         assert_eq!(&t[..3], &[0, 500_000_000, 1_000_000_000]);
         let transicao = t[3] - t[2];
-        assert!((500_000_000..1_000_000_000).contains(&transicao), "{transicao}");
+        assert!(
+            (500_000_000..1_000_000_000).contains(&transicao),
+            "{transicao}"
+        );
         for w in t[3..].windows(2) {
             assert_eq!(w[1] - w[0], 1_000_000_000);
         }
@@ -883,7 +905,10 @@ mod testes {
             let d = a.desvio_do_pulso(t).expect("após o início");
             assert_eq!(julgar(d, tol), esperado, "t={t} d={d}");
         }
-        assert_eq!(a.desvio_do_pulso(500_000_000 - 90_000_000), Some(-90_000_000));
+        assert_eq!(
+            a.desvio_do_pulso(500_000_000 - 90_000_000),
+            Some(-90_000_000)
+        );
     }
 
     #[test]

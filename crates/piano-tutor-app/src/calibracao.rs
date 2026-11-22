@@ -321,9 +321,7 @@ impl Calibracao {
     /// Veredito de velocity: variou pelo menos 10 em 3 ou mais notas.
     pub fn suporte_velocity(&self) -> Suporte {
         match self.faixa_velocidade() {
-            Some((a, b)) if self.notas_velocidade >= 3 && b.saturating_sub(a) >= 10 => {
-                Suporte::Sim
-            }
+            Some((a, b)) if self.notas_velocidade >= 3 && b.saturating_sub(a) >= 10 => Suporte::Sim,
             Some(_) if self.notas_velocidade >= 3 => Suporte::NaoSuportado,
             _ => Suporte::NaoTestado,
         }
@@ -489,7 +487,12 @@ mod testes {
         assert!(k.aviso.as_deref().unwrap_or("").contains("49 teclas"));
         assert!(k.perfil().is_none());
         k.evento(&on(40, 100));
-        assert!(k.aviso.as_deref().unwrap_or("").contains("não é mais aguda"));
+        assert!(
+            k.aviso
+                .as_deref()
+                .unwrap_or("")
+                .contains("não é mais aguda")
+        );
         k.refazer_faixa();
         k.evento(&on(36, 100));
         k.evento(&on(96, 100));

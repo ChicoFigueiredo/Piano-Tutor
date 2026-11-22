@@ -17,6 +17,12 @@ pub fn acoes(estado: &EstadoApp) -> Vec<Acao> {
             .dica("Abre o espelho do teclado: notas do teclado físico ou, sem ele, da simulação"),
         Acao::nova(ids::TIMBRES, "Timbres")
             .dica("SoundFont, piano ou segundo timbre, volume e diagnóstico da saída de áudio"),
+        Acao::nova(ids::CALIBRACAO, "Calibrar teclado")
+            .dica("Mede as 61 teclas, a força do toque e o pedal do teclado físico"),
+        Acao::nova(ids::RITMOS, "Ritmos")
+            .dica("Metrônomo, bateria com padrões prontos, pads e exercício de pulso"),
+        Acao::nova(ids::ACORDES, "Acordes e escalas")
+            .dica("O que estou tocando, dicionário de acordes, escalas e desafio"),
         Acao::nova(ids::PANICO, "Pânico")
             .dica("Corta todo o som agora (all-notes-off imediato) e limpa o Espelho")
             .atalho(ATALHO_PANICO),
@@ -47,7 +53,12 @@ pub fn abas() -> Vec<Aba> {
             .grupo(Grupo::novo(
                 "teclado",
                 "Teclado",
-                &[ids::MONITOR_MIDI, ids::TECLADO_61],
+                &[ids::MONITOR_MIDI, ids::CALIBRACAO, ids::TECLADO_61],
+            ))
+            .grupo(Grupo::novo(
+                "praticar",
+                "Praticar",
+                &[ids::ACORDES, ids::RITMOS],
             ))
             .grupo(Grupo::novo("som", "Som", &[ids::TIMBRES, ids::PANICO]))
             .grupo(Grupo::novo("ajuda", "Ajuda", &[ids::SOBRE])),
@@ -92,6 +103,9 @@ mod testes {
             ids::TECLADO_61,
             ids::TIMBRES,
             ids::PANICO,
+            ids::CALIBRACAO,
+            ids::RITMOS,
+            ids::ACORDES,
             ids::SOBRE,
             ids::TEMA_ALTERNAR,
             "piano.tema.noite",
@@ -100,7 +114,7 @@ mod testes {
         ] {
             assert!(l.get(id).is_some(), "falta a ação {id}");
         }
-        assert_eq!(l.len(), 9);
+        assert_eq!(l.len(), 12);
         let ids: HashSet<&str> = l.iter().map(|a| a.id.as_str()).collect();
         assert_eq!(ids.len(), l.len());
         assert!(ids.iter().all(|i| i.starts_with("piano.")));

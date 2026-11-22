@@ -368,9 +368,7 @@ mod testes {
                 .registro()
                 .iter()
                 .filter_map(|e| match *e {
-                    RegistroFalso::Ligada {
-                        canal, nota, ..
-                    } => Some((canal, nota)),
+                    RegistroFalso::Ligada { canal, nota, .. } => Some((canal, nota)),
                     _ => None,
                 })
                 .collect()
@@ -393,11 +391,23 @@ mod testes {
         let t0 = som.agora_ns() + ns(ATRASO_INICIO);
         r.tocar(&mut som);
         let ms = 1_000_000u64;
-        assert_eq!(r.toque(t0 + 500 * ms + 10 * ms).map(|x| x.1), Some(Julgamento::NoTempo));
-        assert_eq!(r.toque(t0 + 1000 * ms - 120 * ms).map(|x| x.1), Some(Julgamento::Adiantado));
-        assert_eq!(r.toque(t0 + 1500 * ms + 150 * ms).map(|x| x.1), Some(Julgamento::Atrasado));
-        let (n, certo, adiantado, atrasado, _) =
-            r.exercicio.as_ref().map(ExercicioPulso::resumo).unwrap_or_default();
+        assert_eq!(
+            r.toque(t0 + 500 * ms + 10 * ms).map(|x| x.1),
+            Some(Julgamento::NoTempo)
+        );
+        assert_eq!(
+            r.toque(t0 + 1000 * ms - 120 * ms).map(|x| x.1),
+            Some(Julgamento::Adiantado)
+        );
+        assert_eq!(
+            r.toque(t0 + 1500 * ms + 150 * ms).map(|x| x.1),
+            Some(Julgamento::Atrasado)
+        );
+        let (n, certo, adiantado, atrasado, _) = r
+            .exercicio
+            .as_ref()
+            .map(ExercicioPulso::resumo)
+            .unwrap_or_default();
         assert_eq!((n, certo, adiantado, atrasado), (3, 1, 1, 1));
     }
 

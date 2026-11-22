@@ -3,9 +3,12 @@
 //! porque o Pânico também limpa o Espelho.
 
 use crate::som::{
-    EstadoSom, PROGRAMA_ACORDEON, PROGRAMA_ORGAO, PROGRAMA_PIANO, SF2_PADRAO, ServicoSom,
+    ConfigTeclado, EstadoSom, PROGRAMA_ACORDEON, PROGRAMA_ORGAO, PROGRAMA_PIANO, SF2_PADRAO,
+    ServicoSom, Timbre,
 };
 use bancada_casca::egui::{self, Color32, RichText, ScrollArea, Slider, TextEdit, Ui};
+use piano_tutor_core::NotaMidi;
+use piano_tutor_core::teclado::rotulo;
 
 const VERDE: Color32 = Color32::from_rgb(98, 200, 120);
 const AMBAR: Color32 = Color32::from_rgb(255, 214, 102);
@@ -34,11 +37,32 @@ impl Default for EstadoTimbres {
 #[derive(Debug, Clone, PartialEq)]
 pub enum AcaoTimbres {
     CarregarSf2(String),
-    Timbre { banco: u16, programa: u8 },
+    Timbre {
+        banco: u16,
+        programa: u8,
+    },
     Volume(f32),
     Panico,
     ReabrirSaida,
+    /// Divisão, camada, transposição e efeitos.
+    ConfigTeclado(ConfigTeclado),
 }
+
+/// Sons favoritos (programas GM) para troca rápida.
+pub const FAVORITOS: [(&str, u8); 12] = [
+    ("Piano", 0),
+    ("Piano elétrico", 4),
+    ("Vibrafone", 11),
+    ("Órgão", 19),
+    ("Acordeon", 21),
+    ("Violão", 24),
+    ("Baixo", 32),
+    ("Cordas", 48),
+    ("Coro", 52),
+    ("Sax", 65),
+    ("Flauta", 73),
+    ("Pad", 89),
+];
 
 /// Desenha a tela e devolve os pedidos deste quadro.
 pub fn desenhar_tela(ui: &mut Ui, som: &ServicoSom, t: &mut EstadoTimbres) -> Vec<AcaoTimbres> {
@@ -55,6 +79,9 @@ pub fn desenhar_tela(ui: &mut Ui, som: &ServicoSom, t: &mut EstadoTimbres) -> Ve
             ui.add_space(8.0);
             ui.separator();
             desenhar_controles(ui, som, t, &mut pedidos);
+            ui.add_space(8.0);
+            ui.separator();
+            desenhar_teclado(ui, som, &mut pedidos);
             ui.add_space(8.0);
             ui.separator();
             desenhar_presets(ui, som, t, &mut pedidos);
@@ -157,6 +184,19 @@ fn desenhar_controles(
             }
         }
     });
+    ui.horizontal_wrapped(|ui| {
+        ui.label("Favoritos:");
+        for (rotulo, programa) in FAVORITOS {
+            let existe = som.tem_preset(0, programa);
+            let marcado = atual.banco == 0 && atual.programa == programa;
+            if ui
+                .add_enabled(existe, egui::Button::new(rotulo).selected(marcado))
+                .clicked()
+            {
+                pedidos.push(AcaoTimbres::Timbre { banco: 0, programa });
+            }
+        }
+    });
     if let Some(e) = &t.erro_timbre {
         ui.label(RichText::new(e).color(AMBAR));
     }
@@ -183,6 +223,80 @@ fn desenhar_controles(
         .clicked()
     {
         pedidos.push(AcaoTimbres::Panico);
+    }
+}
+
+fn combo_timbre(ui: &mut Ui, id: &str, som: &ServicoSom, t: &mut Timbre) {
+    let nome = som
+        .presets()
+        .iter()
+        .find(|p| p.banco == t.banco && p.programa == t.programa)
+        .map_or_else(|| format!("{}:{}", t.banco, t.programa), |p| p.nome.clone());
+    egui::ComboBox::from_id_salt(id)
+        .selected_text(nome)
+        .width(220.0)
+        .show_ui(ui, |ui| {
+            for p in som.presets().iter().filter(|p| p.banco <= 127) {
+                let v = Timbre {
+                    banco: p.banco,
+                    programa: p.programa,
+                };
+                ui.selectable_value(t, v, format!("{:03} {}", p.programa, p.nome));
+            }
+        });
+}
+
+fn nome_nota(n: u8) -> String {
+    NotaMidi::nova(n)
+        .map(|x| crate::tela_espelho::texto_tela(&rotulo(x, Default::default())))
+        .unwrap_or_default()
+}
+
+/// Divisão (split), camada (layer), transposição e efeitos.
+fn desenhar_teclado(ui: &mut Ui, som: &ServicoSom, pedidos: &mut Vec<AcaoTimbres>) {
+    let antes = som.config_teclado();
+    let mut c = antes;
+    ui.label(RichText::new("Teclado: divisão, camada, transposição e efeitos").strong());
+    ui.horizontal_wrapped(|ui| {
+        let mut dividir = c.divisao.is_some();
+        ui.checkbox(
+            &mut dividir,
+            "Dividir o teclado (mão esquerda com outro som)",
+        );
+        let mut ponto = c.divisao.unwrap_or(54);
+        if dividir {
+            ui.label("a partir de");
+            ui.add(Slider::new(&mut ponto, 36..=96).custom_formatter(|v, _| nome_nota(v as u8)));
+            ui.label("esquerda:");
+            combo_timbre(ui, "timbre-esquerda", som, &mut c.timbre_esquerda);
+        }
+        c.divisao = dividir.then_some(ponto);
+    });
+    ui.horizontal_wrapped(|ui| {
+        let mut camada = c.camada.is_some();
+        ui.checkbox(&mut camada, "Camada (somar um segundo som)");
+        let mut t = c.camada.unwrap_or(Timbre {
+            banco: 0,
+            programa: 48,
+        });
+        if camada {
+            combo_timbre(ui, "timbre-camada", som, &mut t);
+        }
+        c.camada = camada.then_some(t);
+    });
+    ui.horizontal_wrapped(|ui| {
+        ui.label("Transposição");
+        ui.add(Slider::new(&mut c.transposicao, -12..=12).suffix(" semitons"));
+        ui.label("Reverb");
+        ui.add(Slider::new(&mut c.reverb, 0..=127));
+        ui.label("Coro");
+        ui.add(Slider::new(&mut c.coro, 0..=127));
+        if ui.button("Restaurar padrão").clicked() {
+            c = ConfigTeclado::default();
+        }
+    });
+    if c != antes {
+        pedidos.push(AcaoTimbres::ConfigTeclado(c));
     }
 }
 

@@ -15,15 +15,20 @@
 //! Sem calibração real ainda: a faixa do Espelho é a padrão de teste até a F01 medir o REVAS.
 
 pub mod acoes;
+pub mod acordes;
 pub mod app;
 pub mod calibracao;
 pub mod espelho;
 pub mod estado;
 pub mod monitor;
+pub mod preferencias;
 pub mod ritmo;
 pub mod som;
+pub mod tela_acordes;
+pub mod tela_calibracao;
 pub mod tela_espelho;
 pub mod tela_monitor;
+pub mod tela_ritmos;
 pub mod tela_timbres;
 
 /// `tokens.json` do app (formato lido pela casca).

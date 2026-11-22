@@ -222,6 +222,8 @@ pub struct EstadoEspelho {
     /// Eventos da simulação já aplicados, à espera do app levá-los ao som.
     simulados: Vec<EventoTecla>,
     pub ultimo_desenho: Option<ResumoDesenho>,
+    /// Teclas-guia (acorde, escala ou exercício a tocar), marcadas em verde.
+    pub guias: Vec<NotaMidi>,
 }
 
 impl Default for EstadoEspelho {
@@ -257,6 +259,7 @@ impl EstadoEspelho {
             erro: None,
             simulados: Vec::new(),
             ultimo_desenho: None,
+            guias: Vec::new(),
         }
     }
 

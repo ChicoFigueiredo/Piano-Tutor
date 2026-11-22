@@ -641,13 +641,30 @@ impl ServicoSom {
         if !(-24..=24).contains(&config.transposicao) {
             return Err("A transposição vai de -24 a +24 semitons.".to_owned());
         }
-        self.config = ConfigTeclado {
+        let novo = ConfigTeclado {
             reverb: config.reverb.min(127),
             coro: config.coro.min(127),
             ..config
         };
-        self.rotas = [None; 128];
-        self.silenciar_e_reaplicar();
+        let rota_mudou = (
+            novo.divisao,
+            novo.camada,
+            novo.transposicao,
+            novo.timbre_esquerda,
+        ) != (
+            self.config.divisao,
+            self.config.camada,
+            self.config.transposicao,
+            self.config.timbre_esquerda,
+        );
+        self.config = novo;
+        if rota_mudou {
+            self.rotas = [None; 128];
+            self.silenciar_e_reaplicar();
+        } else {
+            // Só efeitos/demonstração: reenvia sem cortar o que está soando.
+            self.aplicar_timbre();
+        }
         Ok(())
     }
 

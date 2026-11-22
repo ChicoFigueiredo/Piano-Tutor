@@ -14,14 +14,21 @@
 //! pelo [`ServicoSom`].
 
 use crate::acoes;
+use crate::acordes::EstadoAcordes;
+use crate::calibracao::{Calibracao, PerfilTeclado};
 use crate::espelho::EstadoEspelho;
 use crate::estado::{
-    BOAS_VINDAS, Efeito, EstadoApp, ROTA_MONITOR, ROTA_TECLADO, ROTA_TIMBRES, TEMAS, VERSAO,
+    BOAS_VINDAS, Efeito, EstadoApp, ROTA_ACORDES, ROTA_CALIBRACAO, ROTA_MONITOR, ROTA_RITMOS,
+    ROTA_TECLADO, ROTA_TIMBRES, TEMAS, VERSAO,
 };
 use crate::monitor::{EstadoMonitor, pasta_de_sessoes_do_ambiente};
+use crate::preferencias::PreferenciasSom;
+use crate::ritmo::EstadoRitmo;
 use crate::som::{EstadoSom, SF2_PADRAO, ServicoSom, abridor_cpal, carregador_arquivo};
+use crate::tela_calibracao::{AcaoCalibracao, ContextoCalibracao};
 use crate::tela_timbres::{AcaoTimbres, EstadoTimbres};
 use crate::{TEMAS_JSON, TOKENS_JSON};
+use crate::{tela_acordes, tela_calibracao, tela_ritmos};
 use crate::{tela_espelho, tela_monitor, tela_timbres};
 use bancada_casca::casca::Preferencias;
 use bancada_casca::{
@@ -89,6 +96,17 @@ pub struct AppPianoTutor {
     /// Som (F03): SoundFont, saída, timbre, volume e pânico.
     pub som: ServicoSom,
     pub timbres: EstadoTimbres,
+    /// Metrônomo, bateria e exercício de pulso.
+    pub ritmo: EstadoRitmo,
+    /// Dicionário de acordes, escalas e desafio.
+    pub acordes: EstadoAcordes,
+    /// Assistente de calibração e o perfil em uso.
+    pub calibracao: Calibracao,
+    pub perfil: Option<PerfilTeclado>,
+    mensagem_calibracao: Option<String>,
+    pasta_dados: Option<PathBuf>,
+    prefs_pendentes: Option<PreferenciasSom>,
+    rota_atual: String,
     relogio: Arc<dyn Relogio>,
     ultimo_quadro: Option<u64>,
     aviso_instalado: bool,
@@ -122,16 +140,124 @@ impl AppPianoTutor {
     }
 
     pub fn com_dispositivos(d: Dispositivos) -> Self {
+        let pasta_dados = d
+            .pasta_sessoes
+            .as_ref()
+            .and_then(|p| p.parent())
+            .map(PathBuf::from);
+        let perfil = pasta_dados
+            .as_ref()
+            .and_then(|p| PerfilTeclado::ler(&p.join(ARQUIVO_PERFIL)));
+        let espelho = match perfil.as_ref().and_then(PerfilTeclado::teclado) {
+            Some(t) => EstadoEspelho::calibrado(t),
+            None => EstadoEspelho::novo(),
+        };
+        let prefs_pendentes = pasta_dados
+            .as_ref()
+            .and_then(|p| PreferenciasSom::ler(&p.join(ARQUIVO_PREFERENCIAS)));
         Self {
             estado: EstadoApp::novo(),
-            espelho: EstadoEspelho::novo(),
+            espelho,
             monitor: EstadoMonitor::novo(d.fonte_midi, Arc::clone(&d.relogio), d.pasta_sessoes),
             som: d.som,
             timbres: EstadoTimbres::default(),
+            ritmo: EstadoRitmo::novo(pasta_dados.clone()),
+            acordes: EstadoAcordes::default(),
+            calibracao: Calibracao::default(),
+            perfil,
+            mensagem_calibracao: None,
+            pasta_dados,
+            prefs_pendentes,
+            rota_atual: String::new(),
             relogio: d.relogio,
             ultimo_quadro: None,
             aviso_instalado: false,
         }
+    }
+
+    /// Aplica as preferências salvas assim que o som fica pronto (o SF2 carrega em segundo
+    /// plano). Preset que não existir no SF2 é ignorado.
+    fn aplicar_preferencias(&mut self) {
+        if self.som.estado() != EstadoSom::Pronto {
+            return;
+        }
+        let Some(p) = self.prefs_pendentes.take() else {
+            return;
+        };
+        let _ = self
+            .som
+            .selecionar_timbre(p.timbre.banco, p.timbre.programa);
+        self.som.definir_volume(p.volume);
+        let _ = self.som.definir_config_teclado(p.teclado);
+    }
+
+    fn salvar_preferencias(&mut self) {
+        let Some(pasta) = self.pasta_dados.as_ref() else {
+            return;
+        };
+        let p = PreferenciasSom {
+            timbre: self.som.timbre(),
+            volume: self.som.volume(),
+            teclado: self.som.config_teclado(),
+        };
+        let _ = p.gravar(&pasta.join(ARQUIVO_PREFERENCIAS));
+    }
+
+    /// Executa os pedidos da tela Calibração.
+    pub fn executar_calibracao(&mut self, pedidos: Vec<AcaoCalibracao>) {
+        for p in pedidos {
+            match p {
+                AcaoCalibracao::SalvarEUsar => self.salvar_calibracao(),
+                AcaoCalibracao::Esquecer => {
+                    if let Some(pasta) = &self.pasta_dados {
+                        let _ = std::fs::remove_file(pasta.join(ARQUIVO_PERFIL));
+                    }
+                    self.perfil = None;
+                    self.trocar_faixa(None);
+                    self.mensagem_calibracao =
+                        Some("Perfil esquecido: o Espelho voltou à faixa padrão.".to_owned());
+                }
+            }
+        }
+    }
+
+    fn trocar_faixa(&mut self, perfil: Option<&PerfilTeclado>) {
+        let (zoom, nomes) = (self.espelho.zoom(), self.espelho.nomes);
+        self.panico();
+        self.espelho = match perfil.and_then(PerfilTeclado::teclado) {
+            Some(t) => EstadoEspelho::calibrado(t),
+            None => EstadoEspelho::novo(),
+        };
+        self.espelho.definir_zoom(zoom);
+        self.espelho.nomes = nomes;
+    }
+
+    fn salvar_calibracao(&mut self) {
+        let Some(perfil) = self.calibracao.perfil() else {
+            return;
+        };
+        let mut msg = String::from("Perfil em uso no Espelho.");
+        if let Some(pasta) = self.pasta_dados.clone() {
+            let r = std::fs::create_dir_all(&pasta)
+                .and_then(|()| std::fs::write(pasta.join(ARQUIVO_PERFIL), perfil.para_texto()));
+            let rel = self
+                .calibracao
+                .relatorio(&data_de_hoje())
+                .map(|t| std::fs::write(pasta.join(ARQUIVO_RELATORIO), t));
+            msg = match (r, rel) {
+                (Ok(()), Some(Ok(()))) => format!(
+                    "Perfil salvo e em uso. Relatório: {}",
+                    pasta.join(ARQUIVO_RELATORIO).display()
+                ),
+                (Err(e), _) | (_, Some(Err(e))) => {
+                    format!("Perfil em uso, mas não foi possível gravar: {e}")
+                }
+                _ => msg,
+            };
+        }
+        self.trocar_faixa(Some(&perfil));
+        self.perfil = Some(perfil);
+        self.mensagem_calibracao = Some(msg);
     }
 
     /// O relógio comum (MIDI e áudio).
@@ -160,6 +286,10 @@ impl AppPianoTutor {
         if self.som.carregando().is_some() {
             proximo = proximo.min(Duration::from_millis(250));
         }
+        if self.ritmo.tocando() {
+            // Agenda o ritmo e anima o pulso: ~60 quadros por segundo enquanto toca.
+            proximo = proximo.min(Duration::from_millis(16));
+        }
         ctx.request_repaint_after(proximo.max(Duration::from_millis(1)));
     }
 
@@ -169,6 +299,19 @@ impl AppPianoTutor {
         self.rotear(saidas);
         self.encaminhar_simulacao();
         self.som.atualizar();
+        self.aplicar_preferencias();
+        self.ritmo.atualizar(&mut self.som);
+        self.conferir_desafio();
+    }
+
+    /// Desafio de acordes: confere as teclas seguradas (físicas ou simuladas).
+    fn conferir_desafio(&mut self) {
+        if self.rota_atual != ROTA_ACORDES {
+            return;
+        }
+        let seguradas: Vec<_> = self.espelho.teclas().notas_ligadas().collect();
+        let agora = self.som.agora_ns();
+        self.acordes.conferir(&seguradas, agora);
     }
 
     /// Aplica as saídas do gerenciador MIDI, na ordem.
@@ -176,6 +319,16 @@ impl AppPianoTutor {
         for s in saidas {
             match s {
                 SaidaMidi::Evento(ev) => {
+                    if self.rota_atual == ROTA_CALIBRACAO {
+                        self.calibracao.evento(&ev);
+                    }
+                    if let EventoMidi::NotaLigada {
+                        timestamp_monotonico_ns,
+                        ..
+                    } = ev
+                    {
+                        self.ritmo.toque(timestamp_monotonico_ns);
+                    }
                     if let Some(t) = evento_tecla(&ev) {
                         // Nota fora da faixa fica registrada no Espelho; as outras não mudam.
                         let _ = self.espelho.aplicar_evento(t);
@@ -194,12 +347,17 @@ impl AppPianoTutor {
     /// Leva ao som as notas que a simulação (mouse e teclado do PC) aplicou no Espelho.
     pub fn encaminhar_simulacao(&mut self) {
         for ev in self.espelho.drenar_simulados() {
+            if ev.acao == AcaoTecla::Ligar {
+                let agora = self.som.agora_ns();
+                self.ritmo.toque(agora);
+            }
             self.som.nota_simulada(ev);
         }
     }
 
     /// Pânico: all-notes-off imediato no motor e Espelho limpo (simulação inclusive).
     pub fn panico(&mut self) {
+        self.ritmo.parar();
         self.espelho.liberar_simulacao();
         // As liberações da simulação perdem o sentido: o pânico corta tudo.
         let _ = self.espelho.drenar_simulados();
@@ -208,6 +366,16 @@ impl AppPianoTutor {
     }
 
     pub fn executar_timbres(&mut self, pedidos: Vec<AcaoTimbres>) {
+        let salvar = pedidos
+            .iter()
+            .any(|p| !matches!(p, AcaoTimbres::Panico | AcaoTimbres::ReabrirSaida));
+        self.executar_timbres_sem_salvar(pedidos);
+        if salvar {
+            self.salvar_preferencias();
+        }
+    }
+
+    fn executar_timbres_sem_salvar(&mut self, pedidos: Vec<AcaoTimbres>) {
         for p in pedidos {
             match p {
                 AcaoTimbres::CarregarSf2(caminho) if caminho.is_empty() => {
@@ -223,6 +391,9 @@ impl AppPianoTutor {
                 AcaoTimbres::Volume(v) => self.som.definir_volume(v),
                 AcaoTimbres::Panico => self.panico(),
                 AcaoTimbres::ReabrirSaida => self.som.reabrir_saida(),
+                AcaoTimbres::ConfigTeclado(c) => {
+                    self.timbres.erro_timbre = self.som.definir_config_teclado(c).err();
+                }
             }
         }
     }
@@ -241,6 +412,34 @@ pub fn evento_tecla(ev: &EventoMidi) -> Option<EventoTecla> {
         acao,
         nota,
     })
+}
+
+/// Arquivos na pasta de dados (`~/.local/share/piano-tutor/`).
+pub const ARQUIVO_PERFIL: &str = "teclado.txt";
+pub const ARQUIVO_RELATORIO: &str = "rev-as-calibracao.md";
+pub const ARQUIVO_PREFERENCIAS: &str = "preferencias.txt";
+
+/// Data de hoje (UTC) em AAAA-MM-DD, sem dependências.
+pub fn data_de_hoje() -> String {
+    let dias = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map_or(0, |d| d.as_secs() / 86_400);
+    data_civil(i64::try_from(dias).unwrap_or(0))
+}
+
+/// Dias desde 1970-01-01 para AAAA-MM-DD (algoritmo de Howard Hinnant).
+pub fn data_civil(dias: i64) -> String {
+    let z = dias + 719_468;
+    let era = z.div_euclid(146_097);
+    let doe = z - era * 146_097;
+    let yoe = (doe - doe / 1460 + doe / 36_524 - doe / 146_096) / 365;
+    let y = yoe + era * 400;
+    let doy = doe - (365 * yoe + yoe / 4 - yoe / 100);
+    let mp = (5 * doy + 2) / 153;
+    let d = doy - (153 * mp + 2) / 5 + 1;
+    let m = if mp < 10 { mp + 3 } else { mp - 9 };
+    let y = if m <= 2 { y + 1 } else { y };
+    format!("{y:04}-{m:02}-{d:02}")
 }
 
 /// Configuração da casca: título, tokens, temas e tema inicial.
@@ -265,8 +464,11 @@ impl AppCasca for AppPianoTutor {
             vec![
                 ItemNavegacao::novo(ROTA_INICIO, "Início", "inicio"),
                 ItemNavegacao::novo(ROTA_MONITOR, "Monitor MIDI", "midi"),
+                ItemNavegacao::novo(ROTA_CALIBRACAO, "Calibrar teclado", "midi"),
                 ItemNavegacao::novo(ROTA_TECLADO, "Teclado de 61 teclas", "teclado"),
-                ItemNavegacao::novo(ROTA_TIMBRES, "Timbres", "som"),
+                ItemNavegacao::novo(ROTA_ACORDES, "Acordes e escalas", "teclado"),
+                ItemNavegacao::novo(ROTA_RITMOS, "Ritmos", "som"),
+                ItemNavegacao::novo(ROTA_TIMBRES, "Sons e timbres", "som"),
                 ItemNavegacao::novo(ROTA_SOBRE, "Sobre", "sobre"),
             ],
         )]
@@ -282,14 +484,21 @@ impl AppCasca for AppPianoTutor {
             ROTA_SOBRE => vec![inicio(), Elo::texto("Sobre")],
             ROTA_TECLADO => vec![inicio(), Elo::texto("Teclado de 61 teclas")],
             ROTA_MONITOR => vec![inicio(), Elo::texto("Monitor MIDI")],
-            ROTA_TIMBRES => vec![inicio(), Elo::texto("Timbres")],
+            ROTA_TIMBRES => vec![inicio(), Elo::texto("Sons e timbres")],
+            ROTA_CALIBRACAO => vec![inicio(), Elo::texto("Calibrar teclado")],
+            ROTA_RITMOS => vec![inicio(), Elo::texto("Ritmos")],
+            ROTA_ACORDES => vec![inicio(), Elo::texto("Acordes e escalas")],
             _ => vec![Elo::texto("Início")],
         }
     }
 
     fn desenhar_pagina(&mut self, ui: &mut egui::Ui, rota: &Rota, _local: Local) {
         self.processar_quadro(ui.ctx());
-        if rota.como_texto() != ROTA_TECLADO {
+        rota.como_texto().clone_into(&mut self.rota_atual);
+        if rota.como_texto() != ROTA_ACORDES {
+            self.espelho.guias.clear();
+        }
+        if rota.como_texto() != ROTA_TECLADO && rota.como_texto() != ROTA_ACORDES {
             // Fora da tela Espelho ninguém recebe o "solta": não deixa nota presa.
             self.espelho.liberar_simulacao();
         }
@@ -301,6 +510,46 @@ impl AppCasca for AppPianoTutor {
             ROTA_TIMBRES => {
                 let pedidos = tela_timbres::desenhar_tela(ui, &self.som, &mut self.timbres);
                 self.executar_timbres(pedidos);
+            }
+            ROTA_RITMOS => tela_ritmos::desenhar_tela(ui, &mut self.ritmo, &mut self.som),
+            ROTA_ACORDES => {
+                tela_acordes::desenhar_tela(
+                    ui,
+                    &mut self.acordes,
+                    &mut self.espelho,
+                    &mut self.som,
+                );
+            }
+            ROTA_CALIBRACAO => {
+                let conectado = match self.monitor.gerenciador().estado() {
+                    EstadoConexao::Conectado { .. } => {
+                        self.monitor.gerenciador().porta_selecionada()
+                    }
+                    _ => None,
+                };
+                if let Some(c) = conectado
+                    && self.calibracao.dispositivo != c
+                {
+                    c.clone_into(&mut self.calibracao.dispositivo);
+                }
+                let ctx = ContextoCalibracao {
+                    conectado,
+                    perfil_em_uso: self.perfil.as_ref().map(|p| {
+                        format!(
+                            "MIDI {} a {}{}",
+                            p.grave,
+                            p.aguda(),
+                            if p.dispositivo.is_empty() {
+                                String::new()
+                            } else {
+                                format!(" ({})", p.dispositivo)
+                            }
+                        )
+                    }),
+                    mensagem: self.mensagem_calibracao.as_deref(),
+                };
+                let pedidos = tela_calibracao::desenhar_tela(ui, &mut self.calibracao, &ctx);
+                self.executar_calibracao(pedidos);
             }
             ROTA_SOBRE => {
                 ui.heading("Sobre o Piano Tutor");
