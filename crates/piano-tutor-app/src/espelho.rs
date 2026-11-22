@@ -4,7 +4,8 @@
 //! acrescenta o que é do app: geometria do desenho, hit-test, a nota atual, o teclado do PC
 //! como fonte de **simulação** e o aviso de que a fonte não é o teclado físico.
 //!
-//! Ponto de entrada para o futuro gerenciador MIDI: [`EstadoEspelho::aplicar_evento`].
+//! Ponto de entrada do gerenciador MIDI: [`EstadoEspelho::aplicar_evento`]. Os eventos da
+//! simulação saem por [`EstadoEspelho::drenar_simulados`] para também soarem.
 
 use bancada_casca::egui::{Key, Rect};
 use piano_tutor_core::NotaMidi;
@@ -218,6 +219,8 @@ pub struct EstadoEspelho {
     notas_do_pc: Vec<(Key, NotaMidi)>,
     base_pc: u8,
     erro: Option<String>,
+    /// Eventos da simulação já aplicados, à espera do app levá-los ao som.
+    simulados: Vec<EventoTecla>,
     pub ultimo_desenho: Option<ResumoDesenho>,
 }
 
@@ -252,6 +255,7 @@ impl EstadoEspelho {
             notas_do_pc: Vec::new(),
             base_pc: BASE_PC_INICIAL,
             erro: None,
+            simulados: Vec::new(),
             ultimo_desenho: None,
         }
     }
@@ -372,9 +376,17 @@ impl EstadoEspelho {
             AcaoTecla::Desligar => self.simulacao.soltar(nota),
         }
         while let Some(ev) = self.simulacao.proximo_evento() {
-            // O erro já fica em `self.erro`; nota fora da faixa não altera nada.
-            let _ = self.aplicar_evento(ev);
+            // O erro já fica em `self.erro`; nota fora da faixa não altera nada (nem soa).
+            if self.aplicar_evento(ev).is_ok() {
+                self.simulados.push(ev);
+            }
         }
+    }
+
+    /// Entrega (e esvazia) os eventos da simulação aplicados desde a última chamada, na
+    /// ordem, para o app tocá-los no motor de áudio.
+    pub fn drenar_simulados(&mut self) -> Vec<EventoTecla> {
+        std::mem::take(&mut self.simulados)
     }
 
     pub fn pressionar_simulado(&mut self, nota: NotaMidi) {
@@ -856,6 +868,31 @@ mod testes {
         assert_eq!(e.teclas().quantidade(), 0);
         let i = e.nota_atual().expect("última solta");
         assert!(!i.pressionada);
+    }
+
+    #[test]
+    fn simulacao_entrega_os_eventos_aplicados_para_o_som_e_ignora_fora_da_faixa() {
+        use piano_tutor_core::teclado::OrigemEventos;
+        let mut e = EstadoEspelho::novo();
+        e.pressionar_simulado(n(60));
+        e.pressionar_simulado(n(10)); // fora da faixa 36–96: nem liga nem soa
+        e.soltar_simulado(n(60));
+        let ev = e.drenar_simulados();
+        let resumo: Vec<(AcaoTecla, u8)> = ev.iter().map(|x| (x.acao, x.nota.numero())).collect();
+        assert_eq!(
+            resumo,
+            vec![(AcaoTecla::Ligar, 60), (AcaoTecla::Desligar, 60)]
+        );
+        assert!(ev.iter().all(|x| x.origem == OrigemEventos::Simulacao));
+        assert!(e.drenar_simulados().is_empty(), "drenar esvazia");
+        // Evento físico não entra na fila da simulação (o app já o leva ao som).
+        let fisico = EventoTecla {
+            origem: OrigemEventos::DispositivoFisico,
+            acao: AcaoTecla::Ligar,
+            nota: n(62),
+        };
+        assert!(e.aplicar_evento(fisico).is_ok());
+        assert!(e.drenar_simulados().is_empty());
     }
 
     #[test]

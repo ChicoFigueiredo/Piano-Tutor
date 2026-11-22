@@ -30,25 +30,19 @@ pub const TEMAS: [TemaApp; 3] = [
 /// Rota da tela Espelho do teclado (F02).
 pub const ROTA_TECLADO: &str = "teclado";
 
-/// Situação da conexão MIDI. Na F00 o app não abre MIDI: só existe "não conectado".
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum StatusMidi {
-    NaoConectado,
-}
+/// Rota do painel Monitor MIDI (F01).
+pub const ROTA_MONITOR: &str = "monitor-midi";
 
-impl StatusMidi {
-    pub fn texto(self) -> &'static str {
-        match self {
-            StatusMidi::NaoConectado => "MIDI: não conectado",
-        }
-    }
-}
+/// Rota da tela Timbres (F03).
+pub const ROTA_TIMBRES: &str = "timbres";
 
 /// O que o app pede à casca depois de executar uma ação.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Efeito {
     TrocarTema(&'static str),
     AbrirRota(&'static str),
+    /// All-notes-off imediato no motor de áudio (e Espelho limpo).
+    Panico,
 }
 
 /// Ids das ações do app (prefixo `piano.`). As da casca (`casca.*`) ficam com a casca.
@@ -59,6 +53,7 @@ pub mod ids {
     pub const MONITOR_MIDI: &str = "piano.monitor-midi";
     pub const TECLADO_61: &str = "piano.teclado-61";
     pub const TIMBRES: &str = "piano.timbres";
+    pub const PANICO: &str = "piano.panico";
 
     /// Id da ação que escolhe um tema específico.
     pub fn tema(id_do_tema: &str) -> String {
@@ -71,7 +66,6 @@ pub mod ids {
 pub struct EstadoApp {
     tema: usize,
     ribbon_recolhido: bool,
-    midi: StatusMidi,
 }
 
 impl Default for EstadoApp {
@@ -85,7 +79,6 @@ impl EstadoApp {
         Self {
             tema: 0,
             ribbon_recolhido: false,
-            midi: StatusMidi::NaoConectado,
         }
     }
 
@@ -95,10 +88,6 @@ impl EstadoApp {
 
     pub fn ribbon_recolhido(&self) -> bool {
         self.ribbon_recolhido
-    }
-
-    pub fn midi(&self) -> StatusMidi {
-        self.midi
     }
 
     /// Escolhe um tema pelo id. Devolve `false` (sem mudar nada) se o id não existe.
@@ -125,8 +114,7 @@ impl EstadoApp {
         self.ribbon_recolhido = ribbon_recolhido;
     }
 
-    /// Executa uma ação do app e diz o que pedir à casca. Id desconhecido (inclusive as ações
-    /// "em breve", que nascem desabilitadas) não faz nada.
+    /// Executa uma ação do app e diz o que pedir à casca. Id desconhecido não faz nada.
     pub fn executar(&mut self, id: &str) -> Option<Efeito> {
         if id == ids::TEMA_ALTERNAR {
             return Some(Efeito::TrocarTema(self.alternar_tema().id));
@@ -137,6 +125,15 @@ impl EstadoApp {
         if id == ids::TECLADO_61 {
             return Some(Efeito::AbrirRota(ROTA_TECLADO));
         }
+        if id == ids::MONITOR_MIDI {
+            return Some(Efeito::AbrirRota(ROTA_MONITOR));
+        }
+        if id == ids::TIMBRES {
+            return Some(Efeito::AbrirRota(ROTA_TIMBRES));
+        }
+        if id == ids::PANICO {
+            return Some(Efeito::Panico);
+        }
         let id_do_tema = id.strip_prefix(ids::PREFIXO_TEMA)?;
         if self.definir_tema(id_do_tema) {
             Some(Efeito::TrocarTema(self.tema_atual().id))
@@ -145,11 +142,11 @@ impl EstadoApp {
         }
     }
 
-    /// Textos da barra de status, da esquerda para a direita: versão, MIDI, Ribbon e tema.
-    pub fn textos_de_status(&self) -> [String; 4] {
+    /// Textos da barra de status que dependem só deste estado: versão, Ribbon e tema. Os de
+    /// MIDI e áudio vêm do Monitor e do serviço de som.
+    pub fn textos_de_status(&self) -> [String; 3] {
         [
             format!("Piano Tutor {VERSAO}"),
-            self.midi.texto().to_owned(),
             if self.ribbon_recolhido {
                 "Ribbon: recolhido".to_owned()
             } else {
@@ -161,9 +158,10 @@ impl EstadoApp {
 }
 
 /// Parágrafos da página inicial (central).
-pub const BOAS_VINDAS: [&str; 4] = [
-    "Esta é a janela mínima da fase F00: prova que o aplicativo abre sobre a bancada-casca.",
-    "Ainda não há MIDI nem som. O teclado de 61 teclas funciona só em simulação (mouse e teclado do PC); as ações marcadas \"(em breve)\" não fazem nada.",
+pub const BOAS_VINDAS: [&str; 5] = [
+    "Marco M1: teclado físico → MIDI → Espelho + som, no Linux.",
+    "Monitor MIDI: escolha a porta do teclado, conecte e acompanhe os eventos e o log da sessão. Sem dispositivo, o teclado de 61 teclas funciona em simulação (mouse e teclado do PC).",
+    "Timbres: SoundFont, piano ou segundo timbre, volume e Pânico (Ctrl+. corta todo o som).",
     "Ctrl+F1 recolhe ou expande o Ribbon. Ctrl+T alterna o tema. Ctrl+K abre a paleta de ações.",
     "A aba Exibir tem os três temas (Noite, Claro e Ébano) e os modos do Ribbon.",
 ];
@@ -173,11 +171,10 @@ mod testes {
     use super::*;
 
     #[test]
-    fn comeca_no_primeiro_tema_com_ribbon_expandido_e_sem_midi() {
+    fn comeca_no_primeiro_tema_com_ribbon_expandido() {
         let e = EstadoApp::novo();
         assert_eq!(e.tema_atual().id, "noite");
         assert!(!e.ribbon_recolhido());
-        assert_eq!(e.midi(), StatusMidi::NaoConectado);
     }
 
     #[test]
@@ -224,10 +221,10 @@ mod testes {
     }
 
     #[test]
-    fn acoes_em_breve_e_desconhecidas_nao_fazem_nada() {
+    fn acoes_desconhecidas_nao_fazem_nada() {
         let mut e = EstadoApp::novo();
         let antes = e.clone();
-        for id in [ids::MONITOR_MIDI, ids::TIMBRES, "casca.ribbon.recolher", ""] {
+        for id in ["piano.inexistente", "casca.ribbon.recolher", ""] {
             assert_eq!(e.executar(id), None, "{id}");
         }
         assert_eq!(e, antes);
@@ -241,6 +238,20 @@ mod testes {
             Some(Efeito::AbrirRota("teclado"))
         );
         assert_eq!(ROTA_TECLADO, "teclado");
+    }
+
+    #[test]
+    fn monitor_timbres_e_panico_tem_efeito() {
+        let mut e = EstadoApp::novo();
+        assert_eq!(
+            e.executar(ids::MONITOR_MIDI),
+            Some(Efeito::AbrirRota(ROTA_MONITOR))
+        );
+        assert_eq!(
+            e.executar(ids::TIMBRES),
+            Some(Efeito::AbrirRota(ROTA_TIMBRES))
+        );
+        assert_eq!(e.executar(ids::PANICO), Some(Efeito::Panico));
     }
 
     #[test]
@@ -261,13 +272,12 @@ mod testes {
     }
 
     #[test]
-    fn status_mostra_versao_e_midi_nao_conectado() {
+    fn status_mostra_versao_ribbon_e_tema() {
         let t = EstadoApp::novo().textos_de_status();
         assert_eq!(t[0], format!("Piano Tutor {}", env!("CARGO_PKG_VERSION")));
         assert!(t[0].contains(VERSAO));
-        assert_eq!(t[1], "MIDI: não conectado");
-        assert_eq!(t[2], "Ribbon: expandido");
-        assert_eq!(t[3], "Tema: Noite");
+        assert_eq!(t[1], "Ribbon: expandido");
+        assert_eq!(t[2], "Tema: Noite");
     }
 
     #[test]
@@ -275,7 +285,7 @@ mod testes {
         let mut e = EstadoApp::novo();
         e.sincronizar("ebano", true);
         let t = e.textos_de_status();
-        assert_eq!(t[2], "Ribbon: recolhido");
-        assert_eq!(t[3], "Tema: Ébano");
+        assert_eq!(t[1], "Ribbon: recolhido");
+        assert_eq!(t[2], "Tema: Ébano");
     }
 }

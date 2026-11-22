@@ -1,6 +1,6 @@
 [package]
 name = "piano-tutor-app"
-description = "Aplicativo \"Olá Piano Tutor\": janela mínima sobre a bancada-casca (F00)"
+description = "Piano Tutor: teclado MIDI, espelho de 61 teclas e som SoundFont sobre a bancada-casca (M1)"
 version.workspace = true
 edition.workspace = true
 rust-version.workspace = true
@@ -17,6 +17,9 @@ path = "src/main.rs"
 [dependencies]
 # Núcleo musical puro (teclado de 61 teclas, nomes de nota, modo simulação).
 piano-tutor-core = { path = "../piano-tutor-core" }
+# Entrada MIDI (F01) e motor de áudio (F03) do próprio workspace.
+piano-tutor-midi = { path = "../piano-tutor-midi" }
+piano-tutor-audio = { path = "../piano-tutor-audio" }
 # Shell compartilhada (ADR-0002/0004), repositório público MIT OR Apache-2.0, fixada por SHA.
 bancada-casca = { git = "https://github.com/ChicoFigueiredo/bancada", rev = "94818fd95dc74b5a42a7757b1d258ed17822ed06" }
 
@@ -30,7 +33,7 @@ workspace = true
 name = "piano-tutor"
 maintainer = "Piano Tutor <sem-email>"
 copyright = "2026, Piano Tutor"
-extended-description = "Aplicativo Olá Piano Tutor: toca MIDI com motor SoundFont, sem Python."
+extended-description = "Piano Tutor: ouve o teclado MIDI, mostra o espelho de 61 teclas e toca com motor SoundFont (FluidR3_GM), sem Python."
 section = "sound"
 priority = "optional"
 depends = "$auto, fluid-soundfont-gm"

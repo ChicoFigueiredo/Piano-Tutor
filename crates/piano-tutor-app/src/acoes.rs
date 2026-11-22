@@ -4,41 +4,28 @@ use crate::estado::{EstadoApp, TEMAS, ids};
 use bancada_casca::egui::Key;
 use bancada_casca::{Aba, Acao, Atalho, Grupo, ids as ids_casca};
 
-/// Ações que ainda não existem: nascem desabilitadas, com o motivo e a fase em que chegam.
-/// `(id, rótulo, motivo)`. O rótulo termina em "(em breve)" para ninguém achar que funcionam.
-pub const EM_BREVE: [(&str, &str, &str); 2] = [
-    (
-        ids::MONITOR_MIDI,
-        "Monitor MIDI (em breve)",
-        "Chega na fase F01, com o REVAS e o MIDI real.",
-    ),
-    (
-        ids::TIMBRES,
-        "Timbres (em breve)",
-        "Chega na fase F03, com o som.",
-    ),
-];
+/// Atalho do Pânico: Ctrl+. (Esc já é da casca: fecha paleta, bastidores e KeyTips). Com Ctrl,
+/// dispara mesmo com um campo de texto em foco.
+pub const ATALHO_PANICO: Atalho = Atalho::ctrl(Key::Period);
 
 /// A lista única de ações do app, com o estado atual (tema marcado).
 pub fn acoes(estado: &EstadoApp) -> Vec<Acao> {
-    let mut lista = Vec::new();
-
-    for (id, rotulo, motivo) in EM_BREVE {
-        lista.push(Acao::nova(id, rotulo).desabilitada(motivo));
-    }
-    lista.push(Acao::nova(ids::TECLADO_61, "Teclado de 61 teclas").dica(
-        "Abre o espelho do teclado (por enquanto só em simulação, com mouse e teclado do PC)",
-    ));
-    lista.push(
+    let mut lista = vec![
+        Acao::nova(ids::MONITOR_MIDI, "Monitor MIDI")
+            .dica("Escolhe a porta MIDI, conecta e mostra eventos, capacidades e o log da sessão"),
+        Acao::nova(ids::TECLADO_61, "Teclado de 61 teclas")
+            .dica("Abre o espelho do teclado: notas do teclado físico ou, sem ele, da simulação"),
+        Acao::nova(ids::TIMBRES, "Timbres")
+            .dica("SoundFont, piano ou segundo timbre, volume e diagnóstico da saída de áudio"),
+        Acao::nova(ids::PANICO, "Pânico")
+            .dica("Corta todo o som agora (all-notes-off imediato) e limpa o Espelho")
+            .atalho(ATALHO_PANICO),
         Acao::nova(ids::SOBRE, "Sobre o Piano Tutor")
             .dica("Mostra a página \"Sobre\" no centro da janela"),
-    );
-
-    lista.push(
         Acao::nova(ids::TEMA_ALTERNAR, "Alternar tema")
             .dica("Passa ao próximo tema")
             .atalho(Atalho::ctrl(Key::T)),
-    );
+    ];
     let atual = estado.tema_atual().id;
     for tema in TEMAS {
         lista.push(
@@ -62,7 +49,7 @@ pub fn abas() -> Vec<Aba> {
                 "Teclado",
                 &[ids::MONITOR_MIDI, ids::TECLADO_61],
             ))
-            .grupo(Grupo::novo("som", "Som", &[ids::TIMBRES]))
+            .grupo(Grupo::novo("som", "Som", &[ids::TIMBRES, ids::PANICO]))
             .grupo(Grupo::novo("ajuda", "Ajuda", &[ids::SOBRE])),
         Aba::nova("exibir", "Exibir", "E")
             .grupo(Grupo::novo("tema", "Tema", &grupo_tema))
@@ -104,6 +91,7 @@ mod testes {
             ids::MONITOR_MIDI,
             ids::TECLADO_61,
             ids::TIMBRES,
+            ids::PANICO,
             ids::SOBRE,
             ids::TEMA_ALTERNAR,
             "piano.tema.noite",
@@ -112,22 +100,34 @@ mod testes {
         ] {
             assert!(l.get(id).is_some(), "falta a ação {id}");
         }
-        assert_eq!(l.len(), 8);
+        assert_eq!(l.len(), 9);
         let ids: HashSet<&str> = l.iter().map(|a| a.id.as_str()).collect();
         assert_eq!(ids.len(), l.len());
         assert!(ids.iter().all(|i| i.starts_with("piano.")));
     }
 
     #[test]
-    fn acoes_em_breve_sao_desabilitadas_nomeadas_e_dizem_o_motivo() {
+    fn nenhuma_acao_fica_em_breve() {
         let l = lista();
-        for (id, rotulo, _) in EM_BREVE {
-            let a = l.get(id).expect("registrada");
-            assert!(!a.esta_habilitada(), "{id} não pode fingir que funciona");
-            assert!(a.rotulo.ends_with("(em breve)"), "{rotulo}");
-            let motivo = a.motivo().expect("motivo");
-            assert!(motivo.contains("fase F0"), "{motivo}");
+        for a in l.iter() {
+            assert!(!a.rotulo.contains("em breve"), "{}", a.rotulo);
+            assert!(a.esta_habilitada(), "{} desabilitada", a.id);
         }
+    }
+
+    #[test]
+    fn panico_tem_atalho_ctrl_ponto_e_fica_no_grupo_som() {
+        let l = lista();
+        let a = l.get(ids::PANICO).expect("registrada");
+        assert_eq!(a.atalho, Some(Atalho::ctrl(Key::Period)));
+        let inicio = abas()
+            .into_iter()
+            .find(|a| a.id == "inicio")
+            .expect("aba Início");
+        let ids_inicio: Vec<&str> = inicio.acoes().collect();
+        assert!(ids_inicio.contains(&ids::PANICO));
+        assert!(ids_inicio.contains(&ids::TIMBRES));
+        assert!(ids_inicio.contains(&ids::MONITOR_MIDI));
     }
 
     #[test]
@@ -139,6 +139,9 @@ mod testes {
         assert!(!teclado.rotulo.contains("em breve"), "{}", teclado.rotulo);
         assert!(l.esta_habilitada(ids::TECLADO_61));
         assert!(l.esta_habilitada(ids::TEMA_ALTERNAR));
+        assert!(l.esta_habilitada(ids::MONITOR_MIDI));
+        assert!(l.esta_habilitada(ids::TIMBRES));
+        assert!(l.esta_habilitada(ids::PANICO));
     }
 
     #[test]
