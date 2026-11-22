@@ -20,3 +20,20 @@ bancada-casca = { git = "https://github.com/ChicoFigueiredo/bancada", rev = "948
 
 [lints]
 workspace = true
+
+# Empacotamento .deb mínimo (F03, ticket #40). Gerado por scripts/empacotar-deb.sh.
+# O SoundFont FluidR3_GM (MIT, Debian main) NÃO é embutido: vem como dependência do sistema.
+# Decisão registrada em docs/aceite/F03/auditoria-sf2.md.
+[package.metadata.deb]
+name = "piano-tutor"
+maintainer = "Piano Tutor <sem-email>"
+copyright = "2026, Piano Tutor"
+extended-description = "Aplicativo Olá Piano Tutor: toca MIDI com motor SoundFont, sem Python."
+section = "sound"
+priority = "optional"
+depends = "$auto, fluid-soundfont-gm"
+assets = [
+    ["target/release/piano-tutor-app", "usr/bin/piano-tutor", "755"],
+    ["pacote/piano-tutor.desktop", "usr/share/applications/piano-tutor.desktop", "644"],
+    ["../../README.md", "usr/share/doc/piano-tutor/README.md", "644"],
+]
