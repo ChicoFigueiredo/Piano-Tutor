@@ -1,6 +1,6 @@
 //! Montagem do relatório Markdown a partir de estruturas (lógica pura).
 
-use crate::sanitizar::sanitizar;
+use piano_tutor_core::sanitizar::sanitizar;
 
 /// Frase de limitação obrigatória do relatório. Vale para qualquer máquina
 /// (nuvem ou cerebro): listar portas não prova que o REVAS ou o áudio funcionam.

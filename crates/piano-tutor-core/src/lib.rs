@@ -1,8 +1,11 @@
 //! Núcleo mínimo para provar a toolchain: **não** implementa conexão MIDI/áudio.
 //! Este módulo inicial só realiza cálculos determinísticos de nota em temperamento igual.
 //! O módulo [`midi`] adiciona o evento MIDI normalizado e o parser (código puro).
+//! O módulo [`sanitizar`] remove seriais e VID:PID de textos destinados a relatórios e logs.
 
 pub mod midi;
+
+pub mod sanitizar;
 
 pub mod teclado;
 
