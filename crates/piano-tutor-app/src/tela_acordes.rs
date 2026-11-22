@@ -306,9 +306,10 @@ fn grau(semitons: u8) -> String {
     ];
     if semitons >= 12 {
         (match semitons - 12 {
-                2 => "9",
-                x => G[usize::from(x % 12)],
-            }).to_string()
+            2 => "9",
+            x => G[usize::from(x % 12)],
+        })
+        .to_string()
     } else {
         G[usize::from(semitons)].to_owned()
     }

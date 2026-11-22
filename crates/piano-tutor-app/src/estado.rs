@@ -42,6 +42,9 @@ pub const ROTA_CALIBRACAO: &str = "calibracao";
 /// Rota de Ritmos (F08, F09).
 pub const ROTA_RITMOS: &str = "ritmos";
 
+/// Rota de Gravação (F06).
+pub const ROTA_GRAVACAO: &str = "gravacao";
+
 /// Rota de Exercícios (F05).
 pub const ROTA_EXERCICIOS: &str = "exercicios";
 
@@ -70,6 +73,7 @@ pub mod ids {
     pub const RITMOS: &str = "piano.ritmos";
     pub const ACORDES: &str = "piano.acordes";
     pub const EXERCICIOS: &str = "piano.exercicios";
+    pub const GRAVACAO: &str = "piano.gravacao";
 
     /// Id da ação que escolhe um tema específico.
     pub fn tema(id_do_tema: &str) -> String {
@@ -152,6 +156,9 @@ impl EstadoApp {
         }
         if id == ids::RITMOS {
             return Some(Efeito::AbrirRota(ROTA_RITMOS));
+        }
+        if id == ids::GRAVACAO {
+            return Some(Efeito::AbrirRota(ROTA_GRAVACAO));
         }
         if id == ids::EXERCICIOS {
             return Some(Efeito::AbrirRota(ROTA_EXERCICIOS));

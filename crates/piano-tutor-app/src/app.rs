@@ -18,15 +18,17 @@ use crate::acordes::EstadoAcordes;
 use crate::calibracao::{Calibracao, PerfilTeclado};
 use crate::espelho::EstadoEspelho;
 use crate::estado::{
-    BOAS_VINDAS, Efeito, EstadoApp, ROTA_ACORDES, ROTA_CALIBRACAO, ROTA_EXERCICIOS, ROTA_MONITOR,
-    ROTA_RITMOS, ROTA_TECLADO, ROTA_TIMBRES, TEMAS, VERSAO,
+    BOAS_VINDAS, Efeito, EstadoApp, ROTA_ACORDES, ROTA_CALIBRACAO, ROTA_EXERCICIOS, ROTA_GRAVACAO,
+    ROTA_MONITOR, ROTA_RITMOS, ROTA_TECLADO, ROTA_TIMBRES, TEMAS, VERSAO,
 };
 use crate::exercicios::EstadoExercicios;
+use crate::gravacao::EstadoGravacao;
 use crate::monitor::{EstadoMonitor, pasta_de_sessoes_do_ambiente};
 use crate::preferencias::PreferenciasSom;
 use crate::ritmo::EstadoRitmo;
 use crate::som::{EstadoSom, SF2_PADRAO, ServicoSom, abridor_cpal, carregador_arquivo};
 use crate::tela_calibracao::{AcaoCalibracao, ContextoCalibracao};
+use crate::tela_gravacao;
 use crate::tela_timbres::{AcaoTimbres, EstadoTimbres};
 use crate::{TEMAS_JSON, TOKENS_JSON};
 use crate::{tela_acordes, tela_calibracao, tela_exercicios, tela_ritmos};
@@ -103,6 +105,8 @@ pub struct AppPianoTutor {
     pub acordes: EstadoAcordes,
     /// Exercícios progressivos (F05).
     pub exercicios: EstadoExercicios,
+    /// Gravação e reprodução (F06).
+    pub gravacao: EstadoGravacao,
     /// Assistente de calibração e o perfil em uso.
     pub calibracao: Calibracao,
     pub perfil: Option<PerfilTeclado>,
@@ -167,6 +171,7 @@ impl AppPianoTutor {
             ritmo: EstadoRitmo::novo(pasta_dados.clone()),
             acordes: EstadoAcordes::default(),
             exercicios: EstadoExercicios::novo(pasta_dados.clone()),
+            gravacao: EstadoGravacao::novo(pasta_dados.clone()),
             calibracao: Calibracao::default(),
             perfil,
             mensagem_calibracao: None,
@@ -290,7 +295,7 @@ impl AppPianoTutor {
         if self.som.carregando().is_some() {
             proximo = proximo.min(Duration::from_millis(250));
         }
-        if self.ritmo.tocando() {
+        if self.ritmo.tocando() || self.gravacao.tocando() || self.gravacao.gravando() {
             // Agenda o ritmo e anima o pulso: ~60 quadros por segundo enquanto toca.
             proximo = proximo.min(Duration::from_millis(16));
         }
@@ -305,6 +310,7 @@ impl AppPianoTutor {
         self.som.atualizar();
         self.aplicar_preferencias();
         self.ritmo.atualizar(&mut self.som);
+        self.gravacao.atualizar(&mut self.som);
         self.conferir_desafio();
     }
 
@@ -323,6 +329,7 @@ impl AppPianoTutor {
         for s in saidas {
             match s {
                 SaidaMidi::Evento(ev) => {
+                    self.gravacao.evento(&ev);
                     if self.rota_atual == ROTA_CALIBRACAO {
                         self.calibracao.evento(&ev);
                     }
@@ -370,6 +377,8 @@ impl AppPianoTutor {
             if ev.acao == AcaoTecla::Ligar {
                 self.ritmo.toque(agora);
             }
+            self.gravacao
+                .nota_simulada(ev.acao == AcaoTecla::Ligar, ev.nota, agora);
             if self.rota_atual == ROTA_EXERCICIOS {
                 self.exercicios
                     .nota(ev.acao == AcaoTecla::Ligar, ev.nota, agora);
@@ -492,6 +501,7 @@ impl AppCasca for AppPianoTutor {
                 ItemNavegacao::novo(ROTA_EXERCICIOS, "Exercícios", "teclado"),
                 ItemNavegacao::novo(ROTA_ACORDES, "Acordes e escalas", "teclado"),
                 ItemNavegacao::novo(ROTA_RITMOS, "Ritmos", "som"),
+                ItemNavegacao::novo(ROTA_GRAVACAO, "Gravar e ouvir", "som"),
                 ItemNavegacao::novo(ROTA_TIMBRES, "Sons e timbres", "som"),
                 ItemNavegacao::novo(ROTA_SOBRE, "Sobre", "sobre"),
             ],
@@ -513,6 +523,7 @@ impl AppCasca for AppPianoTutor {
             ROTA_RITMOS => vec![inicio(), Elo::texto("Ritmos")],
             ROTA_ACORDES => vec![inicio(), Elo::texto("Acordes e escalas")],
             ROTA_EXERCICIOS => vec![inicio(), Elo::texto("Exercícios")],
+            ROTA_GRAVACAO => vec![inicio(), Elo::texto("Gravar e ouvir")],
             _ => vec![Elo::texto("Início")],
         }
     }
@@ -537,6 +548,7 @@ impl AppCasca for AppPianoTutor {
                 let pedidos = tela_timbres::desenhar_tela(ui, &self.som, &mut self.timbres);
                 self.executar_timbres(pedidos);
             }
+            ROTA_GRAVACAO => tela_gravacao::desenhar_tela(ui, &mut self.gravacao, &mut self.som),
             ROTA_EXERCICIOS => tela_exercicios::desenhar_tela(
                 ui,
                 &mut self.exercicios,
@@ -680,6 +692,15 @@ impl AppCasca for AppPianoTutor {
             &preferencias.tema,
             preferencias.modo_ribbon == ModoRibbon::Recolhido,
         );
+    }
+}
+
+/// Ao fechar a janela, gravações não salvas vão para `gravacoes/recuperacao/` (F06).
+impl Drop for AppPianoTutor {
+    fn drop(&mut self) {
+        if self.gravacao.tem_dados_nao_salvos() {
+            self.gravacao.salvar_recuperacao();
+        }
     }
 }
 
@@ -1151,3 +1172,4 @@ mod testes {
         );
     }
 }
+
