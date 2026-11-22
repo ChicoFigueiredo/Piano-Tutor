@@ -1,5 +1,8 @@
 //! Núcleo mínimo para provar a toolchain: **não** implementa conexão MIDI/áudio.
 //! Este módulo inicial só realiza cálculos determinísticos de nota em temperamento igual.
+//! O módulo [`midi`] adiciona o evento MIDI normalizado e o parser (código puro).
+
+pub mod midi;
 
 /// Identificador de altura MIDI (0 a 127). O nome de oitava segue C4 = 60.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
