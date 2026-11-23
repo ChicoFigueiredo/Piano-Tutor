@@ -10,7 +10,7 @@
 //! traz `DOCTYPE`), mas `roxmltree` não resolve entidades externas e limita a expansão.
 //!
 //! Limitações conhecidas (registradas em `docs/aceite/F07/evidencia.md`): só `score-partwise`;
-//! `.mxl` (zip) não é lido aqui; `<transpose>` e oitavas (`octave-shift`) não alteram o MIDI;
+//! `.mxl` (zip) é lido pelo módulo [`crate::mxl`], que extrai o XML e chama este leitor; `<transpose>` e oitavas (`octave-shift`) não alteram o MIDI;
 //! notas de adorno (`grace`) são mantidas no modelo mas não tocam; letra é ignorada.
 
 use roxmltree::{Document, Node, ParsingOptions};
@@ -49,6 +49,8 @@ pub enum ErroPartitura {
     LimiteExcedido(&'static str),
     /// Valor inválido num elemento (descrição).
     ValorInvalido(String),
+    /// Contêiner `.mxl` (zip) inválido, inseguro ou não suportado (motivo).
+    ContainerInvalido(String),
 }
 
 impl fmt::Display for ErroPartitura {
@@ -66,6 +68,7 @@ impl fmt::Display for ErroPartitura {
             Self::SemPartes => write!(f, "a partitura não tem partes com compassos"),
             Self::LimiteExcedido(q) => write!(f, "limite de segurança excedido: {q}"),
             Self::ValorInvalido(d) => write!(f, "valor inválido: {d}"),
+            Self::ContainerInvalido(m) => write!(f, "arquivo .mxl recusado: {m}"),
         }
     }
 }
@@ -2113,5 +2116,83 @@ mod testes {
         // Pulso composto de 6/8 vale 3/2 de semínima; 3/4 e 4/4, 1.
         assert_eq!(p.compassos[2].forma.duracao_do_pulso(), Fracao::nova(3, 2));
         assert_eq!(p.compassos[0].forma.duracao_do_pulso(), Fracao::inteiro(1));
+    }
+
+    const ODE: &str =
+        include_str!("../../../assets/partituras/beethoven-ode-a-alegria-tema.musicxml");
+    const ESTRELINHA: &str =
+        include_str!("../../../assets/partituras/tradicional-brilha-brilha-estrelinha.musicxml");
+
+    #[test]
+    fn ode_a_alegria_e_4_4_em_do_maior_com_16_compassos_e_94_notas() {
+        let p = Partitura::de_musicxml(ODE).expect("válida");
+        assert_eq!(p.partes.len(), 1);
+        assert_eq!(p.partes[0].pautas, 2);
+        assert_eq!(p.compassos.len(), 16);
+        let c0 = &p.compassos[0];
+        assert_eq!((c0.forma.batidas, c0.forma.unidade), (4, 4));
+        assert_eq!(c0.armadura.quintas, 0);
+        assert_eq!(p.total_de_notas(), 94); // 62 da melodia + 32 do baixo
+        assert_eq!(p.duracao_escrita(), Fracao::inteiro(64));
+        assert_eq!(p.andamento_inicial(), Some(100.0));
+        assert!(p.direitos.as_deref().is_some_and(|d| d.contains("CC0")));
+        let claves = &p.partes[0].compassos[0].claves;
+        assert_eq!(claves.len(), 2);
+        assert_eq!(claves[0].clave.sinal, SinalClave::Sol);
+        assert_eq!(claves[1].clave.sinal, SinalClave::Fa);
+        // Primeiro compasso da melodia: Mi Mi Fá Sol; baixo: Dó3 e Sol2.
+        let ev = p.eventos_de_reproducao();
+        let mel: Vec<u8> = ev
+            .iter()
+            .filter(|e| e.pauta == 1 && e.compasso == 0)
+            .map(|e| e.midi)
+            .collect();
+        assert_eq!(mel, [64, 64, 65, 67]);
+        let baixo: Vec<u8> = ev
+            .iter()
+            .filter(|e| e.pauta == 2 && e.compasso == 0)
+            .map(|e| e.midi)
+            .collect();
+        assert_eq!(baixo, [48, 43]);
+        assert_eq!(ev.len(), 94);
+        // Compasso 4: semínima pontuada + colcheia + mínima (D4 D4 em 3/2 + 1/2 + 2).
+        let c4: Vec<_> = ev
+            .iter()
+            .filter(|e| e.pauta == 1 && e.compasso == 3)
+            .collect();
+        assert_eq!(c4.len(), 3);
+        assert_eq!(c4[0].duracao, Fracao::nova(3, 2));
+        assert_eq!(c4[1].duracao, Fracao::nova(1, 2));
+        assert_eq!(c4[2].duracao, Fracao::inteiro(2));
+        assert!(p.compassos.iter().all(|c| !c.incompleto));
+    }
+
+    #[test]
+    fn estrelinha_e_4_4_em_sol_maior_com_12_compassos_e_66_notas() {
+        let p = Partitura::de_musicxml(ESTRELINHA).expect("válida");
+        assert_eq!(p.partes[0].pautas, 2);
+        assert_eq!(p.compassos.len(), 12);
+        assert_eq!(p.compassos[0].armadura.quintas, 1);
+        assert_eq!(
+            (p.compassos[0].forma.batidas, p.compassos[0].forma.unidade),
+            (4, 4)
+        );
+        assert_eq!(p.total_de_notas(), 66); // 42 da melodia + 24 do baixo
+        assert_eq!(p.duracao_escrita(), Fracao::inteiro(48));
+        assert_eq!(p.andamento_inicial(), Some(96.0));
+        let ev = p.eventos_de_reproducao();
+        let mel: Vec<u8> = ev
+            .iter()
+            .filter(|e| e.pauta == 1 && e.compasso == 0)
+            .map(|e| e.midi)
+            .collect();
+        assert_eq!(mel, [67, 67, 74, 74]); // Sol Sol Ré Ré
+        // Último compasso termina na mínima Sol4.
+        let ultimo = ev
+            .iter()
+            .rfind(|e| e.pauta == 1 && e.compasso == 11)
+            .expect("nota");
+        assert_eq!((ultimo.midi, ultimo.duracao), (67, Fracao::inteiro(2)));
+        assert!(p.compassos.iter().all(|c| !c.incompleto));
     }
 }

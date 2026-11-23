@@ -454,6 +454,25 @@ impl AppPianoTutor {
                             _ => {}
                         }
                     }
+                    if self.rota_atual == ROTA_PARTITURA {
+                        match ev {
+                            EventoMidi::NotaLigada {
+                                nota,
+                                timestamp_monotonico_ns,
+                                ..
+                            } => self
+                                .partitura
+                                .nota_tocada(true, nota, timestamp_monotonico_ns),
+                            EventoMidi::NotaDesligada {
+                                nota,
+                                timestamp_monotonico_ns,
+                                ..
+                            } => self
+                                .partitura
+                                .nota_tocada(false, nota, timestamp_monotonico_ns),
+                            _ => {}
+                        }
+                    }
                     if let Some(t) = evento_tecla(&ev) {
                         // Nota fora da faixa fica registrada no Espelho; as outras não mudam.
                         let _ = self.espelho.aplicar_evento(t);
@@ -482,6 +501,10 @@ impl AppPianoTutor {
             if self.rota_atual == ROTA_EXERCICIOS {
                 self.exercicios
                     .nota(ev.acao == AcaoTecla::Ligar, ev.nota, agora);
+            }
+            if self.rota_atual == ROTA_PARTITURA {
+                self.partitura
+                    .nota_tocada(ev.acao == AcaoTecla::Ligar, ev.nota, agora);
             }
             self.som.nota_simulada(ev);
         }

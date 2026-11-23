@@ -12,3 +12,7 @@ workspace = true
 [dependencies]
 # Leitura de MusicXML (F07): árvore XML somente leitura, Rust puro, MIT OR Apache-2.0.
 roxmltree = "=0.21.2"
+# Leitura de `.mxl` (F07): contêiner zip somente com deflate (flate2 + miniz_oxide, Rust puro), MIT.
+zip = { version = "=9.8.1", default-features = false, features = ["deflate-flate2"] }
+# Unifica o backend de flate2 (o `zip` o puxa sem backend): miniz_oxide, Rust puro, MIT OR Zlib OR Apache-2.0.
+flate2 = { version = "=1.1.11", default-features = false, features = ["rust_backend"] }
