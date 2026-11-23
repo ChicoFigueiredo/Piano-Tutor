@@ -1,0 +1,159 @@
+[licao]
+id = "escalas-maiores-sustenidos"
+trilha = "Escalas"
+ordem_trilha = 20
+ordem = 2
+titulo = "Escalas maiores com sustenidos"
+descricao = "Sol, Ré, Lá e Mi maior pelo ciclo das quintas, uma oitava, mão direita e mão esquerda."
+nivel = "iniciante"
+situacao = "proposta"
+fontes = ["Fingering charts, piano scales (Univ. de Miami): https://www.cs.miami.edu/~burt/music/finger-charts.html", "Piano Major Scales (pianoscales.org): https://pianoscales.org/major.html", "Wikiversity, Piano: how to read piano music and play scales using proper technique: https://en.wikiversity.org/wiki/Piano/How_to_read_piano_music_and_play_scales_using_proper_technique", "Circle of fifths (Wikipedia): https://en.wikipedia.org/wiki/Circle_of_fifths"]
+requer = []
+
+[[exercicio]]
+id = "g-maior-md-subdesc"
+titulo = "Sol maior: subindo e descendo, mão direita"
+tipo = "escala"
+mao = "direita"
+objetivo = "Tocar a escala de Sol maior subindo e descendo, uma oitava, com a mão direita."
+instrucoes = "Use a mão direita. Suba e volte sem parar na nota mais aguda: Sol, Lá, Si, Dó, Ré, Mi, Fá#, Sol, Fá#, Mi, Ré, Dó, Si, Lá e Sol. O Fá é sustenido: use a tecla preta (Fá#). Comece com o dedo 1."
+dedilhado = "1-2-3-1-2-3-4-5-4-3-2-1-3-2-1"
+passos = "G4 A4 B4 C5 D5 E5 F#5 G5 F#5 E5 D5 C5 B4 A4 G4"
+roteiro = [
+  "Sente-se de frente para o teclado, com a mão direita solta e os dedos curvos, perto do Dó central.",
+  "Ponha o dedo 1 no Sol. Confira as teclas pretas da escala. O Fá é sustenido: use a tecla preta (Fá#).",
+  "Depois do Si, passe o polegar por baixo e toque o Dó com o dedo 1.",
+  "Chegue ao Sol sem parar e volte pelo mesmo caminho, com os dedos ao contrário.",
+]
+erro = "Confira as teclas: O Fá é sustenido: use a tecla preta (Fá#)."
+conclusao = "Sol maior, subindo e descendo, mão direita, concluída."
+
+[[exercicio]]
+id = "g-maior-me-subdesc"
+titulo = "Sol maior: subindo e descendo, mão esquerda"
+tipo = "escala"
+mao = "esquerda"
+objetivo = "Tocar a escala de Sol maior subindo e descendo, uma oitava, com a mão esquerda."
+instrucoes = "Use a mão esquerda. Suba e volte sem parar na nota mais aguda: Sol, Lá, Si, Dó, Ré, Mi, Fá#, Sol, Fá#, Mi, Ré, Dó, Si, Lá e Sol. O Fá é sustenido: use a tecla preta (Fá#). Comece com o dedo 5."
+dedilhado = "5-4-3-2-1-3-2-1-2-3-1-2-3-4-5"
+passos = "G3 A3 B3 C4 D4 E4 F#4 G4 F#4 E4 D4 C4 B3 A3 G3"
+roteiro = [
+  "Sente-se de frente para o teclado, com a mão esquerda solta e os dedos curvos, uma oitava abaixo do Dó central.",
+  "Ponha o dedo 5 no Sol. Confira as teclas pretas da escala. O Fá é sustenido: use a tecla preta (Fá#).",
+  "Depois do Dó, passe o polegar por baixo e toque o Ré com o dedo 1.",
+  "Depois do Ré, passe o dedo 3 por cima do polegar até o Mi.",
+  "Chegue ao Sol sem parar e volte pelo mesmo caminho, com os dedos ao contrário.",
+]
+erro = "Confira as teclas: O Fá é sustenido: use a tecla preta (Fá#)."
+conclusao = "Sol maior, subindo e descendo, mão esquerda, concluída."
+
+[[exercicio]]
+id = "d-maior-md-subdesc"
+titulo = "Ré maior: subindo e descendo, mão direita"
+tipo = "escala"
+mao = "direita"
+objetivo = "Tocar a escala de Ré maior subindo e descendo, uma oitava, com a mão direita."
+instrucoes = "Use a mão direita. Suba e volte sem parar na nota mais aguda: Ré, Mi, Fá#, Sol, Lá, Si, Dó#, Ré, Dó#, Si, Lá, Sol, Fá#, Mi e Ré. Dois sustenidos: Fá# e Dó#. Comece com o dedo 1."
+dedilhado = "1-2-3-1-2-3-4-5-4-3-2-1-3-2-1"
+passos = "D4 E4 F#4 G4 A4 B4 C#5 D5 C#5 B4 A4 G4 F#4 E4 D4"
+roteiro = [
+  "Sente-se de frente para o teclado, com a mão direita solta e os dedos curvos, perto do Dó central.",
+  "Ponha o dedo 1 no Ré. Confira as teclas pretas da escala. Dois sustenidos: Fá# e Dó#.",
+  "Depois do Fá#, passe o polegar por baixo e toque o Sol com o dedo 1.",
+  "Chegue ao Ré sem parar e volte pelo mesmo caminho, com os dedos ao contrário.",
+]
+erro = "Confira as teclas: Dois sustenidos: Fá# e Dó#."
+conclusao = "Ré maior, subindo e descendo, mão direita, concluída."
+
+[[exercicio]]
+id = "d-maior-me-subdesc"
+titulo = "Ré maior: subindo e descendo, mão esquerda"
+tipo = "escala"
+mao = "esquerda"
+objetivo = "Tocar a escala de Ré maior subindo e descendo, uma oitava, com a mão esquerda."
+instrucoes = "Use a mão esquerda. Suba e volte sem parar na nota mais aguda: Ré, Mi, Fá#, Sol, Lá, Si, Dó#, Ré, Dó#, Si, Lá, Sol, Fá#, Mi e Ré. Dois sustenidos: Fá# e Dó#. Comece com o dedo 5."
+dedilhado = "5-4-3-2-1-3-2-1-2-3-1-2-3-4-5"
+passos = "D3 E3 F#3 G3 A3 B3 C#4 D4 C#4 B3 A3 G3 F#3 E3 D3"
+roteiro = [
+  "Sente-se de frente para o teclado, com a mão esquerda solta e os dedos curvos, uma oitava abaixo do Dó central.",
+  "Ponha o dedo 5 no Ré. Confira as teclas pretas da escala. Dois sustenidos: Fá# e Dó#.",
+  "Depois do Sol, passe o polegar por baixo e toque o Lá com o dedo 1.",
+  "Depois do Lá, passe o dedo 3 por cima do polegar até o Si.",
+  "Chegue ao Ré sem parar e volte pelo mesmo caminho, com os dedos ao contrário.",
+]
+erro = "Confira as teclas: Dois sustenidos: Fá# e Dó#."
+conclusao = "Ré maior, subindo e descendo, mão esquerda, concluída."
+
+[[exercicio]]
+id = "a-maior-md-subdesc"
+titulo = "Lá maior: subindo e descendo, mão direita"
+tipo = "escala"
+mao = "direita"
+objetivo = "Tocar a escala de Lá maior subindo e descendo, uma oitava, com a mão direita."
+instrucoes = "Use a mão direita. Suba e volte sem parar na nota mais aguda: Lá, Si, Dó#, Ré, Mi, Fá#, Sol#, Lá, Sol#, Fá#, Mi, Ré, Dó#, Si e Lá. Três sustenidos: Fá#, Dó# e Sol#. Comece com o dedo 1."
+dedilhado = "1-2-3-1-2-3-4-5-4-3-2-1-3-2-1"
+passos = "A4 B4 C#5 D5 E5 F#5 G#5 A5 G#5 F#5 E5 D5 C#5 B4 A4"
+roteiro = [
+  "Sente-se de frente para o teclado, com a mão direita solta e os dedos curvos, perto do Dó central.",
+  "Ponha o dedo 1 no Lá. Confira as teclas pretas da escala. Três sustenidos: Fá#, Dó# e Sol#.",
+  "Depois do Dó#, passe o polegar por baixo e toque o Ré com o dedo 1.",
+  "Chegue ao Lá sem parar e volte pelo mesmo caminho, com os dedos ao contrário.",
+]
+erro = "Confira as teclas: Três sustenidos: Fá#, Dó# e Sol#."
+conclusao = "Lá maior, subindo e descendo, mão direita, concluída."
+
+[[exercicio]]
+id = "a-maior-me-subdesc"
+titulo = "Lá maior: subindo e descendo, mão esquerda"
+tipo = "escala"
+mao = "esquerda"
+objetivo = "Tocar a escala de Lá maior subindo e descendo, uma oitava, com a mão esquerda."
+instrucoes = "Use a mão esquerda. Suba e volte sem parar na nota mais aguda: Lá, Si, Dó#, Ré, Mi, Fá#, Sol#, Lá, Sol#, Fá#, Mi, Ré, Dó#, Si e Lá. Três sustenidos: Fá#, Dó# e Sol#. Comece com o dedo 5."
+dedilhado = "5-4-3-2-1-3-2-1-2-3-1-2-3-4-5"
+passos = "A3 B3 C#4 D4 E4 F#4 G#4 A4 G#4 F#4 E4 D4 C#4 B3 A3"
+roteiro = [
+  "Sente-se de frente para o teclado, com a mão esquerda solta e os dedos curvos, uma oitava abaixo do Dó central.",
+  "Ponha o dedo 5 no Lá. Confira as teclas pretas da escala. Três sustenidos: Fá#, Dó# e Sol#.",
+  "Depois do Ré, passe o polegar por baixo e toque o Mi com o dedo 1.",
+  "Depois do Mi, passe o dedo 3 por cima do polegar até o Fá#.",
+  "Chegue ao Lá sem parar e volte pelo mesmo caminho, com os dedos ao contrário.",
+]
+erro = "Confira as teclas: Três sustenidos: Fá#, Dó# e Sol#."
+conclusao = "Lá maior, subindo e descendo, mão esquerda, concluída."
+
+[[exercicio]]
+id = "e-maior-md-subdesc"
+titulo = "Mi maior: subindo e descendo, mão direita"
+tipo = "escala"
+mao = "direita"
+objetivo = "Tocar a escala de Mi maior subindo e descendo, uma oitava, com a mão direita."
+instrucoes = "Use a mão direita. Suba e volte sem parar na nota mais aguda: Mi, Fá#, Sol#, Lá, Si, Dó#, Ré#, Mi, Ré#, Dó#, Si, Lá, Sol#, Fá# e Mi. Quatro sustenidos: Fá#, Dó#, Sol# e Ré#. Comece com o dedo 1."
+dedilhado = "1-2-3-1-2-3-4-5-4-3-2-1-3-2-1"
+passos = "E4 F#4 G#4 A4 B4 C#5 D#5 E5 D#5 C#5 B4 A4 G#4 F#4 E4"
+roteiro = [
+  "Sente-se de frente para o teclado, com a mão direita solta e os dedos curvos, perto do Dó central.",
+  "Ponha o dedo 1 no Mi. Confira as teclas pretas da escala. Quatro sustenidos: Fá#, Dó#, Sol# e Ré#.",
+  "Depois do Sol#, passe o polegar por baixo e toque o Lá com o dedo 1.",
+  "Chegue ao Mi sem parar e volte pelo mesmo caminho, com os dedos ao contrário.",
+]
+erro = "Confira as teclas: Quatro sustenidos: Fá#, Dó#, Sol# e Ré#."
+conclusao = "Mi maior, subindo e descendo, mão direita, concluída."
+
+[[exercicio]]
+id = "e-maior-me-subdesc"
+titulo = "Mi maior: subindo e descendo, mão esquerda"
+tipo = "escala"
+mao = "esquerda"
+objetivo = "Tocar a escala de Mi maior subindo e descendo, uma oitava, com a mão esquerda."
+instrucoes = "Use a mão esquerda. Suba e volte sem parar na nota mais aguda: Mi, Fá#, Sol#, Lá, Si, Dó#, Ré#, Mi, Ré#, Dó#, Si, Lá, Sol#, Fá# e Mi. Quatro sustenidos: Fá#, Dó#, Sol# e Ré#. Comece com o dedo 5."
+dedilhado = "5-4-3-2-1-3-2-1-2-3-1-2-3-4-5"
+passos = "E3 F#3 G#3 A3 B3 C#4 D#4 E4 D#4 C#4 B3 A3 G#3 F#3 E3"
+roteiro = [
+  "Sente-se de frente para o teclado, com a mão esquerda solta e os dedos curvos, uma oitava abaixo do Dó central.",
+  "Ponha o dedo 5 no Mi. Confira as teclas pretas da escala. Quatro sustenidos: Fá#, Dó#, Sol# e Ré#.",
+  "Depois do Lá, passe o polegar por baixo e toque o Si com o dedo 1.",
+  "Depois do Si, passe o dedo 3 por cima do polegar até o Dó#.",
+  "Chegue ao Mi sem parar e volte pelo mesmo caminho, com os dedos ao contrário.",
+]
+erro = "Confira as teclas: Quatro sustenidos: Fá#, Dó#, Sol# e Ré#."
+conclusao = "Mi maior, subindo e descendo, mão esquerda, concluída."

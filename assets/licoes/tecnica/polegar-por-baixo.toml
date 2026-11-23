@@ -1,0 +1,152 @@
+[licao]
+id = "tecnica-polegar-por-baixo"
+trilha = "Técnica"
+ordem_trilha = 40
+ordem = 5
+titulo = "Polegar por baixo"
+descricao = "Passar o polegar por baixo da mão para tocar uma oitava sem mudar a posição. Prepara as escalas."
+nivel = "basico"
+situacao = "proposta"
+fontes = ["Wikipedia: Fingering (music) (https://en.wikipedia.org/wiki/Fingering_(music))", "Dummies: Piano for Dummies, posições de Dó e Sol (https://www.dummies.com/article/academics-the-arts/music/instruments/piano/how-to-play-the-piano-or-keyboard-in-c-and-g-position-153031/)", "Prática pedagógica comum: passagem do polegar na escala de Dó maior"]
+requer = ["tecnica-cinco-dedos-legato", "fundamentos-cinco-dedos-sol"]
+
+[[exercicio]]
+id = "tres-dedos-e-polegar"
+titulo = "Três dedos e polegar"
+tipo = "sequencia"
+mao = "direita"
+objetivo = "Passar o polegar depois do dedo 3."
+instrucoes = "Toque Dó, Ré e Mi com os dedos 1, 2 e 3. Depois passe o polegar por baixo e toque o Fá."
+dedilhado = "1-2-3-1"
+passos = "C4 D4 E4 F4"
+roteiro = [
+  "Ponha o polegar direito no Dó central.",
+  "Toque Dó, Ré e Mi com os dedos 1, 2 e 3.",
+  "Leve o polegar por baixo dos dedos, com o pulso solto.",
+  "Toque o Fá com o polegar, sem levantar o cotovelo.",
+]
+acerto = "Nota certa."
+erro = "Depois do Mi, o polegar vai para o Fá."
+
+[[exercicio]]
+id = "polegar-ida-e-volta"
+titulo = "Polegar, ida e volta"
+tipo = "sequencia"
+mao = "direita"
+objetivo = "Passar o polegar e voltar."
+instrucoes = "Suba Dó, Ré, Mi e Fá, com o polegar passando por baixo. Depois desça pelo Mi, Ré e Dó."
+dedilhado = "1-2-3-1-3-2-1"
+passos = "C4 D4 E4 F4 E4 D4 C4"
+roteiro = [
+  "Ponha o polegar direito no Dó central.",
+  "Toque Dó, Ré e Mi, e leve o polegar por baixo até o Fá.",
+  "Na volta, o dedo 3 passa por cima do polegar até o Mi.",
+  "Desça por Ré e Dó com os dedos 2 e 1.",
+]
+acerto = "Nota certa."
+erro = "O dedo 3 passa por cima do polegar na volta."
+
+[[exercicio]]
+id = "seis-notas"
+titulo = "Seis notas"
+tipo = "sequencia"
+mao = "direita"
+objetivo = "Subir mais uma nota após a passagem."
+instrucoes = "Toque Dó, Ré, Mi, Fá, Sol e Lá. O polegar passa por baixo do Mi para o Fá."
+dedilhado = "1-2-3-1-2-3"
+passos = "C4 D4 E4 F4 G4 A4"
+roteiro = [
+  "Ponha o polegar direito no Dó central.",
+  "Toque Dó, Ré e Mi com os dedos 1, 2 e 3.",
+  "Passe o polegar para o Fá e toque Sol e Lá com os dedos 2 e 3.",
+  "Mantenha o pulso solto e a mão firme.",
+]
+acerto = "Nota certa."
+
+[[exercicio]]
+id = "oitava-direita"
+titulo = "Uma oitava, mão direita"
+tipo = "escala"
+mao = "direita"
+objetivo = "Tocar uma oitava inteira com a direita."
+instrucoes = "Toque de Dó a Dó: C D E F G A B C, com a passagem do polegar depois do Mi."
+dedilhado = "1-2-3-1-2-3-4-5"
+passos = "C4 D4 E4 F4 G4 A4 B4 C5"
+roteiro = [
+  "Ponha o polegar direito no Dó central.",
+  "Toque Dó, Ré e Mi com os dedos 1, 2 e 3.",
+  "Passe o polegar por baixo e toque Fá, Sol, Lá e Si com os dedos 1, 2, 3 e 4.",
+  "Termine com o dedo 5 no Dó.",
+]
+acerto = "Degrau certo."
+erro = "O polegar passa por baixo depois do Mi."
+
+[[exercicio]]
+id = "oitava-descendo"
+titulo = "Uma oitava descendo"
+tipo = "escala"
+mao = "direita"
+objetivo = "Descer a oitava com a passagem por cima."
+instrucoes = "Comece no Dó alto e desça até o Dó central. O dedo 3 passa por cima do polegar, depois do Fá."
+dedilhado = "5-4-3-2-1-3-2-1"
+passos = "C5 B4 A4 G4 F4 E4 D4 C4"
+roteiro = [
+  "Ponha o dedo 5 no Dó acima do Dó central.",
+  "Toque Si, Lá e Sol com os dedos 4, 3 e 2.",
+  "Toque o Fá com o polegar e passe o dedo 3 por cima, até o Mi.",
+  "Termine por Ré e Dó com os dedos 2 e 1.",
+]
+acerto = "Degrau certo."
+
+[[exercicio]]
+id = "esquerda-subindo"
+titulo = "Esquerda subindo"
+tipo = "escala"
+mao = "esquerda"
+objetivo = "Tocar uma oitava subindo com a mão esquerda."
+instrucoes = "Com a esquerda, suba de Dó a Dó. O dedo 3 passa por cima do polegar, depois do Sol."
+dedilhado = "5-4-3-2-1-3-2-1"
+passos = "C3 D3 E3 F3 G3 A3 B3 C4"
+roteiro = [
+  "Ponha o dedo 5 da esquerda no Dó grave.",
+  "Toque Ré, Mi, Fá e Sol com os dedos 4, 3, 2 e 1.",
+  "Passe o dedo 3 por cima do polegar, para o Lá.",
+  "Toque Si e Dó com os dedos 2 e 1.",
+]
+acerto = "Degrau certo."
+
+[[exercicio]]
+id = "esquerda-descendo"
+titulo = "Esquerda descendo"
+tipo = "escala"
+mao = "esquerda"
+objetivo = "Descer uma oitava com a mão esquerda."
+instrucoes = "Com a esquerda, desça de Dó a Dó. O polegar passa por baixo, depois do Lá."
+dedilhado = "1-2-3-1-2-3-4-5"
+passos = "C4 B3 A3 G3 F3 E3 D3 C3"
+roteiro = [
+  "Ponha o polegar esquerdo no Dó acima do Dó grave.",
+  "Toque Si e Lá com os dedos 2 e 3.",
+  "Passe o polegar por baixo e toque o Sol.",
+  "Siga por Fá, Mi, Ré e Dó, com os dedos 2, 3, 4 e 5.",
+]
+acerto = "Degrau certo."
+
+[[exercicio]]
+id = "sol-maior-com-fa-sustenido"
+titulo = "Sol, com Fá sustenido"
+tipo = "escala"
+mao = "direita"
+objetivo = "Usar a passagem do polegar em Sol."
+instrucoes = "Toque de Sol a Sol: G A B C D E F# G. O polegar passa depois do Si. O Fá é sustenido, tecla preta."
+dedilhado = "1-2-3-1-2-3-4-5"
+passos = "G4 A4 B4 C5 D5 E5 F#5 G5"
+roteiro = [
+  "Ponha o polegar direito no Sol.",
+  "Toque Sol, Lá e Si com os dedos 1, 2 e 3.",
+  "Passe o polegar por baixo e toque Dó, Ré e Mi com os dedos 1, 2 e 3.",
+  "Toque o Fá sustenido (preta) com o dedo 4 e termine no Sol com o dedo 5.",
+]
+acerto = "Degrau certo."
+erro = "O Fá é sustenido, a tecla preta."
+conclusao = "Passagem do polegar dominada: pronto para as escalas."

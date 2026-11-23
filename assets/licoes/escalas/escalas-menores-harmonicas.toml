@@ -1,0 +1,122 @@
+[licao]
+id = "escalas-menores-harmonicas"
+trilha = "Escalas"
+ordem_trilha = 20
+ordem = 6
+titulo = "Escalas menores harmônicas"
+descricao = "Lá, Mi e Ré menor harmônica: a sétima nota sobe meio tom."
+nivel = "intermediario"
+situacao = "proposta"
+fontes = ["Fingering charts, piano scales (Univ. de Miami): https://www.cs.miami.edu/~burt/music/finger-charts.html", "Piano Major Scales (pianoscales.org): https://pianoscales.org/major.html", "Wikiversity, Piano: how to read piano music and play scales using proper technique: https://en.wikiversity.org/wiki/Piano/How_to_read_piano_music_and_play_scales_using_proper_technique", "Intervalo (música), Wikipédia: https://pt.wikipedia.org/wiki/Intervalo_(música)"]
+requer = []
+
+[[exercicio]]
+id = "a-har-md-subdesc"
+titulo = "Lá menor harmônica: subindo e descendo, mão direita"
+tipo = "escala"
+mao = "direita"
+objetivo = "Tocar a escala de Lá menor harmônica subindo e descendo, uma oitava, com a mão direita."
+instrucoes = "Use a mão direita. Suba e volte sem parar na nota mais aguda: Lá, Si, Dó, Ré, Mi, Fá, Sol#, Lá, Sol#, Fá, Mi, Ré, Dó, Si e Lá. O Sol é sustenido (Sol#): a sétima nota sobe meio tom. Comece com o dedo 1."
+dedilhado = "1-2-3-1-2-3-4-5-4-3-2-1-3-2-1"
+passos = "A4 B4 C5 D5 E5 F5 G#5 A5 G#5 F5 E5 D5 C5 B4 A4"
+roteiro = [
+  "Sente-se de frente para o teclado, com a mão direita solta e os dedos curvos, perto do Dó central.",
+  "Ponha o dedo 1 no Lá. Confira as teclas pretas da escala. O Sol é sustenido (Sol#): a sétima nota sobe meio tom.",
+  "Depois do Dó, passe o polegar por baixo e toque o Ré com o dedo 1.",
+  "Chegue ao Lá sem parar e volte pelo mesmo caminho, com os dedos ao contrário.",
+]
+erro = "Confira as teclas: O Sol é sustenido (Sol#): a sétima nota sobe meio tom."
+conclusao = "Lá menor harmônica, subindo e descendo, mão direita, concluída."
+
+[[exercicio]]
+id = "a-har-me-subdesc"
+titulo = "Lá menor harmônica: subindo e descendo, mão esquerda"
+tipo = "escala"
+mao = "esquerda"
+objetivo = "Tocar a escala de Lá menor harmônica subindo e descendo, uma oitava, com a mão esquerda."
+instrucoes = "Use a mão esquerda. Suba e volte sem parar na nota mais aguda: Lá, Si, Dó, Ré, Mi, Fá, Sol#, Lá, Sol#, Fá, Mi, Ré, Dó, Si e Lá. O Sol é sustenido (Sol#): a sétima nota sobe meio tom. Comece com o dedo 5."
+dedilhado = "5-4-3-2-1-3-2-1-2-3-1-2-3-4-5"
+passos = "A3 B3 C4 D4 E4 F4 G#4 A4 G#4 F4 E4 D4 C4 B3 A3"
+roteiro = [
+  "Sente-se de frente para o teclado, com a mão esquerda solta e os dedos curvos, uma oitava abaixo do Dó central.",
+  "Ponha o dedo 5 no Lá. Confira as teclas pretas da escala. O Sol é sustenido (Sol#): a sétima nota sobe meio tom.",
+  "Depois do Ré, passe o polegar por baixo e toque o Mi com o dedo 1.",
+  "Depois do Mi, passe o dedo 3 por cima do polegar até o Fá.",
+  "Chegue ao Lá sem parar e volte pelo mesmo caminho, com os dedos ao contrário.",
+]
+erro = "Confira as teclas: O Sol é sustenido (Sol#): a sétima nota sobe meio tom."
+conclusao = "Lá menor harmônica, subindo e descendo, mão esquerda, concluída."
+
+[[exercicio]]
+id = "e-har-md-subdesc"
+titulo = "Mi menor harmônica: subindo e descendo, mão direita"
+tipo = "escala"
+mao = "direita"
+objetivo = "Tocar a escala de Mi menor harmônica subindo e descendo, uma oitava, com a mão direita."
+instrucoes = "Use a mão direita. Suba e volte sem parar na nota mais aguda: Mi, Fá#, Sol, Lá, Si, Dó, Ré#, Mi, Ré#, Dó, Si, Lá, Sol, Fá# e Mi. Fá# e Ré#: o Ré# é a sétima nota elevada. Comece com o dedo 1."
+dedilhado = "1-2-3-1-2-3-4-5-4-3-2-1-3-2-1"
+passos = "E4 F#4 G4 A4 B4 C5 D#5 E5 D#5 C5 B4 A4 G4 F#4 E4"
+roteiro = [
+  "Sente-se de frente para o teclado, com a mão direita solta e os dedos curvos, perto do Dó central.",
+  "Ponha o dedo 1 no Mi. Confira as teclas pretas da escala. Fá# e Ré#: o Ré# é a sétima nota elevada.",
+  "Depois do Sol, passe o polegar por baixo e toque o Lá com o dedo 1.",
+  "Chegue ao Mi sem parar e volte pelo mesmo caminho, com os dedos ao contrário.",
+]
+erro = "Confira as teclas: Fá# e Ré#: o Ré# é a sétima nota elevada."
+conclusao = "Mi menor harmônica, subindo e descendo, mão direita, concluída."
+
+[[exercicio]]
+id = "e-har-me-subdesc"
+titulo = "Mi menor harmônica: subindo e descendo, mão esquerda"
+tipo = "escala"
+mao = "esquerda"
+objetivo = "Tocar a escala de Mi menor harmônica subindo e descendo, uma oitava, com a mão esquerda."
+instrucoes = "Use a mão esquerda. Suba e volte sem parar na nota mais aguda: Mi, Fá#, Sol, Lá, Si, Dó, Ré#, Mi, Ré#, Dó, Si, Lá, Sol, Fá# e Mi. Fá# e Ré#: o Ré# é a sétima nota elevada. Comece com o dedo 5."
+dedilhado = "5-4-3-2-1-3-2-1-2-3-1-2-3-4-5"
+passos = "E3 F#3 G3 A3 B3 C4 D#4 E4 D#4 C4 B3 A3 G3 F#3 E3"
+roteiro = [
+  "Sente-se de frente para o teclado, com a mão esquerda solta e os dedos curvos, uma oitava abaixo do Dó central.",
+  "Ponha o dedo 5 no Mi. Confira as teclas pretas da escala. Fá# e Ré#: o Ré# é a sétima nota elevada.",
+  "Depois do Lá, passe o polegar por baixo e toque o Si com o dedo 1.",
+  "Depois do Si, passe o dedo 3 por cima do polegar até o Dó.",
+  "Chegue ao Mi sem parar e volte pelo mesmo caminho, com os dedos ao contrário.",
+]
+erro = "Confira as teclas: Fá# e Ré#: o Ré# é a sétima nota elevada."
+conclusao = "Mi menor harmônica, subindo e descendo, mão esquerda, concluída."
+
+[[exercicio]]
+id = "d-har-md-subdesc"
+titulo = "Ré menor harmônica: subindo e descendo, mão direita"
+tipo = "escala"
+mao = "direita"
+objetivo = "Tocar a escala de Ré menor harmônica subindo e descendo, uma oitava, com a mão direita."
+instrucoes = "Use a mão direita. Suba e volte sem parar na nota mais aguda: Ré, Mi, Fá, Sol, Lá, Sib, Dó#, Ré, Dó#, Sib, Lá, Sol, Fá, Mi e Ré. Sib e Dó#: o Dó# é a sétima nota elevada. Comece com o dedo 1."
+dedilhado = "1-2-3-1-2-3-4-5-4-3-2-1-3-2-1"
+passos = "D4 E4 F4 G4 A4 Bb4 C#5 D5 C#5 Bb4 A4 G4 F4 E4 D4"
+roteiro = [
+  "Sente-se de frente para o teclado, com a mão direita solta e os dedos curvos, perto do Dó central.",
+  "Ponha o dedo 1 no Ré. Confira as teclas pretas da escala. Sib e Dó#: o Dó# é a sétima nota elevada.",
+  "Depois do Fá, passe o polegar por baixo e toque o Sol com o dedo 1.",
+  "Chegue ao Ré sem parar e volte pelo mesmo caminho, com os dedos ao contrário.",
+]
+erro = "Confira as teclas: Sib e Dó#: o Dó# é a sétima nota elevada."
+conclusao = "Ré menor harmônica, subindo e descendo, mão direita, concluída."
+
+[[exercicio]]
+id = "d-har-me-subdesc"
+titulo = "Ré menor harmônica: subindo e descendo, mão esquerda"
+tipo = "escala"
+mao = "esquerda"
+objetivo = "Tocar a escala de Ré menor harmônica subindo e descendo, uma oitava, com a mão esquerda."
+instrucoes = "Use a mão esquerda. Suba e volte sem parar na nota mais aguda: Ré, Mi, Fá, Sol, Lá, Sib, Dó#, Ré, Dó#, Sib, Lá, Sol, Fá, Mi e Ré. Sib e Dó#: o Dó# é a sétima nota elevada. Comece com o dedo 5."
+dedilhado = "5-4-3-2-1-3-2-1-2-3-1-2-3-4-5"
+passos = "D3 E3 F3 G3 A3 Bb3 C#4 D4 C#4 Bb3 A3 G3 F3 E3 D3"
+roteiro = [
+  "Sente-se de frente para o teclado, com a mão esquerda solta e os dedos curvos, uma oitava abaixo do Dó central.",
+  "Ponha o dedo 5 no Ré. Confira as teclas pretas da escala. Sib e Dó#: o Dó# é a sétima nota elevada.",
+  "Depois do Sol, passe o polegar por baixo e toque o Lá com o dedo 1.",
+  "Depois do Lá, passe o dedo 3 por cima do polegar até o Sib.",
+  "Chegue ao Ré sem parar e volte pelo mesmo caminho, com os dedos ao contrário.",
+]
+erro = "Confira as teclas: Sib e Dó#: o Dó# é a sétima nota elevada."
+conclusao = "Ré menor harmônica, subindo e descendo, mão esquerda, concluída."

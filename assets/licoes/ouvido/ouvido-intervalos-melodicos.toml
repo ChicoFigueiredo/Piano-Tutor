@@ -1,0 +1,173 @@
+[licao]
+id = "ouvido-intervalos-melodicos"
+trilha = "Ouvido e intervalos"
+ordem_trilha = 50
+ordem = 4
+titulo = "Intervalos melódicos"
+descricao = "O app toca duas notas, uma depois da outra, e você repete: subindo e descendo."
+nivel = "basico"
+situacao = "proposta"
+fontes = ["Intervalo (música), Wikipédia: https://pt.wikipedia.org/wiki/Intervalo_(música)", "Acorde, Wikipédia: https://pt.wikipedia.org/wiki/Acorde"]
+requer = []
+
+[[exercicio]]
+id = "segunda-maior-sub"
+titulo = "Segunda maior melódica, subindo"
+tipo = "ouvir"
+mao = "direita"
+objetivo = "Ouvir e repetir uma segunda maior subindo."
+instrucoes = "O app toca duas notas, uma depois da outra. Ouça e repita no teclado. As duas notas estão coladas, com uma tecla no meio. A primeira nota é o Ré."
+passos = "D4 E4"
+roteiro = [
+  "Ouça a frase inteira sem tocar, com atenção ao desenho: sobe, desce ou salta.",
+  "Cantarole ou assobie a frase baixinho para fixá-la.",
+  "Ache no teclado a primeira nota, que é o Ré.",
+  "Toque as notas seguintes, comparando cada uma com o que você ouviu.",
+  "Se errar, peça para ouvir de novo ou use a dica para ver as teclas.",
+]
+erro = "Ouça de novo e tente outra vez. Peça a dica se precisar ver as teclas."
+conclusao = "Você repetiu a frase de ouvido."
+
+[[exercicio]]
+id = "terca-maior-sub"
+titulo = "Terça maior melódica, subindo"
+tipo = "ouvir"
+mao = "direita"
+objetivo = "Ouvir e repetir uma terça maior subindo."
+instrucoes = "O app toca duas notas, uma depois da outra. Ouça e repita no teclado. O salto é de terça e soa alegre. A primeira nota é o Dó."
+passos = "C4 E4"
+roteiro = [
+  "Ouça a frase inteira sem tocar, com atenção ao desenho: sobe, desce ou salta.",
+  "Cantarole ou assobie a frase baixinho para fixá-la.",
+  "Ache no teclado a primeira nota, que é o Dó.",
+  "Toque as notas seguintes, comparando cada uma com o que você ouviu.",
+  "Se errar, peça para ouvir de novo ou use a dica para ver as teclas.",
+]
+erro = "Ouça de novo e tente outra vez. Peça a dica se precisar ver as teclas."
+conclusao = "Você repetiu a frase de ouvido."
+
+[[exercicio]]
+id = "terca-menor-sub"
+titulo = "Terça menor melódica, subindo"
+tipo = "ouvir"
+mao = "direita"
+objetivo = "Ouvir e repetir uma terça menor subindo."
+instrucoes = "O app toca duas notas, uma depois da outra. Ouça e repita no teclado. O salto é de terça e soa triste. A primeira nota é o Mi."
+passos = "E4 G4"
+roteiro = [
+  "Ouça a frase inteira sem tocar, com atenção ao desenho: sobe, desce ou salta.",
+  "Cantarole ou assobie a frase baixinho para fixá-la.",
+  "Ache no teclado a primeira nota, que é o Mi.",
+  "Toque as notas seguintes, comparando cada uma com o que você ouviu.",
+  "Se errar, peça para ouvir de novo ou use a dica para ver as teclas.",
+]
+erro = "Ouça de novo e tente outra vez. Peça a dica se precisar ver as teclas."
+conclusao = "Você repetiu a frase de ouvido."
+
+[[exercicio]]
+id = "quarta-justa-sub"
+titulo = "Quarta justa melódica, subindo"
+tipo = "ouvir"
+mao = "direita"
+objetivo = "Ouvir e repetir uma quarta justa subindo."
+instrucoes = "O app toca duas notas, uma depois da outra. Ouça e repita no teclado. O salto é de quarta. A primeira nota é o Dó."
+passos = "C4 F4"
+roteiro = [
+  "Ouça a frase inteira sem tocar, com atenção ao desenho: sobe, desce ou salta.",
+  "Cantarole ou assobie a frase baixinho para fixá-la.",
+  "Ache no teclado a primeira nota, que é o Dó.",
+  "Toque as notas seguintes, comparando cada uma com o que você ouviu.",
+  "Se errar, peça para ouvir de novo ou use a dica para ver as teclas.",
+]
+erro = "Ouça de novo e tente outra vez. Peça a dica se precisar ver as teclas."
+conclusao = "Você repetiu a frase de ouvido."
+
+[[exercicio]]
+id = "quinta-justa-sub"
+titulo = "Quinta justa melódica, subindo"
+tipo = "ouvir"
+mao = "direita"
+objetivo = "Ouvir e repetir uma quinta justa subindo."
+instrucoes = "O app toca duas notas, uma depois da outra. Ouça e repita no teclado. O salto é de quinta. A primeira nota é o Dó."
+passos = "C4 G4"
+roteiro = [
+  "Ouça a frase inteira sem tocar, com atenção ao desenho: sobe, desce ou salta.",
+  "Cantarole ou assobie a frase baixinho para fixá-la.",
+  "Ache no teclado a primeira nota, que é o Dó.",
+  "Toque as notas seguintes, comparando cada uma com o que você ouviu.",
+  "Se errar, peça para ouvir de novo ou use a dica para ver as teclas.",
+]
+erro = "Ouça de novo e tente outra vez. Peça a dica se precisar ver as teclas."
+conclusao = "Você repetiu a frase de ouvido."
+
+[[exercicio]]
+id = "segunda-maior-desc"
+titulo = "Segunda maior melódica, descendo"
+tipo = "ouvir"
+mao = "direita"
+objetivo = "Ouvir e repetir uma segunda maior descendo."
+instrucoes = "O app toca duas notas, uma depois da outra. Ouça e repita no teclado. A segunda nota é mais grave. A primeira nota é o Mi."
+passos = "E4 D4"
+roteiro = [
+  "Ouça a frase inteira sem tocar, com atenção ao desenho: sobe, desce ou salta.",
+  "Cantarole ou assobie a frase baixinho para fixá-la.",
+  "Ache no teclado a primeira nota, que é o Mi.",
+  "Toque as notas seguintes, comparando cada uma com o que você ouviu.",
+  "Se errar, peça para ouvir de novo ou use a dica para ver as teclas.",
+]
+erro = "Ouça de novo e tente outra vez. Peça a dica se precisar ver as teclas."
+conclusao = "Você repetiu a frase de ouvido."
+
+[[exercicio]]
+id = "terca-maior-desc"
+titulo = "Terça maior melódica, descendo"
+tipo = "ouvir"
+mao = "direita"
+objetivo = "Ouvir e repetir uma terça maior descendo."
+instrucoes = "O app toca duas notas, uma depois da outra. Ouça e repita no teclado. A segunda nota é mais grave. A primeira nota é o Mi."
+passos = "E4 C4"
+roteiro = [
+  "Ouça a frase inteira sem tocar, com atenção ao desenho: sobe, desce ou salta.",
+  "Cantarole ou assobie a frase baixinho para fixá-la.",
+  "Ache no teclado a primeira nota, que é o Mi.",
+  "Toque as notas seguintes, comparando cada uma com o que você ouviu.",
+  "Se errar, peça para ouvir de novo ou use a dica para ver as teclas.",
+]
+erro = "Ouça de novo e tente outra vez. Peça a dica se precisar ver as teclas."
+conclusao = "Você repetiu a frase de ouvido."
+
+[[exercicio]]
+id = "quinta-justa-desc"
+titulo = "Quinta justa melódica, descendo"
+tipo = "ouvir"
+mao = "direita"
+objetivo = "Ouvir e repetir uma quinta justa descendo."
+instrucoes = "O app toca duas notas, uma depois da outra. Ouça e repita no teclado. A segunda nota é mais grave. A primeira nota é o Sol."
+passos = "G4 C4"
+roteiro = [
+  "Ouça a frase inteira sem tocar, com atenção ao desenho: sobe, desce ou salta.",
+  "Cantarole ou assobie a frase baixinho para fixá-la.",
+  "Ache no teclado a primeira nota, que é o Sol.",
+  "Toque as notas seguintes, comparando cada uma com o que você ouviu.",
+  "Se errar, peça para ouvir de novo ou use a dica para ver as teclas.",
+]
+erro = "Ouça de novo e tente outra vez. Peça a dica se precisar ver as teclas."
+conclusao = "Você repetiu a frase de ouvido."
+
+[[exercicio]]
+id = "oitava-justa-sub"
+titulo = "Oitava justa melódica, subindo"
+tipo = "ouvir"
+mao = "direita"
+objetivo = "Ouvir e repetir uma oitava subindo."
+instrucoes = "O app toca duas notas, uma depois da outra. Ouça e repita no teclado. As duas notas têm o mesmo nome. A primeira nota é o Dó."
+passos = "C4 C5"
+roteiro = [
+  "Ouça a frase inteira sem tocar, com atenção ao desenho: sobe, desce ou salta.",
+  "Cantarole ou assobie a frase baixinho para fixá-la.",
+  "Ache no teclado a primeira nota, que é o Dó.",
+  "Toque as notas seguintes, comparando cada uma com o que você ouviu.",
+  "Se errar, peça para ouvir de novo ou use a dica para ver as teclas.",
+]
+erro = "Ouça de novo e tente outra vez. Peça a dica se precisar ver as teclas."
+conclusao = "Você repetiu a frase de ouvido."

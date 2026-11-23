@@ -1,0 +1,124 @@
+[licao]
+id = "acordes-triades-maiores"
+trilha = "Acordes"
+ordem_trilha = 30
+ordem = 1
+titulo = "Tríades maiores nos 12 tons"
+descricao = "Montar e tocar as tríades maiores em todos os 12 tons, com o ciclo das quintas."
+nivel = "iniciante"
+situacao = "proposta"
+fontes = ["Acorde, Wikipédia: https://pt.wikipedia.org/wiki/Acorde", "Intervalo (música), Wikipédia: https://pt.wikipedia.org/wiki/Intervalo_(música)", "Introduction to Chords, musictheory.net: https://musictheory.net/lessons/40", "Circle of fifths (Wikipedia): https://en.wikipedia.org/wiki/Circle_of_fifths"]
+requer = []
+
+[[exercicio]]
+id = "montar-do-maior"
+titulo = "Montar o acorde de Dó maior"
+tipo = "sequencia"
+mao = "direita"
+objetivo = "Construir a tríade de Dó maior nota a nota: fundamental, terça e quinta."
+instrucoes = "Toque Dó, Mi e Sol, uma nota de cada vez, de baixo para cima. De Dó a Mi são quatro semitons (terça maior). De Mi a Sol são três semitons. Juntas, as três notas formam a tríade maior."
+passos = "C4 E4 G4"
+roteiro = [
+  "Ponha a mão direita com o polegar no Dó central.",
+  "Toque o Dó com o dedo 1.",
+  "Pule uma tecla branca e toque o Mi com o dedo 3.",
+  "Pule outra tecla branca e toque o Sol com o dedo 5.",
+  "Ouça as três notas: juntas, elas formam o acorde de Dó maior.",
+]
+erro = "Dó, depois Mi, depois Sol: pule uma tecla branca entre elas."
+conclusao = "Você montou Dó maior."
+
+[[exercicio]]
+id = "do-fa-sol-maior"
+titulo = "Dó, Fá e Sol maior"
+tipo = "acorde"
+mao = "direita"
+objetivo = "Tocar três tríades maiores sobre teclas brancas."
+instrucoes = "Toda tríade maior tem a terça maior (4 semitons) e a quinta justa (7 semitons) sobre a fundamental. Toque as notas de cada acorde ao mesmo tempo: Dó maior (Dó, Mi e Sol); Fá maior (Fá, Lá e Dó); Sol maior (Sol, Si e Ré)."
+passos = "{C4 E4 G4}:Dó_maior {F4 A4 C5}:Fá_maior {G3 B3 D4}:Sol_maior"
+roteiro = [
+  "Ponha a mão direita sobre as teclas, com os dedos curvos e o punho solto.",
+  "Primeiro acorde: Dó maior. Ache Dó, Mi e Sol antes de apertar.",
+  "Na posição fundamental, use os dedos 1, 3 e 5.",
+  "Aperte todas as notas ao mesmo tempo, com o mesmo peso, e solte.",
+  "Passe ao próximo acorde sem pressa, achando as teclas antes de apertar.",
+  "Confira o desenho: maior: terça maior e quinta justa.",
+]
+erro = "Confira as teclas pretas de cada acorde."
+conclusao = "Acordes tocados com as notas certas."
+
+[[exercicio]]
+id = "re-la-mi-maior"
+titulo = "Ré, Lá e Mi maior"
+tipo = "acorde"
+mao = "direita"
+objetivo = "Tocar três tríades maiores que levam uma tecla preta."
+instrucoes = "A terça maior destas três tríades cai numa tecla preta. Toque as notas de cada acorde ao mesmo tempo: Ré maior (Ré, Fá# e Lá); Lá maior (Lá, Dó# e Mi); Mi maior (Mi, Sol# e Si)."
+passos = "{D4 F#4 A4}:Ré_maior {A3 C#4 E4}:Lá_maior {E4 G#4 B4}:Mi_maior"
+roteiro = [
+  "Ponha a mão direita sobre as teclas, com os dedos curvos e o punho solto.",
+  "Primeiro acorde: Ré maior. Ache Ré, Fá# e Lá antes de apertar.",
+  "Na posição fundamental, use os dedos 1, 3 e 5.",
+  "Aperte todas as notas ao mesmo tempo, com o mesmo peso, e solte.",
+  "Passe ao próximo acorde sem pressa, achando as teclas antes de apertar.",
+  "Confira o desenho: maior: terça maior e quinta justa.",
+]
+erro = "Confira as teclas pretas de cada acorde."
+conclusao = "Acordes tocados com as notas certas."
+
+[[exercicio]]
+id = "si-fas-reb-maior"
+titulo = "Si, Fá# e Réb maior"
+tipo = "acorde"
+mao = "direita"
+objetivo = "Tocar três tríades maiores com várias teclas pretas."
+instrucoes = "O Si maior tem duas teclas pretas na terça e na quinta. Fá# maior e Réb maior têm três. Toque as notas de cada acorde ao mesmo tempo: Si maior (Si, Ré# e Fá#); Fá# maior (Fá#, Lá# e Dó#); Réb maior (Réb, Fá e Láb)."
+passos = "{B3 D#4 F#4}:Si_maior {F#4 A#4 C#5}:Fá#_maior {Db4 F4 Ab4}:Réb_maior"
+roteiro = [
+  "Ponha a mão direita sobre as teclas, com os dedos curvos e o punho solto.",
+  "Primeiro acorde: Si maior. Ache Si, Ré# e Fá# antes de apertar.",
+  "Na posição fundamental, use os dedos 1, 3 e 5.",
+  "Aperte todas as notas ao mesmo tempo, com o mesmo peso, e solte.",
+  "Passe ao próximo acorde sem pressa, achando as teclas antes de apertar.",
+  "Confira o desenho: maior: terça maior e quinta justa.",
+]
+erro = "Confira as teclas pretas de cada acorde."
+conclusao = "Acordes tocados com as notas certas."
+
+[[exercicio]]
+id = "lab-mib-sib-maior"
+titulo = "Láb, Mib e Sib maior"
+tipo = "acorde"
+mao = "direita"
+objetivo = "Tocar três tríades maiores escritas com bemóis."
+instrucoes = "Nos acordes com bemol, o nome das notas segue a letra: Láb, Dó e Mib formam Láb maior. Toque as notas de cada acorde ao mesmo tempo: Láb maior (Láb, Dó e Mib); Mib maior (Mib, Sol e Sib); Sib maior (Sib, Ré e Fá)."
+passos = "{Ab3 C4 Eb4}:Láb_maior {Eb4 G4 Bb4}:Mib_maior {Bb3 D4 F4}:Sib_maior"
+roteiro = [
+  "Ponha a mão direita sobre as teclas, com os dedos curvos e o punho solto.",
+  "Primeiro acorde: Láb maior. Ache Láb, Dó e Mib antes de apertar.",
+  "Na posição fundamental, use os dedos 1, 3 e 5.",
+  "Aperte todas as notas ao mesmo tempo, com o mesmo peso, e solte.",
+  "Passe ao próximo acorde sem pressa, achando as teclas antes de apertar.",
+  "Confira o desenho: maior: terça maior e quinta justa.",
+]
+erro = "Confira as teclas pretas de cada acorde."
+conclusao = "Acordes tocados com as notas certas."
+
+[[exercicio]]
+id = "ciclo-quintas-maiores"
+titulo = "Os 12 acordes maiores pelo ciclo das quintas"
+tipo = "acorde"
+mao = "direita"
+objetivo = "Tocar as 12 tríades maiores, cada uma a uma quinta da anterior."
+instrucoes = "Cada acorde começa uma quinta acima do anterior: Dó, Sol, Ré, Lá, Mi, Si, Fá#, Réb, Láb, Mib, Sib e Fá. Toque as notas de cada acorde ao mesmo tempo: Dó maior (Dó, Mi e Sol); Sol maior (Sol, Si e Ré); Ré maior (Ré, Fá# e Lá); Lá maior (Lá, Dó# e Mi); Mi maior (Mi, Sol# e Si); Si maior (Si, Ré# e Fá#); Fá# maior (Fá#, Lá# e Dó#); Réb maior (Réb, Fá e Láb); Láb maior (Láb, Dó e Mib); Mib maior (Mib, Sol e Sib); Sib maior (Sib, Ré e Fá); Fá maior (Fá, Lá e Dó)."
+passos = "{C4 E4 G4}:Dó_maior {G3 B3 D4}:Sol_maior {D4 F#4 A4}:Ré_maior {A3 C#4 E4}:Lá_maior {E4 G#4 B4}:Mi_maior {B3 D#4 F#4}:Si_maior {F#4 A#4 C#5}:Fá#_maior {Db4 F4 Ab4}:Réb_maior {Ab3 C4 Eb4}:Láb_maior {Eb4 G4 Bb4}:Mib_maior {Bb3 D4 F4}:Sib_maior {F4 A4 C5}:Fá_maior"
+roteiro = [
+  "Ponha a mão direita sobre as teclas, com os dedos curvos e o punho solto.",
+  "Primeiro acorde: Dó maior. Ache Dó, Mi e Sol antes de apertar.",
+  "Na posição fundamental, use os dedos 1, 3 e 5.",
+  "Aperte todas as notas ao mesmo tempo, com o mesmo peso, e solte.",
+  "Passe ao próximo acorde sem pressa, achando as teclas antes de apertar.",
+  "Confira o desenho: maior: terça maior e quinta justa.",
+]
+erro = "Confira as teclas pretas de cada acorde."
+conclusao = "Os 12 acordes maiores completos."

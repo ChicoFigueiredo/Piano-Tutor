@@ -1,0 +1,152 @@
+[licao]
+id = "acordes-arpejos"
+trilha = "Acordes"
+ordem_trilha = 30
+ordem = 5
+titulo = "Arpejos de tríades"
+descricao = "Tríades tocadas nota a nota: Dó, Sol e Fá maior; Lá e Ré menor."
+nivel = "basico"
+situacao = "proposta"
+fontes = ["Piano Major Arpeggios (pianoscales.org): https://www.pianoscales.org/major-arpeggios.html", "Piano Minor Arpeggios (pianoscales.org): https://www.pianoscales.org/minor-arpeggios.html", "Acorde, Wikipédia: https://pt.wikipedia.org/wiki/Acorde"]
+requer = []
+
+[[exercicio]]
+id = "do-md-1oit-sub"
+titulo = "Dó maior: arpejo de uma oitava, subindo, mão direita"
+tipo = "arpejo"
+mao = "direita"
+objetivo = "Tocar as notas de Dó maior uma a uma, subindo."
+instrucoes = "Toque Dó, Mi, Sol e Dó, uma nota de cada vez. Sem dedilhado fixo: use o que ficar confortável."
+passos = "C4 E4 G4 C5"
+roteiro = [
+  "Ponha a mão direita sobre as teclas, com os dedos curvos e o punho solto.",
+  "Comece no Dó, a fundamental do acorde.",
+  "Escolha os dedos que deixem a mão confortável, sem esticar demais.",
+  "Toque uma nota de cada vez, soltando a anterior, com som parelho.",
+  "A ordem é Dó, Mi, Sol e Dó.",
+]
+erro = "Toque só as notas do acorde, uma de cada vez, sem pular nem repetir."
+
+[[exercicio]]
+id = "do-md-1oit-subdesc"
+titulo = "Dó maior: arpejo de uma oitava, subindo e descendo, mão direita"
+tipo = "arpejo"
+mao = "direita"
+objetivo = "Subir e descer o arpejo de Dó maior."
+instrucoes = "Toque Dó, Mi, Sol, Dó, Sol, Mi e Dó. O Dó agudo é tocado uma vez só."
+passos = "C4 E4 G4 C5 G4 E4 C4"
+roteiro = [
+  "Ponha a mão direita sobre as teclas, com os dedos curvos e o punho solto.",
+  "Comece no Dó, a fundamental do acorde.",
+  "Escolha os dedos que deixem a mão confortável, sem esticar demais.",
+  "Toque uma nota de cada vez, soltando a anterior, com som parelho.",
+  "A ordem é Dó, Mi, Sol, Dó, Sol, Mi e Dó.",
+]
+erro = "Toque só as notas do acorde, uma de cada vez, sem pular nem repetir."
+
+[[exercicio]]
+id = "do-md-1-5oit-sub"
+titulo = "Dó maior: arpejo de uma oitava e meia, subindo, mão direita"
+tipo = "arpejo"
+mao = "direita"
+objetivo = "Subir o arpejo por uma oitava e meia."
+instrucoes = "Toque Dó, Mi, Sol, Dó, Mi e Sol. Dedilhado 1-2-3-1-2-3: o polegar passa por baixo depois do dedo 3."
+dedilhado = "1-2-3-1-2-3"
+passos = "C4 E4 G4 C5 E5 G5"
+roteiro = [
+  "Ponha a mão direita sobre as teclas, com os dedos curvos e o punho solto.",
+  "Comece no Dó, a fundamental do acorde.",
+  "Use os dedos 1, 2 e 3; depois do 3, passe o polegar por baixo e repita 1, 2 e 3.",
+  "Toque uma nota de cada vez, soltando a anterior, com som parelho.",
+  "A ordem é Dó, Mi, Sol, Dó, Mi e Sol.",
+]
+erro = "Toque só as notas do acorde, uma de cada vez, sem pular nem repetir."
+
+[[exercicio]]
+id = "sol-md-1-5oit-subdesc"
+titulo = "Sol maior: arpejo de uma oitava e meia, subindo e descendo, mão direita"
+tipo = "arpejo"
+mao = "direita"
+objetivo = "Arpejar Sol maior subindo e descendo."
+instrucoes = "Toque Sol, Si, Ré, Sol, Si, Ré, Si, Sol, Ré, Si e Sol. Dedilhado 1-2-3-1-2-3 na subida e o inverso na descida."
+dedilhado = "1-2-3-1-2-3-2-1-3-2-1"
+passos = "G4 B4 D5 G5 B5 D6 B5 G5 D5 B4 G4"
+roteiro = [
+  "Ponha a mão direita sobre as teclas, com os dedos curvos e o punho solto.",
+  "Comece no Sol, a fundamental do acorde.",
+  "Use os dedos 1, 2 e 3; depois do 3, passe o polegar por baixo e repita 1, 2 e 3. Na descida, faça o contrário.",
+  "Toque uma nota de cada vez, soltando a anterior, com som parelho.",
+  "A ordem é Sol, Si, Ré, Sol, Si, Ré, Si, Sol, Ré, Si e Sol.",
+]
+erro = "Toque só as notas do acorde, uma de cada vez, sem pular nem repetir."
+
+[[exercicio]]
+id = "fa-md-1-5oit-subdesc"
+titulo = "Fá maior: arpejo de uma oitava e meia, subindo e descendo, mão direita"
+tipo = "arpejo"
+mao = "direita"
+objetivo = "Arpejar Fá maior subindo e descendo."
+instrucoes = "Toque Fá, Lá, Dó, Fá, Lá, Dó, Lá, Fá, Dó, Lá e Fá. Dedilhado 1-2-3-1-2-3 na subida e o inverso na descida."
+dedilhado = "1-2-3-1-2-3-2-1-3-2-1"
+passos = "F4 A4 C5 F5 A5 C6 A5 F5 C5 A4 F4"
+roteiro = [
+  "Ponha a mão direita sobre as teclas, com os dedos curvos e o punho solto.",
+  "Comece no Fá, a fundamental do acorde.",
+  "Use os dedos 1, 2 e 3; depois do 3, passe o polegar por baixo e repita 1, 2 e 3. Na descida, faça o contrário.",
+  "Toque uma nota de cada vez, soltando a anterior, com som parelho.",
+  "A ordem é Fá, Lá, Dó, Fá, Lá, Dó, Lá, Fá, Dó, Lá e Fá.",
+]
+erro = "Toque só as notas do acorde, uma de cada vez, sem pular nem repetir."
+
+[[exercicio]]
+id = "la-menor-md-1-5oit-subdesc"
+titulo = "Lá menor: arpejo de uma oitava e meia, subindo e descendo, mão direita"
+tipo = "arpejo"
+mao = "direita"
+objetivo = "Arpejar Lá menor subindo e descendo."
+instrucoes = "Toque Lá, Dó, Mi, Lá, Dó, Mi, Dó, Lá, Mi, Dó e Lá. O Dó é a terça menor: tecla branca, como o Mi e o Lá."
+dedilhado = "1-2-3-1-2-3-2-1-3-2-1"
+passos = "A4 C5 E5 A5 C6 E6 C6 A5 E5 C5 A4"
+roteiro = [
+  "Ponha a mão direita sobre as teclas, com os dedos curvos e o punho solto.",
+  "Comece no Lá, a fundamental do acorde.",
+  "Use os dedos 1, 2 e 3; depois do 3, passe o polegar por baixo e repita 1, 2 e 3. Na descida, faça o contrário.",
+  "Toque uma nota de cada vez, soltando a anterior, com som parelho.",
+  "A ordem é Lá, Dó, Mi, Lá, Dó, Mi, Dó, Lá, Mi, Dó e Lá.",
+]
+erro = "Toque só as notas do acorde, uma de cada vez, sem pular nem repetir."
+
+[[exercicio]]
+id = "re-menor-md-1-5oit-subdesc"
+titulo = "Ré menor: arpejo de uma oitava e meia, subindo e descendo, mão direita"
+tipo = "arpejo"
+mao = "direita"
+objetivo = "Arpejar Ré menor subindo e descendo."
+instrucoes = "Toque Ré, Fá, Lá, Ré, Fá, Lá, Fá, Ré, Lá, Fá e Ré. Dedilhado 1-2-3-1-2-3 na subida e o inverso na descida."
+dedilhado = "1-2-3-1-2-3-2-1-3-2-1"
+passos = "D4 F4 A4 D5 F5 A5 F5 D5 A4 F4 D4"
+roteiro = [
+  "Ponha a mão direita sobre as teclas, com os dedos curvos e o punho solto.",
+  "Comece no Ré, a fundamental do acorde.",
+  "Use os dedos 1, 2 e 3; depois do 3, passe o polegar por baixo e repita 1, 2 e 3. Na descida, faça o contrário.",
+  "Toque uma nota de cada vez, soltando a anterior, com som parelho.",
+  "A ordem é Ré, Fá, Lá, Ré, Fá, Lá, Fá, Ré, Lá, Fá e Ré.",
+]
+erro = "Toque só as notas do acorde, uma de cada vez, sem pular nem repetir."
+
+[[exercicio]]
+id = "do-me-1oit-subdesc"
+titulo = "Dó maior: arpejo de uma oitava, subindo e descendo, mão esquerda"
+tipo = "arpejo"
+mao = "esquerda"
+objetivo = "Arpejar Dó maior com a mão esquerda."
+instrucoes = "Use a mão esquerda, uma oitava abaixo. Toque Dó, Mi, Sol, Dó, Sol, Mi e Dó."
+passos = "C3 E3 G3 C4 G3 E3 C3"
+roteiro = [
+  "Ponha a mão esquerda sobre as teclas, com os dedos curvos e o punho solto.",
+  "Comece no Dó, a fundamental do acorde.",
+  "Escolha os dedos que deixem a mão confortável, sem esticar demais.",
+  "Toque uma nota de cada vez, soltando a anterior, com som parelho.",
+  "A ordem é Dó, Mi, Sol, Dó, Sol, Mi e Dó.",
+]
+erro = "Toque só as notas do acorde, uma de cada vez, sem pular nem repetir."

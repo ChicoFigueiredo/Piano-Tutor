@@ -1,0 +1,152 @@
+[licao]
+id = "fundamentos-cinco-dedos-do"
+trilha = "Fundamentos"
+ordem_trilha = 10
+ordem = 3
+titulo = "Cinco dedos em Dó"
+descricao = "Posição de cinco dedos em Dó, na mão direita e na esquerda, com passo e salto de dedo."
+nivel = "iniciante"
+situacao = "proposta"
+fontes = ["Dummies: Piano for Dummies, posições de Dó e Sol (https://www.dummies.com/article/academics-the-arts/music/instruments/piano/how-to-play-the-piano-or-keyboard-in-c-and-g-position-153031/)", "Wikipedia: Fingering (music) (https://en.wikipedia.org/wiki/Fingering_(music))", "Skoove: Ode to Joy piano tutorial, mão direita na posição de Dó (https://www.skoove.com/blog/ode-to-joy-piano-tutorial)"]
+requer = ["fundamentos-geografia-do-teclado"]
+
+[[exercicio]]
+id = "direita-subindo"
+titulo = "Direita subindo"
+tipo = "sequencia"
+mao = "direita"
+objetivo = "Tocar cinco notas subindo com a mão direita."
+instrucoes = "Ponha o polegar no Dó central. Cada dedo fica sobre uma tecla. Toque Dó, Ré, Mi, Fá e Sol."
+dedilhado = "1-2-3-4-5"
+passos = "C4 D4 E4 F4 G4"
+roteiro = [
+  "Ponha o polegar direito no Dó central, com o pulso solto.",
+  "Deixe os outros dedos curvos sobre Ré, Mi, Fá e Sol.",
+  "Toque uma nota por dedo, de 1 a 5.",
+  "Ouça o som subindo.",
+]
+acerto = "Degrau certo."
+erro = "Um dedo por tecla, em ordem."
+
+[[exercicio]]
+id = "direita-descendo"
+titulo = "Direita descendo"
+tipo = "sequencia"
+mao = "direita"
+objetivo = "Tocar cinco notas descendo com a mão direita."
+instrucoes = "Comece no Sol, com o dedo 5. Desça até o Dó, com o polegar."
+dedilhado = "5-4-3-2-1"
+passos = "G4 F4 E4 D4 C4"
+roteiro = [
+  "Comece com o dedo 5 sobre o Sol.",
+  "Toque cada tecla ao descer, do dedo 5 ao dedo 1.",
+  "Termine com o polegar no Dó central.",
+  "Mantenha a mão no mesmo lugar, sem pular.",
+]
+acerto = "Degrau certo."
+erro = "Desça uma tecla branca por vez."
+
+[[exercicio]]
+id = "direita-ida-e-volta"
+titulo = "Direita, ida e volta"
+tipo = "sequencia"
+mao = "direita"
+objetivo = "Subir e descer sem parar."
+instrucoes = "Toque Dó, Ré, Mi, Fá, Sol e volte até o Dó. O Sol é tocado uma vez só."
+dedilhado = "1-2-3-4-5-4-3-2-1"
+passos = "C4 D4 E4 F4 G4 F4 E4 D4 C4"
+roteiro = [
+  "Posicione a mão direita com o polegar no Dó.",
+  "Suba do dedo 1 ao 5, uma nota por dedo.",
+  "Toque o Sol uma vez só e comece a descer.",
+  "Chegue ao Dó e pare, sem apertar demais.",
+]
+acerto = "Degrau certo."
+
+[[exercicio]]
+id = "esquerda-subindo"
+titulo = "Esquerda subindo"
+tipo = "sequencia"
+mao = "esquerda"
+objetivo = "Tocar cinco notas subindo com a mão esquerda."
+instrucoes = "A mão esquerda fica uma oitava abaixo. Ponha o dedo 5 no Dó grave. O polegar fica no Sol."
+dedilhado = "5-4-3-2-1"
+passos = "C3 D3 E3 F3 G3"
+roteiro = [
+  "A mão esquerda fica uma oitava abaixo do Dó central.",
+  "Ponha o dedo 5 no Dó grave e o polegar no Sol.",
+  "Suba do dedo 5 ao 1, uma nota por dedo.",
+  "Deixe os dedos curvos e o pulso solto.",
+]
+acerto = "Degrau certo."
+erro = "O dedo 5 começa no Dó, uma oitava abaixo do Dó central."
+
+[[exercicio]]
+id = "esquerda-descendo"
+titulo = "Esquerda descendo"
+tipo = "sequencia"
+mao = "esquerda"
+objetivo = "Tocar cinco notas descendo com a mão esquerda."
+instrucoes = "Comece no Sol grave, com o polegar. Desça até o Dó, com o dedo 5."
+dedilhado = "1-2-3-4-5"
+passos = "G3 F3 E3 D3 C3"
+roteiro = [
+  "Comece com o polegar esquerdo no Sol grave.",
+  "Desça do dedo 1 ao dedo 5, uma nota por dedo.",
+  "Termine no Dó grave com o dedo 5.",
+  "A mão não sai do lugar.",
+]
+acerto = "Degrau certo."
+
+[[exercicio]]
+id = "esquerda-ida-e-volta"
+titulo = "Esquerda, ida e volta"
+tipo = "sequencia"
+mao = "esquerda"
+objetivo = "Subir e descer com a mão esquerda."
+instrucoes = "Toque Dó, Ré, Mi, Fá, Sol e volte até o Dó, com a mão esquerda."
+dedilhado = "5-4-3-2-1-2-3-4-5"
+passos = "C3 D3 E3 F3 G3 F3 E3 D3 C3"
+roteiro = [
+  "Coloque a esquerda no Dó grave, com o dedo 5 nele.",
+  "Suba até o Sol com o polegar.",
+  "Desça pelas mesmas teclas até o Dó.",
+  "Toque o Sol uma vez só no alto.",
+]
+acerto = "Degrau certo."
+
+[[exercicio]]
+id = "direita-saltando"
+titulo = "Direita pulando um dedo"
+tipo = "sequencia"
+mao = "direita"
+objetivo = "Tocar uma tecla sim, outra não."
+instrucoes = "Toque Dó, Mi e Sol, depois volte. Os dedos usados são 1, 3 e 5. Os dedos 2 e 4 descansam."
+dedilhado = "1-3-5-3-1"
+passos = "C4 E4 G4 E4 C4"
+roteiro = [
+  "Ponha a mão direita na posição de Dó.",
+  "Toque o Dó com o polegar e o Mi com o dedo 3.",
+  "Pule a tecla do Ré e do Fá: só o Sol, com o dedo 5.",
+  "Volte tocando Mi e Dó, sem pressa.",
+]
+acerto = "Salto certo."
+erro = "Pule uma tecla branca entre uma nota e outra."
+
+[[exercicio]]
+id = "esquerda-saltando"
+titulo = "Esquerda pulando um dedo"
+tipo = "sequencia"
+mao = "esquerda"
+objetivo = "Tocar uma tecla sim, outra não com a esquerda."
+instrucoes = "Toque Dó, Mi e Sol graves, depois volte. Os dedos usados são 5, 3 e 1."
+dedilhado = "5-3-1-3-5"
+passos = "C3 E3 G3 E3 C3"
+roteiro = [
+  "Ponha a mão esquerda na posição de Dó grave.",
+  "Toque o Dó com o dedo 5 e o Mi com o dedo 3.",
+  "Toque o Sol com o polegar e volte pelo Mi até o Dó.",
+  "Deixe os dedos 4 e 2 descansarem.",
+]
+acerto = "Salto certo."
+conclusao = "Posição de Dó dominada nas duas mãos."

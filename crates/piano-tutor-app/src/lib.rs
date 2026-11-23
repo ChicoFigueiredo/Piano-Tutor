@@ -26,6 +26,7 @@ pub mod estado;
 pub mod exercicios;
 pub mod gravacao;
 pub mod icones;
+pub mod licoes;
 pub mod monitor;
 pub mod partitura_visual;
 pub mod preferencias;

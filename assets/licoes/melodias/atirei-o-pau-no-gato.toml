@@ -1,0 +1,149 @@
+[licao]
+id = "melodias-atirei-o-pau-no-gato"
+trilha = "Melodias"
+ordem_trilha = 60
+ordem = 5
+titulo = "Atirei o pau no gato"
+descricao = "Cantiga de roda em Dó, com notas repetidas e uma segunda parte mais alta."
+nivel = "basico"
+situacao = "proposta"
+fontes = ["Cantiga folclórica de tradição portuguesa e brasileira, autoria desconhecida: domínio público", "Fernandes, J. N. (org.), Canções do Brasil para conjunto Orff, Tomo I, Instituto Villa-Lobos/UNIRIO, 2017 (https://www.unirio.br/unirio000.html/cla/ivl/publicacoes/cancoes_do_brasil_tomo1.pdf)", "8notes.com: Atirei o pau ao gato, Portugal Trad., tom de Dó maior (https://www.8notes.com/scores/55099.asp)"]
+requer = ["melodias-marcha-soldado"]
+
+[[exercicio]]
+id = "abertura"
+titulo = "Abertura"
+tipo = "sequencia"
+mao = "direita"
+objetivo = "Tocar o começo da cantiga."
+instrucoes = "Toque Sol, Fá, Mi, Ré, Mi e Fá. A melodia desce e volta."
+dedilhado = "5-4-3-2-3-4"
+passos = "G4 F4 E4 D4 E4 F4"
+roteiro = [
+  "Ponha a mão direita na posição de Dó.",
+  "Comece no Sol com o dedo 5.",
+  "Desça por Fá, Mi e Ré.",
+  "Volte por Mi e Fá.",
+]
+acerto = "Nota certa."
+erro = "Sol, Fá, Mi, Ré, Mi, Fá."
+
+[[exercicio]]
+id = "gato-to"
+titulo = "Gato-to"
+tipo = "sequencia"
+mao = "direita"
+objetivo = "Tocar o trecho do Sol repetido."
+instrucoes = "Toque Sol, Sol, Sol, Lá e Sol. O dedo 5 toca o Sol e estica ao Lá."
+passos = "G4 G4 G4 A4 G4"
+roteiro = [
+  "Ponha a mão direita na posição de Dó.",
+  "Toque o Sol três vezes com o dedo 5.",
+  "Estique o dedo 5 até o Lá.",
+  "Volte ao Sol.",
+]
+acerto = "Nota certa."
+erro = "Sol, Sol, Sol, Lá, Sol."
+
+[[exercicio]]
+id = "nao-morreu"
+titulo = "Não morreu"
+tipo = "sequencia"
+mao = "direita"
+objetivo = "Tocar o trecho que desce até o Dó."
+instrucoes = "Toque Fá, Fá, Fá, Sol, Fá, Mi, Mi, Mi, Dó e Dó."
+passos = "F4 F4 F4 G4 F4 E4 E4 E4 C4 C4"
+roteiro = [
+  "Ponha a mão direita na posição de Dó.",
+  "Toque o Fá três vezes, depois o Sol e o Fá.",
+  "Toque o Mi três vezes.",
+  "Desça ao Dó e toque duas vezes.",
+]
+acerto = "Nota certa."
+erro = "Fá três vezes, Sol, Fá, Mi três vezes, Dó duas vezes."
+
+[[exercicio]]
+id = "segunda-parte-inicio"
+titulo = "Dona Chica"
+tipo = "sequencia"
+mao = "direita"
+objetivo = "Tocar o começo da segunda parte."
+instrucoes = "Toque Lá, Lá, Lá, Si, Lá, Sol e Sol. O Si é a nota mais alta da cantiga."
+passos = "A4 A4 A4 B4 A4 G4 G4"
+roteiro = [
+  "Leve a mão um pouco para a direita, com o polegar no Fá.",
+  "Toque o Lá três vezes com o dedo 3.",
+  "Toque o Si com o dedo 4 e volte ao Lá.",
+  "Termine com o Sol duas vezes, com o dedo 2.",
+]
+acerto = "Nota certa."
+erro = "Lá, Lá, Lá, Si, Lá, Sol, Sol."
+
+[[exercicio]]
+id = "segunda-parte-fim"
+titulo = "Final da cantiga"
+tipo = "sequencia"
+mao = "direita"
+objetivo = "Tocar o final da segunda parte."
+instrucoes = "Toque Sol, Mi, Fá, Sol, Sol, Mi, Fá, Sol, Fá, Mi, Ré e Dó."
+passos = "G4 E4 F4 G4 G4 E4 F4 G4 F4 E4 D4 C4"
+roteiro = [
+  "Ponha a mão direita na posição de Dó.",
+  "Toque Sol, Mi, Fá e Sol.",
+  "Repita Sol, Mi, Fá e Sol.",
+  "Desça por Fá, Mi e Ré até o Dó.",
+]
+acerto = "Nota certa."
+erro = "Sol, Mi, Fá, Sol, duas vezes, e depois desça até o Dó."
+
+[[exercicio]]
+id = "ouvir-primeira"
+titulo = "Ouvir o começo"
+tipo = "ouvir"
+mao = "direita"
+objetivo = "Ouvir e repetir o começo."
+instrucoes = "Ouça a frase. Depois toque de memória."
+passos = "G4 F4 E4 D4 E4 F4 G4 G4 G4 A4 G4"
+roteiro = [
+  "Ouça a frase uma vez, até o fim.",
+  "Ponha a mão direita na posição de Dó.",
+  "Lembre: desce do Sol ao Ré, volta ao Fá, e repete o Sol.",
+  "Toque de memória.",
+]
+acerto = "Frase repetida."
+erro = "Ouça de novo."
+
+[[exercicio]]
+id = "ouvir-segunda"
+titulo = "Ouvir não morreu"
+tipo = "ouvir"
+mao = "direita"
+objetivo = "Ouvir e repetir o trecho que desce."
+instrucoes = "Ouça a frase. Depois toque de memória."
+passos = "F4 F4 F4 G4 F4 E4 E4 E4 C4 C4"
+roteiro = [
+  "Ouça a frase uma vez, até o fim.",
+  "Ponha a mão direita na posição de Dó.",
+  "Lembre: três Fás, o Sol, depois três Mis e dois Dós.",
+  "Toque de memória.",
+]
+acerto = "Frase repetida."
+erro = "Ouça de novo."
+
+[[exercicio]]
+id = "ouvir-final"
+titulo = "Ouvir o final"
+tipo = "ouvir"
+mao = "direita"
+objetivo = "Ouvir e repetir o final."
+instrucoes = "Ouça a frase. Depois toque de memória."
+passos = "G4 E4 F4 G4 G4 E4 F4 G4 F4 E4 D4 C4"
+roteiro = [
+  "Ouça a frase uma vez, até o fim.",
+  "Ponha a mão direita na posição de Dó.",
+  "Lembre: duas vezes Sol, Mi, Fá, Sol; e desça ao Dó.",
+  "Toque de memória.",
+]
+acerto = "Frase repetida."
+erro = "Ouça de novo."
+conclusao = "Você tocou quase toda a cantiga."

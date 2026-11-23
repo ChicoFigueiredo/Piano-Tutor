@@ -1,0 +1,149 @@
+[licao]
+id = "fundamentos-geografia-do-teclado"
+trilha = "Fundamentos"
+ordem_trilha = 10
+ordem = 2
+titulo = "Geografia do teclado"
+descricao = "Grupos de duas e três pretas, e como achar Dó, Fá e as outras brancas em qualquer oitava."
+nivel = "iniciante"
+situacao = "proposta"
+fontes = ["Wikipedia: Piano keyboard (https://en.wikipedia.org/wiki/Piano_keyboard)", "Dummies: Piano for Dummies, posições de Dó e Sol (https://www.dummies.com/article/academics-the-arts/music/instruments/piano/how-to-play-the-piano-or-keyboard-in-c-and-g-position-153031/)", "Prática pedagógica comum: reconhecer as notas pelos grupos de teclas pretas"]
+requer = []
+
+[[exercicio]]
+id = "duas-pretas"
+titulo = "Grupo de duas pretas"
+tipo = "localizar"
+mao = "direita"
+objetivo = "Achar as duas teclas pretas juntas."
+instrucoes = "Procure um grupo de duas teclas pretas. Toque Dó sustenido e depois Ré sustenido. Repita em outro grupo, se quiser."
+passos = "C# D# C# D#"
+roteiro = [
+  "Sente-se de frente para o meio do teclado, com os ombros soltos.",
+  "Ache um grupo com duas teclas pretas juntas.",
+  "Toque a primeira preta com o dedo 2 e a segunda com o dedo 3.",
+  "Repita a ordem: a preta da esquerda soa mais grave que a da direita.",
+]
+acerto = "Duas pretas achadas."
+erro = "Procure o grupo com duas pretas, não três."
+
+[[exercicio]]
+id = "tres-pretas"
+titulo = "Grupo de três pretas"
+tipo = "localizar"
+mao = "direita"
+objetivo = "Achar as três teclas pretas juntas."
+instrucoes = "Procure um grupo de três teclas pretas. Toque Fá sustenido, Sol sustenido e Lá sustenido. Depois repita."
+passos = "F# G# A# F# G# A#"
+roteiro = [
+  "Ache um grupo com três teclas pretas juntas.",
+  "Use os dedos 2, 3 e 4 sobre as três pretas.",
+  "Toque da esquerda para a direita e ouça o som subindo.",
+  "Repita o grupo de novo, sem olhar para os dedos.",
+]
+acerto = "Três pretas achadas."
+erro = "Procure o grupo com três pretas."
+
+[[exercicio]]
+id = "todos-os-dos"
+titulo = "Todos os Dós"
+tipo = "localizar"
+mao = "direita"
+objetivo = "Achar o Dó em várias oitavas."
+instrucoes = "O Dó é a branca logo à esquerda de cada grupo de duas pretas. Toque cinco Dós, cada um em uma oitava diferente."
+passos = "C C C C C"
+roteiro = [
+  "Ache um grupo de duas pretas.",
+  "A branca logo à esquerda do grupo é o Dó.",
+  "Toque esse Dó e depois vá para outro grupo de duas pretas.",
+  "Toque cinco Dós, cada um em uma oitava diferente, e ouça como soam parecidos.",
+]
+acerto = "Esse é um Dó."
+erro = "O Dó fica à esquerda do grupo de duas pretas."
+
+[[exercicio]]
+id = "todos-os-fas"
+titulo = "Todos os Fás"
+tipo = "localizar"
+mao = "direita"
+objetivo = "Achar o Fá em várias oitavas."
+instrucoes = "O Fá é a branca logo à esquerda de cada grupo de três pretas. Toque cinco Fás, cada um em uma oitava diferente."
+passos = "F F F F F"
+roteiro = [
+  "Ache um grupo de três pretas.",
+  "A branca logo à esquerda do grupo é o Fá.",
+  "Toque esse Fá e depois vá para outro grupo de três pretas.",
+  "Toque cinco Fás, um em cada oitava.",
+]
+acerto = "Esse é um Fá."
+erro = "O Fá fica à esquerda do grupo de três pretas."
+
+[[exercicio]]
+id = "re-no-meio"
+titulo = "Ré no meio das duas pretas"
+tipo = "localizar"
+mao = "direita"
+objetivo = "Achar o Ré entre as duas pretas."
+instrucoes = "O Ré é a branca que fica entre as duas pretas do grupo de duas. Toque quatro Rés em oitavas diferentes."
+passos = "D D D D"
+roteiro = [
+  "Ache um grupo de duas pretas.",
+  "Olhe a branca que fica bem no meio das duas pretas: é o Ré.",
+  "Toque um Ré e depois outro, em outra oitava.",
+  "Faça isso quatro vezes, sem pressa.",
+]
+acerto = "Esse é um Ré."
+erro = "O Ré fica entre as duas pretas."
+
+[[exercicio]]
+id = "mi-e-si"
+titulo = "Mi e Si"
+tipo = "localizar"
+mao = "direita"
+objetivo = "Achar duas brancas sem preta à direita."
+instrucoes = "O Mi fica à direita do grupo de duas pretas. O Si fica à direita do grupo de três. Alterne Mi e Si."
+passos = "E B E B E B"
+roteiro = [
+  "O Mi é a branca à direita do grupo de duas pretas.",
+  "O Si é a branca à direita do grupo de três pretas.",
+  "Toque um Mi e um Si, alternando.",
+  "Mi e Si não têm preta à direita: use isso para achá-los.",
+]
+acerto = "Mi ou Si certo."
+erro = "Mi e Si são as brancas que fecham cada grupo."
+
+[[exercicio]]
+id = "sol-la-si"
+titulo = "Sol, Lá e Si no grupo de três"
+tipo = "localizar"
+mao = "direita"
+objetivo = "Achar as brancas ao redor do grupo de três pretas."
+instrucoes = "Sol, Lá e Si ficam em volta do grupo de três pretas. Toque Sol, Lá e Si, duas vezes."
+passos = "G A B G A B"
+roteiro = [
+  "Ache um grupo de três pretas.",
+  "O Sol fica entre a primeira e a segunda preta, o Lá entre a segunda e a terceira, e o Si à direita da terceira.",
+  "Toque Sol, Lá e Si com os dedos 1, 2 e 3.",
+  "Repita o trio em outra oitava, se quiser.",
+]
+acerto = "Nota certa."
+erro = "Sol vem logo depois do Fá, no grupo de três."
+
+[[exercicio]]
+id = "sete-notas"
+titulo = "Do Dó central ao próximo Dó"
+tipo = "sequencia"
+mao = "direita"
+objetivo = "Tocar as sete notas brancas em ordem."
+instrucoes = "Comece no Dó central, perto do meio do teclado. Toque C D E F G A B C, subindo, sem pular nenhuma branca."
+dedilhado = "1-2-3-1-2-3-4-5"
+passos = "C4 D4 E4 F4 G4 A4 B4 C5"
+roteiro = [
+  "Ponha o polegar direito no Dó central, perto do meio do teclado.",
+  "Toque as brancas uma a uma, para a direita: Dó, Ré, Mi, Fá.",
+  "Passe o polegar por baixo da mão e toque o Sol.",
+  "Continue com Lá, Si e termine no Dó seguinte.",
+]
+acerto = "Degrau certo."
+erro = "Toque a próxima branca, sem pular."
+conclusao = "Você conhece as sete notas brancas."

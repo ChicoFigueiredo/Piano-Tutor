@@ -1,0 +1,137 @@
+[licao]
+id = "melodias-ode-a-alegria"
+trilha = "Melodias"
+ordem_trilha = 60
+ordem = 1
+titulo = "Ode à Alegria"
+descricao = "O tema de Beethoven, na posição de cinco dedos em Dó, mão direita."
+nivel = "iniciante"
+situacao = "proposta"
+fontes = ["Beethoven, Sinfonia nº 9, 4º movimento (1824), tema da Ode à Alegria: domínio público", "Skoove: Ode to Joy piano tutorial (https://www.skoove.com/blog/ode-to-joy-piano-tutorial)", "Piano Keyboard Guide: Beethoven Ode to Joy, very easy piano tutorial (https://www.piano-keyboard-guide.com/beethoven-ode-to-joy-very-easy-piano-tutorial/amp/)", "Wikipedia: Ode to Joy (https://en.wikipedia.org/wiki/Ode_to_Joy)"]
+requer = ["fundamentos-cinco-dedos-do"]
+
+[[exercicio]]
+id = "inicio"
+titulo = "Primeiras quatro notas"
+tipo = "sequencia"
+mao = "direita"
+objetivo = "Tocar o começo do tema."
+instrucoes = "Toque Mi, Mi, Fá e Sol. Os dedos são 3, 3, 4 e 5."
+dedilhado = "3-3-4-5"
+passos = "E4 E4 F4 G4"
+roteiro = [
+  "Ponha o polegar direito no Dó central.",
+  "Leve o dedo 3 sobre o Mi.",
+  "Toque o Mi duas vezes, depois o Fá com o dedo 4.",
+  "Termine no Sol com o dedo 5.",
+]
+acerto = "Nota certa."
+erro = "Mi, Mi, Fá, Sol."
+
+[[exercicio]]
+id = "descendo"
+titulo = "A descida"
+tipo = "sequencia"
+mao = "direita"
+objetivo = "Tocar a descida do tema."
+instrucoes = "Toque Sol, Fá, Mi e Ré. Os dedos são 5, 4, 3 e 2."
+dedilhado = "5-4-3-2"
+passos = "G4 F4 E4 D4"
+roteiro = [
+  "Ponha a mão direita na posição de Dó.",
+  "Comece no Sol com o dedo 5.",
+  "Desça pelos dedos 4 e 3, e chegue ao Ré com o dedo 2.",
+  "Ouça como a melodia desce em passos.",
+]
+acerto = "Nota certa."
+
+[[exercicio]]
+id = "primeira-frase"
+titulo = "Primeira frase"
+tipo = "sequencia"
+mao = "direita"
+objetivo = "Juntar as duas partes da primeira frase."
+instrucoes = "Toque as oito notas: Mi, Mi, Fá, Sol, Sol, Fá, Mi e Ré."
+dedilhado = "3-3-4-5-5-4-3-2"
+passos = "E4 E4 F4 G4 G4 F4 E4 D4"
+roteiro = [
+  "Ponha o polegar direito no Dó central.",
+  "Toque Mi, Mi, Fá e Sol, subindo.",
+  "Toque Sol de novo e desça por Fá, Mi e Ré.",
+  "Mantenha a pulsação sempre igual.",
+]
+acerto = "Nota certa."
+erro = "A frase sobe até o Sol e desce até o Ré."
+
+[[exercicio]]
+id = "segunda-frase-a"
+titulo = "Segunda frase, final em Ré"
+tipo = "sequencia"
+mao = "direita"
+objetivo = "Tocar o começo e o fim da segunda frase."
+instrucoes = "Toque Dó, Dó, Ré, Mi, Mi, Ré e Ré. A frase termina em Ré, como se fizesse uma pergunta."
+dedilhado = "1-1-2-3-3-2-2"
+passos = "C4 C4 D4 E4 E4 D4 D4"
+roteiro = [
+  "Ponha o polegar direito no Dó central.",
+  "Toque Dó duas vezes, depois Ré e Mi.",
+  "Repita o Mi e desça ao Ré.",
+  "Toque o Ré de novo para terminar a frase.",
+]
+acerto = "Nota certa."
+erro = "Dó, Dó, Ré, Mi, Mi, Ré, Ré."
+
+[[exercicio]]
+id = "segunda-frase-b"
+titulo = "Segunda frase, final em Dó"
+tipo = "sequencia"
+mao = "direita"
+objetivo = "Tocar o final em Dó."
+instrucoes = "Toque Dó, Dó, Ré, Mi, Ré, Dó e Dó. A frase agora termina no Dó, como se respondesse."
+dedilhado = "1-1-2-3-2-1-1"
+passos = "C4 C4 D4 E4 D4 C4 C4"
+roteiro = [
+  "Ponha o polegar direito no Dó central.",
+  "Toque Dó duas vezes, depois Ré e Mi.",
+  "Desça por Ré até o Dó.",
+  "Termine com o Dó repetido.",
+]
+acerto = "Nota certa."
+erro = "Dó, Dó, Ré, Mi, Ré, Dó, Dó."
+
+[[exercicio]]
+id = "ouvir-primeira"
+titulo = "Ouvir a primeira frase"
+tipo = "ouvir"
+mao = "direita"
+objetivo = "Ouvir e repetir a primeira frase."
+instrucoes = "Ouça a frase. Depois toque de memória."
+dedilhado = "3-3-4-5-5-4-3-2"
+passos = "E4 E4 F4 G4 G4 F4 E4 D4"
+roteiro = [
+  "Ouça a frase uma vez, até o fim.",
+  "Ponha o polegar direito no Dó central.",
+  "Lembre: sobe até o Sol e desce até o Ré.",
+  "Toque de memória, sem olhar a tela.",
+]
+acerto = "Frase repetida."
+erro = "Ouça de novo."
+
+[[exercicio]]
+id = "ouvir-tema"
+titulo = "Ouvir o tema completo"
+tipo = "ouvir"
+mao = "direita"
+objetivo = "Ouvir e repetir o tema completo."
+instrucoes = "Ouça o tema inteiro. A primeira frase termina no Ré. A segunda termina no Dó. Toque de memória."
+dedilhado = "3-3-4-5-5-4-3-2-1-1-2-3-2-1-1"
+passos = "E4 E4 F4 G4 G4 F4 E4 D4 C4 C4 D4 E4 D4 C4 C4"
+roteiro = [
+  "Ouça o tema com atenção, do começo ao fim.",
+  "Ponha o polegar direito no Dó central.",
+  "Lembre: sobe e desce na primeira frase, depois desce até o Dó.",
+  "Toque de memória, em pulso constante.",
+]
+acerto = "Tema repetido."
+erro = "Ouça de novo."
+conclusao = "Você tocou o tema da Ode à Alegria."

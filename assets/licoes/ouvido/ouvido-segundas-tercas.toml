@@ -1,0 +1,137 @@
+[licao]
+id = "ouvido-segundas-tercas"
+trilha = "Ouvido e intervalos"
+ordem_trilha = 50
+ordem = 1
+titulo = "Intervalos harmônicos: segundas e terças"
+descricao = "Tocar duas teclas juntas e ouvir a segunda e a terça, maiores e menores."
+nivel = "iniciante"
+situacao = "proposta"
+fontes = ["Intervalo (música), Wikipédia: https://pt.wikipedia.org/wiki/Intervalo_(música)", "Acorde, Wikipédia: https://pt.wikipedia.org/wiki/Acorde"]
+requer = []
+
+[[exercicio]]
+id = "segunda-maior"
+titulo = "Segunda maior"
+tipo = "intervalos"
+mao = "direita"
+objetivo = "Tocar e ouvir a segunda maior (dois semitons)."
+instrucoes = "A segunda maior tem uma tecla no meio. Toque as duas teclas juntas: Dó e Ré (segunda maior); Fá e Sol (segunda maior); Sol e Lá (segunda maior)."
+passos = "[C4 D4]:segunda_maior [F4 G4]:segunda_maior [G4 A4]:segunda_maior"
+roteiro = [
+  "Ponha dois dedos sobre as teclas do primeiro intervalo: Dó e Ré.",
+  "Escolha os dedos pelo tamanho: vizinhos para intervalos pequenos; abra a mão, com o 1 e o 5, nos grandes.",
+  "Aperte as duas teclas ao mesmo tempo e ouça o som inteiro.",
+  "Confira o tamanho: de Dó a Ré são 2 semitons, contando cada tecla, branca ou preta.",
+  "Solte e passe ao próximo intervalo com a mesma calma.",
+]
+erro = "Confira o espaço entre as duas teclas."
+conclusao = "Intervalos tocados e ouvidos."
+
+[[exercicio]]
+id = "segunda-menor"
+titulo = "Segunda menor"
+tipo = "intervalos"
+mao = "direita"
+objetivo = "Tocar e ouvir a segunda menor (um semitom)."
+instrucoes = "A segunda menor são duas teclas coladas e soa tensa. Toque as duas teclas juntas: Mi e Fá (segunda menor); Si e Dó (segunda menor); Si e Dó (segunda menor)."
+passos = "[E4 F4]:segunda_menor [B3 C4]:segunda_menor [B4 C5]:segunda_menor"
+roteiro = [
+  "Ponha dois dedos sobre as teclas do primeiro intervalo: Mi e Fá.",
+  "Escolha os dedos pelo tamanho: vizinhos para intervalos pequenos; abra a mão, com o 1 e o 5, nos grandes.",
+  "Aperte as duas teclas ao mesmo tempo e ouça o som inteiro.",
+  "Confira o tamanho: de Mi a Fá são 1 semitons, contando cada tecla, branca ou preta.",
+  "Solte e passe ao próximo intervalo com a mesma calma.",
+]
+erro = "Confira o espaço entre as duas teclas."
+conclusao = "Intervalos tocados e ouvidos."
+
+[[exercicio]]
+id = "segundas-mistas"
+titulo = "Segundas maiores e menores"
+tipo = "intervalos"
+mao = "direita"
+objetivo = "Distinguir a segunda maior da segunda menor."
+instrucoes = "Ouça a diferença: a menor é mais apertada. Toque as duas teclas juntas: Dó e Ré (segunda maior); Mi e Fá (segunda menor); Sol e Lá (segunda maior); Si e Dó (segunda menor)."
+passos = "[C4 D4]:segunda_maior [E4 F4]:segunda_menor [G4 A4]:segunda_maior [B3 C4]:segunda_menor"
+roteiro = [
+  "Ponha dois dedos sobre as teclas do primeiro intervalo: Dó e Ré.",
+  "Escolha os dedos pelo tamanho: vizinhos para intervalos pequenos; abra a mão, com o 1 e o 5, nos grandes.",
+  "Aperte as duas teclas ao mesmo tempo e ouça o som inteiro.",
+  "Confira o tamanho: de Dó a Ré são 2 semitons, contando cada tecla, branca ou preta.",
+  "Solte e passe ao próximo intervalo com a mesma calma.",
+]
+erro = "Confira o espaço entre as duas teclas."
+conclusao = "Intervalos tocados e ouvidos."
+
+[[exercicio]]
+id = "terca-maior"
+titulo = "Terça maior"
+tipo = "intervalos"
+mao = "direita"
+objetivo = "Tocar e ouvir a terça maior (quatro semitons)."
+instrucoes = "A terça maior soa alegre. Toque as duas teclas juntas: Dó e Mi (terça maior); Fá e Lá (terça maior); Sol e Si (terça maior)."
+passos = "[C4 E4]:terça_maior [F4 A4]:terça_maior [G4 B4]:terça_maior"
+roteiro = [
+  "Ponha dois dedos sobre as teclas do primeiro intervalo: Dó e Mi.",
+  "Escolha os dedos pelo tamanho: vizinhos para intervalos pequenos; abra a mão, com o 1 e o 5, nos grandes.",
+  "Aperte as duas teclas ao mesmo tempo e ouça o som inteiro.",
+  "Confira o tamanho: de Dó a Mi são 4 semitons, contando cada tecla, branca ou preta.",
+  "Solte e passe ao próximo intervalo com a mesma calma.",
+]
+erro = "Confira o espaço entre as duas teclas."
+conclusao = "Intervalos tocados e ouvidos."
+
+[[exercicio]]
+id = "terca-menor"
+titulo = "Terça menor"
+tipo = "intervalos"
+mao = "direita"
+objetivo = "Tocar e ouvir a terça menor (três semitons)."
+instrucoes = "A terça menor soa triste. Toque as duas teclas juntas: Lá e Dó (terça menor); Ré e Fá (terça menor); Mi e Sol (terça menor)."
+passos = "[A3 C4]:terça_menor [D4 F4]:terça_menor [E4 G4]:terça_menor"
+roteiro = [
+  "Ponha dois dedos sobre as teclas do primeiro intervalo: Lá e Dó.",
+  "Escolha os dedos pelo tamanho: vizinhos para intervalos pequenos; abra a mão, com o 1 e o 5, nos grandes.",
+  "Aperte as duas teclas ao mesmo tempo e ouça o som inteiro.",
+  "Confira o tamanho: de Lá a Dó são 3 semitons, contando cada tecla, branca ou preta.",
+  "Solte e passe ao próximo intervalo com a mesma calma.",
+]
+erro = "Confira o espaço entre as duas teclas."
+conclusao = "Intervalos tocados e ouvidos."
+
+[[exercicio]]
+id = "tercas-mistas"
+titulo = "Terças maiores e menores"
+tipo = "intervalos"
+mao = "direita"
+objetivo = "Distinguir a terça maior da terça menor."
+instrucoes = "Sobe pelas teclas brancas: umas terças são maiores, outras menores. Toque as duas teclas juntas: Dó e Mi (terça maior); Ré e Fá (terça menor); Mi e Sol (terça menor); Fá e Lá (terça maior); Sol e Si (terça maior); Lá e Dó (terça menor)."
+passos = "[C4 E4]:terça_maior [D4 F4]:terça_menor [E4 G4]:terça_menor [F4 A4]:terça_maior [G4 B4]:terça_maior [A3 C4]:terça_menor"
+roteiro = [
+  "Ponha dois dedos sobre as teclas do primeiro intervalo: Dó e Mi.",
+  "Escolha os dedos pelo tamanho: vizinhos para intervalos pequenos; abra a mão, com o 1 e o 5, nos grandes.",
+  "Aperte as duas teclas ao mesmo tempo e ouça o som inteiro.",
+  "Confira o tamanho: de Dó a Mi são 4 semitons, contando cada tecla, branca ou preta.",
+  "Solte e passe ao próximo intervalo com a mesma calma.",
+]
+erro = "Confira o espaço entre as duas teclas."
+conclusao = "Intervalos tocados e ouvidos."
+
+[[exercicio]]
+id = "segundas-e-tercas"
+titulo = "Segundas e terças misturadas"
+tipo = "intervalos"
+mao = "direita"
+objetivo = "Reconhecer segundas e terças pelo som e pela distância."
+instrucoes = "A segunda tem uma tecla no meio ou nenhuma; a terça tem uma ou duas. Toque as duas teclas juntas: Dó e Ré (segunda maior); Dó e Mi (terça maior); Ré e Mi (segunda maior); Ré e Fá (terça menor); Mi e Fá (segunda menor); Mi e Sol (terça menor)."
+passos = "[C4 D4]:segunda_maior [C4 E4]:terça_maior [D4 E4]:segunda_maior [D4 F4]:terça_menor [E4 F4]:segunda_menor [E4 G4]:terça_menor"
+roteiro = [
+  "Ponha dois dedos sobre as teclas do primeiro intervalo: Dó e Ré.",
+  "Escolha os dedos pelo tamanho: vizinhos para intervalos pequenos; abra a mão, com o 1 e o 5, nos grandes.",
+  "Aperte as duas teclas ao mesmo tempo e ouça o som inteiro.",
+  "Confira o tamanho: de Dó a Ré são 2 semitons, contando cada tecla, branca ou preta.",
+  "Solte e passe ao próximo intervalo com a mesma calma.",
+]
+erro = "Confira o espaço entre as duas teclas."
+conclusao = "Intervalos tocados e ouvidos."

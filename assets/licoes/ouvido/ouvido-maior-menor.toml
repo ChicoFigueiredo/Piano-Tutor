@@ -1,0 +1,193 @@
+[licao]
+id = "ouvido-maior-menor"
+trilha = "Ouvido e intervalos"
+ordem_trilha = 50
+ordem = 5
+titulo = "Reconhecer maior e menor"
+descricao = "Ouvir a diferença entre terças, acordes, arpejos e cinco notas no modo maior e no menor."
+nivel = "basico"
+situacao = "proposta"
+fontes = ["Intervalo (música), Wikipédia: https://pt.wikipedia.org/wiki/Intervalo_(música)", "Acorde, Wikipédia: https://pt.wikipedia.org/wiki/Acorde"]
+requer = []
+
+[[exercicio]]
+id = "tercas-maior-e-menor"
+titulo = "Terça maior e terça menor"
+tipo = "intervalos"
+mao = "direita"
+objetivo = "Comparar a terça maior com a terça menor."
+instrucoes = "Maior soa clara; menor soa escura. Toque as duas teclas juntas: Dó e Mi (terça maior); Dó e Mib (terça menor)."
+passos = "[C4 E4]:terça_maior [C4 Eb4]:terça_menor"
+roteiro = [
+  "Ponha dois dedos sobre as teclas do primeiro intervalo: Dó e Mi.",
+  "Escolha os dedos pelo tamanho: vizinhos para intervalos pequenos; abra a mão, com o 1 e o 5, nos grandes.",
+  "Aperte as duas teclas ao mesmo tempo e ouça o som inteiro.",
+  "Confira o tamanho: de Dó a Mi são 4 semitons, contando cada tecla, branca ou preta.",
+  "Solte e passe ao próximo intervalo com a mesma calma.",
+]
+erro = "Confira o espaço entre as duas teclas."
+conclusao = "Intervalos tocados e ouvidos."
+
+[[exercicio]]
+id = "tercas-em-outros-tons"
+titulo = "Terças maiores e menores em outros tons"
+tipo = "intervalos"
+mao = "direita"
+objetivo = "Reconhecer a terça maior e a menor sobre outras notas."
+instrucoes = "Ouça: mudar só a nota de cima muda o caráter. Toque as duas teclas juntas: Lá e Dó# (terça maior); Lá e Dó (terça menor); Ré e Fá# (terça maior); Ré e Fá (terça menor)."
+passos = "[A3 C#4]:terça_maior [A3 C4]:terça_menor [D4 F#4]:terça_maior [D4 F4]:terça_menor"
+roteiro = [
+  "Ponha dois dedos sobre as teclas do primeiro intervalo: Lá e Dó#.",
+  "Escolha os dedos pelo tamanho: vizinhos para intervalos pequenos; abra a mão, com o 1 e o 5, nos grandes.",
+  "Aperte as duas teclas ao mesmo tempo e ouça o som inteiro.",
+  "Confira o tamanho: de Lá a Dó# são 4 semitons, contando cada tecla, branca ou preta.",
+  "Solte e passe ao próximo intervalo com a mesma calma.",
+]
+erro = "Confira o espaço entre as duas teclas."
+conclusao = "Intervalos tocados e ouvidos."
+
+[[exercicio]]
+id = "do-maior-e-menor"
+titulo = "Dó maior e Dó menor"
+tipo = "acorde"
+mao = "direita"
+objetivo = "Ouvir a diferença entre o acorde maior e o menor."
+instrucoes = "O acorde maior soa claro e o menor soa escuro. Só a terça muda. Toque as notas de cada acorde ao mesmo tempo: Dó maior (Dó, Mi e Sol); Dó menor (Dó, Mib e Sol)."
+passos = "{C4 E4 G4}:Dó_maior {C4 Eb4 G4}:Dó_menor"
+roteiro = [
+  "Ponha a mão direita sobre as teclas, com os dedos curvos e o punho solto.",
+  "Primeiro acorde: Dó maior. Ache Dó, Mi e Sol antes de apertar.",
+  "Na posição fundamental, use os dedos 1, 3 e 5.",
+  "Aperte todas as notas ao mesmo tempo, com o mesmo peso, e solte.",
+  "Passe ao próximo acorde sem pressa, achando as teclas antes de apertar.",
+  "Confira o desenho: maior: terça maior e quinta justa; menor: terça menor e quinta justa.",
+]
+erro = "Confira as teclas pretas de cada acorde."
+conclusao = "Acordes tocados com as notas certas."
+
+[[exercicio]]
+id = "sol-la-maior-e-menor"
+titulo = "Sol e Lá, maior e menor"
+tipo = "acorde"
+mao = "direita"
+objetivo = "Distinguir acordes maiores e menores em tons diferentes."
+instrucoes = "Ouça cada par antes de tocar o seguinte. Toque as notas de cada acorde ao mesmo tempo: Sol maior (Sol, Si e Ré); Sol menor (Sol, Sib e Ré); Lá maior (Lá, Dó# e Mi); Lá menor (Lá, Dó e Mi)."
+passos = "{G3 B3 D4}:Sol_maior {G3 Bb3 D4}:Sol_menor {A3 C#4 E4}:Lá_maior {A3 C4 E4}:Lá_menor"
+roteiro = [
+  "Ponha a mão direita sobre as teclas, com os dedos curvos e o punho solto.",
+  "Primeiro acorde: Sol maior. Ache Sol, Si e Ré antes de apertar.",
+  "Na posição fundamental, use os dedos 1, 3 e 5.",
+  "Aperte todas as notas ao mesmo tempo, com o mesmo peso, e solte.",
+  "Passe ao próximo acorde sem pressa, achando as teclas antes de apertar.",
+  "Confira o desenho: maior: terça maior e quinta justa; menor: terça menor e quinta justa.",
+]
+erro = "Confira as teclas pretas de cada acorde."
+conclusao = "Acordes tocados com as notas certas."
+
+[[exercicio]]
+id = "arpejo-do-maior"
+titulo = "Arpejo de Dó maior"
+tipo = "ouvir"
+mao = "direita"
+objetivo = "Ouvir e repetir as três notas de um arpejo maior."
+instrucoes = "O app toca três notas subindo. Ouça e repita. Este arpejo é maior: soa alegre. Ele começa no Dó."
+passos = "C4 E4 G4"
+roteiro = [
+  "Ouça a frase inteira sem tocar, com atenção ao desenho: sobe, desce ou salta.",
+  "Cantarole ou assobie a frase baixinho para fixá-la.",
+  "Ache no teclado a primeira nota, que é o Dó.",
+  "Toque as notas seguintes, comparando cada uma com o que você ouviu.",
+  "Se errar, peça para ouvir de novo ou use a dica para ver as teclas.",
+]
+erro = "Ouça de novo e tente outra vez. Peça a dica se precisar ver as teclas."
+conclusao = "Você repetiu a frase de ouvido."
+
+[[exercicio]]
+id = "arpejo-do-menor"
+titulo = "Arpejo de Dó menor"
+tipo = "ouvir"
+mao = "direita"
+objetivo = "Ouvir e repetir as três notas de um arpejo menor."
+instrucoes = "O app toca três notas subindo. Ouça e repita. Este arpejo é menor: soa triste. Ele começa no Dó."
+passos = "C4 Eb4 G4"
+roteiro = [
+  "Ouça a frase inteira sem tocar, com atenção ao desenho: sobe, desce ou salta.",
+  "Cantarole ou assobie a frase baixinho para fixá-la.",
+  "Ache no teclado a primeira nota, que é o Dó.",
+  "Toque as notas seguintes, comparando cada uma com o que você ouviu.",
+  "Se errar, peça para ouvir de novo ou use a dica para ver as teclas.",
+]
+erro = "Ouça de novo e tente outra vez. Peça a dica se precisar ver as teclas."
+conclusao = "Você repetiu a frase de ouvido."
+
+[[exercicio]]
+id = "arpejo-la-menor"
+titulo = "Arpejo de Lá menor"
+tipo = "ouvir"
+mao = "direita"
+objetivo = "Ouvir e repetir um arpejo menor em outro tom."
+instrucoes = "O app toca três notas subindo. Ouça e repita. Este arpejo é menor. Ele começa no Lá."
+passos = "A3 C4 E4"
+roteiro = [
+  "Ouça a frase inteira sem tocar, com atenção ao desenho: sobe, desce ou salta.",
+  "Cantarole ou assobie a frase baixinho para fixá-la.",
+  "Ache no teclado a primeira nota, que é o Lá.",
+  "Toque as notas seguintes, comparando cada uma com o que você ouviu.",
+  "Se errar, peça para ouvir de novo ou use a dica para ver as teclas.",
+]
+erro = "Ouça de novo e tente outra vez. Peça a dica se precisar ver as teclas."
+conclusao = "Você repetiu a frase de ouvido."
+
+[[exercicio]]
+id = "arpejo-sol-maior"
+titulo = "Arpejo de Sol maior"
+tipo = "ouvir"
+mao = "direita"
+objetivo = "Ouvir e repetir um arpejo maior em outro tom."
+instrucoes = "O app toca três notas subindo. Ouça e repita. Este arpejo é maior. Ele começa no Sol."
+passos = "G3 B3 D4"
+roteiro = [
+  "Ouça a frase inteira sem tocar, com atenção ao desenho: sobe, desce ou salta.",
+  "Cantarole ou assobie a frase baixinho para fixá-la.",
+  "Ache no teclado a primeira nota, que é o Sol.",
+  "Toque as notas seguintes, comparando cada uma com o que você ouviu.",
+  "Se errar, peça para ouvir de novo ou use a dica para ver as teclas.",
+]
+erro = "Ouça de novo e tente outra vez. Peça a dica se precisar ver as teclas."
+conclusao = "Você repetiu a frase de ouvido."
+
+[[exercicio]]
+id = "cinco-notas-do-maior"
+titulo = "Cinco notas de Dó maior"
+tipo = "ouvir"
+mao = "direita"
+objetivo = "Ouvir e repetir cinco notas no modo maior."
+instrucoes = "O app toca cinco notas subindo, de Dó a Sol. Ouça e repita. Este modo é maior: a terceira nota é clara."
+passos = "C4 D4 E4 F4 G4"
+roteiro = [
+  "Ouça a frase inteira sem tocar, com atenção ao desenho: sobe, desce ou salta.",
+  "Cantarole ou assobie a frase baixinho para fixá-la.",
+  "Ache no teclado a primeira nota, que é o Dó.",
+  "Toque as notas seguintes, comparando cada uma com o que você ouviu.",
+  "Se errar, peça para ouvir de novo ou use a dica para ver as teclas.",
+]
+erro = "Ouça de novo e tente outra vez. Peça a dica se precisar ver as teclas."
+conclusao = "Você repetiu a frase de ouvido."
+
+[[exercicio]]
+id = "cinco-notas-do-menor"
+titulo = "Cinco notas de Dó menor"
+tipo = "ouvir"
+mao = "direita"
+objetivo = "Ouvir e repetir cinco notas no modo menor."
+instrucoes = "O app toca cinco notas subindo, de Dó a Sol. Ouça e repita. Este modo é menor: a terceira nota é mais escura."
+passos = "C4 D4 Eb4 F4 G4"
+roteiro = [
+  "Ouça a frase inteira sem tocar, com atenção ao desenho: sobe, desce ou salta.",
+  "Cantarole ou assobie a frase baixinho para fixá-la.",
+  "Ache no teclado a primeira nota, que é o Dó.",
+  "Toque as notas seguintes, comparando cada uma com o que você ouviu.",
+  "Se errar, peça para ouvir de novo ou use a dica para ver as teclas.",
+]
+erro = "Ouça de novo e tente outra vez. Peça a dica se precisar ver as teclas."
+conclusao = "Você repetiu a frase de ouvido."

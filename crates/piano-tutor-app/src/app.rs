@@ -673,8 +673,25 @@ impl AppCasca for AppPianoTutor {
         )]
     }
 
+    /// Início, ou a rota de `PIANO_TUTOR_ROTA` (por exemplo `exercicios`) para abrir direto numa
+    /// tela (capturas e demonstração). Valor desconhecido volta ao Início.
     fn rota_inicial(&self) -> Rota {
-        Rota::nova(ROTA_INICIO)
+        let pedida = std::env::var("PIANO_TUTOR_ROTA").unwrap_or_default();
+        let conhecidas = [
+            ROTA_TECLADO,
+            ROTA_MONITOR,
+            ROTA_TIMBRES,
+            ROTA_CALIBRACAO,
+            ROTA_RITMOS,
+            ROTA_ACORDES,
+            ROTA_EXERCICIOS,
+            ROTA_PARTITURA,
+            ROTA_GRAVACAO,
+        ];
+        match conhecidas.into_iter().find(|r| *r == pedida) {
+            Some(r) => Rota::nova(r),
+            None => Rota::nova(ROTA_INICIO),
+        }
     }
 
     fn trilha(&self, rota: &Rota) -> Vec<Elo> {

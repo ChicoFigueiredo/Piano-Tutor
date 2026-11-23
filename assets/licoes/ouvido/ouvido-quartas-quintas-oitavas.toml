@@ -1,0 +1,119 @@
+[licao]
+id = "ouvido-quartas-quintas-oitavas"
+trilha = "Ouvido e intervalos"
+ordem_trilha = 50
+ordem = 2
+titulo = "Intervalos harmônicos: quartas, quintas e oitavas"
+descricao = "Os intervalos justos e o trítono, tocados com as duas teclas juntas."
+nivel = "iniciante"
+situacao = "proposta"
+fontes = ["Intervalo (música), Wikipédia: https://pt.wikipedia.org/wiki/Intervalo_(música)", "Acorde, Wikipédia: https://pt.wikipedia.org/wiki/Acorde"]
+requer = []
+
+[[exercicio]]
+id = "quarta-justa"
+titulo = "Quarta justa"
+tipo = "intervalos"
+mao = "direita"
+objetivo = "Tocar e ouvir a quarta justa (cinco semitons)."
+instrucoes = "A quarta justa soa firme e aberta. Toque as duas teclas juntas: Dó e Fá (quarta justa); Sol e Dó (quarta justa); Ré e Sol (quarta justa); Lá e Ré (quarta justa)."
+passos = "[C4 F4]:quarta_justa [G4 C5]:quarta_justa [D4 G4]:quarta_justa [A3 D4]:quarta_justa"
+roteiro = [
+  "Ponha dois dedos sobre as teclas do primeiro intervalo: Dó e Fá.",
+  "Escolha os dedos pelo tamanho: vizinhos para intervalos pequenos; abra a mão, com o 1 e o 5, nos grandes.",
+  "Aperte as duas teclas ao mesmo tempo e ouça o som inteiro.",
+  "Confira o tamanho: de Dó a Fá são 5 semitons, contando cada tecla, branca ou preta.",
+  "Solte e passe ao próximo intervalo com a mesma calma.",
+]
+erro = "Confira o espaço entre as duas teclas."
+conclusao = "Intervalos tocados e ouvidos."
+
+[[exercicio]]
+id = "quinta-justa"
+titulo = "Quinta justa"
+tipo = "intervalos"
+mao = "direita"
+objetivo = "Tocar e ouvir a quinta justa (sete semitons)."
+instrucoes = "A quinta justa soa vazia e estável. Toque as duas teclas juntas: Dó e Sol (quinta justa); Fá e Dó (quinta justa); Ré e Lá (quinta justa); Mi e Si (quinta justa); Sol e Ré (quinta justa)."
+passos = "[C4 G4]:quinta_justa [F4 C5]:quinta_justa [D4 A4]:quinta_justa [E4 B4]:quinta_justa [G3 D4]:quinta_justa"
+roteiro = [
+  "Ponha dois dedos sobre as teclas do primeiro intervalo: Dó e Sol.",
+  "Escolha os dedos pelo tamanho: vizinhos para intervalos pequenos; abra a mão, com o 1 e o 5, nos grandes.",
+  "Aperte as duas teclas ao mesmo tempo e ouça o som inteiro.",
+  "Confira o tamanho: de Dó a Sol são 7 semitons, contando cada tecla, branca ou preta.",
+  "Solte e passe ao próximo intervalo com a mesma calma.",
+]
+erro = "Confira o espaço entre as duas teclas."
+conclusao = "Intervalos tocados e ouvidos."
+
+[[exercicio]]
+id = "oitava-justa"
+titulo = "Oitava justa"
+tipo = "intervalos"
+mao = "direita"
+objetivo = "Tocar e ouvir a oitava (doze semitons)."
+instrucoes = "Na oitava as duas notas têm o mesmo nome. Toque as duas teclas juntas: Dó e Dó (oitava justa); Sol e Sol (oitava justa); Mi e Mi (oitava justa); Lá e Lá (oitava justa)."
+passos = "[C4 C5]:oitava_justa [G3 G4]:oitava_justa [E4 E5]:oitava_justa [A3 A4]:oitava_justa"
+roteiro = [
+  "Ponha dois dedos sobre as teclas do primeiro intervalo: Dó e Dó.",
+  "Escolha os dedos pelo tamanho: vizinhos para intervalos pequenos; abra a mão, com o 1 e o 5, nos grandes.",
+  "Aperte as duas teclas ao mesmo tempo e ouça o som inteiro.",
+  "Confira o tamanho: de Dó a Dó são 12 semitons, contando cada tecla, branca ou preta.",
+  "Solte e passe ao próximo intervalo com a mesma calma.",
+]
+erro = "Confira o espaço entre as duas teclas."
+conclusao = "Intervalos tocados e ouvidos."
+
+[[exercicio]]
+id = "quartas-e-quintas"
+titulo = "Quartas e quintas"
+tipo = "intervalos"
+mao = "direita"
+objetivo = "Distinguir a quarta da quinta."
+instrucoes = "A quinta é um semitom maior que a quarta. Toque as duas teclas juntas: Dó e Fá (quarta justa); Dó e Sol (quinta justa); Ré e Sol (quarta justa); Ré e Lá (quinta justa); Mi e Lá (quarta justa); Mi e Si (quinta justa)."
+passos = "[C4 F4]:quarta_justa [C4 G4]:quinta_justa [D4 G4]:quarta_justa [D4 A4]:quinta_justa [E4 A4]:quarta_justa [E4 B4]:quinta_justa"
+roteiro = [
+  "Ponha dois dedos sobre as teclas do primeiro intervalo: Dó e Fá.",
+  "Escolha os dedos pelo tamanho: vizinhos para intervalos pequenos; abra a mão, com o 1 e o 5, nos grandes.",
+  "Aperte as duas teclas ao mesmo tempo e ouça o som inteiro.",
+  "Confira o tamanho: de Dó a Fá são 5 semitons, contando cada tecla, branca ou preta.",
+  "Solte e passe ao próximo intervalo com a mesma calma.",
+]
+erro = "Confira o espaço entre as duas teclas."
+conclusao = "Intervalos tocados e ouvidos."
+
+[[exercicio]]
+id = "quarta-aumentada"
+titulo = "Quarta aumentada (trítono)"
+tipo = "intervalos"
+mao = "direita"
+objetivo = "Conhecer o trítono, o intervalo de seis semitons."
+instrucoes = "O trítono divide a oitava ao meio e soa instável. Toque as duas teclas juntas: Fá e Si (quarta aumentada); Dó e Fá# (quarta aumentada)."
+passos = "[F4 B4]:quarta_aumentada [C4 F#4]:quarta_aumentada"
+roteiro = [
+  "Ponha dois dedos sobre as teclas do primeiro intervalo: Fá e Si.",
+  "Escolha os dedos pelo tamanho: vizinhos para intervalos pequenos; abra a mão, com o 1 e o 5, nos grandes.",
+  "Aperte as duas teclas ao mesmo tempo e ouça o som inteiro.",
+  "Confira o tamanho: de Fá a Si são 6 semitons, contando cada tecla, branca ou preta.",
+  "Solte e passe ao próximo intervalo com a mesma calma.",
+]
+erro = "Confira o espaço entre as duas teclas."
+conclusao = "Intervalos tocados e ouvidos."
+
+[[exercicio]]
+id = "quartas-quintas-oitavas"
+titulo = "Quartas, quintas e oitavas"
+tipo = "intervalos"
+mao = "direita"
+objetivo = "Reconhecer os intervalos justos."
+instrucoes = "São os três intervalos mais estáveis. Toque as duas teclas juntas: Dó e Sol (quinta justa); Dó e Fá (quarta justa); Dó e Dó (oitava justa); Sol e Ré (quinta justa); Sol e Dó (quarta justa); Sol e Sol (oitava justa)."
+passos = "[C4 G4]:quinta_justa [C4 F4]:quarta_justa [C4 C5]:oitava_justa [G3 D4]:quinta_justa [G3 C4]:quarta_justa [G3 G4]:oitava_justa"
+roteiro = [
+  "Ponha dois dedos sobre as teclas do primeiro intervalo: Dó e Sol.",
+  "Escolha os dedos pelo tamanho: vizinhos para intervalos pequenos; abra a mão, com o 1 e o 5, nos grandes.",
+  "Aperte as duas teclas ao mesmo tempo e ouça o som inteiro.",
+  "Confira o tamanho: de Dó a Sol são 7 semitons, contando cada tecla, branca ou preta.",
+  "Solte e passe ao próximo intervalo com a mesma calma.",
+]
+erro = "Confira o espaço entre as duas teclas."
+conclusao = "Intervalos tocados e ouvidos."

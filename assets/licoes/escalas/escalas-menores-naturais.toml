@@ -1,0 +1,122 @@
+[licao]
+id = "escalas-menores-naturais"
+trilha = "Escalas"
+ordem_trilha = 20
+ordem = 5
+titulo = "Escalas menores naturais"
+descricao = "Lá, Mi e Ré menor natural, uma oitava, mão direita e mão esquerda."
+nivel = "basico"
+situacao = "proposta"
+fontes = ["Fingering charts, piano scales (Univ. de Miami): https://www.cs.miami.edu/~burt/music/finger-charts.html", "Piano Major Scales (pianoscales.org): https://pianoscales.org/major.html", "Wikiversity, Piano: how to read piano music and play scales using proper technique: https://en.wikiversity.org/wiki/Piano/How_to_read_piano_music_and_play_scales_using_proper_technique", "Intervalo (música), Wikipédia: https://pt.wikipedia.org/wiki/Intervalo_(música)"]
+requer = []
+
+[[exercicio]]
+id = "a-nat-md-subdesc"
+titulo = "Lá menor natural: subindo e descendo, mão direita"
+tipo = "escala"
+mao = "direita"
+objetivo = "Tocar a escala de Lá menor natural subindo e descendo, uma oitava, com a mão direita."
+instrucoes = "Use a mão direita. Suba e volte sem parar na nota mais aguda: Lá, Si, Dó, Ré, Mi, Fá, Sol, Lá, Sol, Fá, Mi, Ré, Dó, Si e Lá. Só teclas brancas, como Dó maior, mas começando no Lá. Comece com o dedo 1."
+dedilhado = "1-2-3-1-2-3-4-5-4-3-2-1-3-2-1"
+passos = "A4 B4 C5 D5 E5 F5 G5 A5 G5 F5 E5 D5 C5 B4 A4"
+roteiro = [
+  "Sente-se de frente para o teclado, com a mão direita solta e os dedos curvos, perto do Dó central.",
+  "Ponha o dedo 1 no Lá. Confira as teclas pretas da escala. Só teclas brancas, como Dó maior, mas começando no Lá.",
+  "Depois do Dó, passe o polegar por baixo e toque o Ré com o dedo 1.",
+  "Chegue ao Lá sem parar e volte pelo mesmo caminho, com os dedos ao contrário.",
+]
+erro = "Confira as teclas: Só teclas brancas, como Dó maior, mas começando no Lá."
+conclusao = "Lá menor natural, subindo e descendo, mão direita, concluída."
+
+[[exercicio]]
+id = "a-nat-me-subdesc"
+titulo = "Lá menor natural: subindo e descendo, mão esquerda"
+tipo = "escala"
+mao = "esquerda"
+objetivo = "Tocar a escala de Lá menor natural subindo e descendo, uma oitava, com a mão esquerda."
+instrucoes = "Use a mão esquerda. Suba e volte sem parar na nota mais aguda: Lá, Si, Dó, Ré, Mi, Fá, Sol, Lá, Sol, Fá, Mi, Ré, Dó, Si e Lá. Só teclas brancas, como Dó maior, mas começando no Lá. Comece com o dedo 5."
+dedilhado = "5-4-3-2-1-3-2-1-2-3-1-2-3-4-5"
+passos = "A3 B3 C4 D4 E4 F4 G4 A4 G4 F4 E4 D4 C4 B3 A3"
+roteiro = [
+  "Sente-se de frente para o teclado, com a mão esquerda solta e os dedos curvos, uma oitava abaixo do Dó central.",
+  "Ponha o dedo 5 no Lá. Confira as teclas pretas da escala. Só teclas brancas, como Dó maior, mas começando no Lá.",
+  "Depois do Ré, passe o polegar por baixo e toque o Mi com o dedo 1.",
+  "Depois do Mi, passe o dedo 3 por cima do polegar até o Fá.",
+  "Chegue ao Lá sem parar e volte pelo mesmo caminho, com os dedos ao contrário.",
+]
+erro = "Confira as teclas: Só teclas brancas, como Dó maior, mas começando no Lá."
+conclusao = "Lá menor natural, subindo e descendo, mão esquerda, concluída."
+
+[[exercicio]]
+id = "e-nat-md-subdesc"
+titulo = "Mi menor natural: subindo e descendo, mão direita"
+tipo = "escala"
+mao = "direita"
+objetivo = "Tocar a escala de Mi menor natural subindo e descendo, uma oitava, com a mão direita."
+instrucoes = "Use a mão direita. Suba e volte sem parar na nota mais aguda: Mi, Fá#, Sol, Lá, Si, Dó, Ré, Mi, Ré, Dó, Si, Lá, Sol, Fá# e Mi. Um sustenido: Fá#. Comece com o dedo 1."
+dedilhado = "1-2-3-1-2-3-4-5-4-3-2-1-3-2-1"
+passos = "E4 F#4 G4 A4 B4 C5 D5 E5 D5 C5 B4 A4 G4 F#4 E4"
+roteiro = [
+  "Sente-se de frente para o teclado, com a mão direita solta e os dedos curvos, perto do Dó central.",
+  "Ponha o dedo 1 no Mi. Confira as teclas pretas da escala. Um sustenido: Fá#.",
+  "Depois do Sol, passe o polegar por baixo e toque o Lá com o dedo 1.",
+  "Chegue ao Mi sem parar e volte pelo mesmo caminho, com os dedos ao contrário.",
+]
+erro = "Confira as teclas: Um sustenido: Fá#."
+conclusao = "Mi menor natural, subindo e descendo, mão direita, concluída."
+
+[[exercicio]]
+id = "e-nat-me-subdesc"
+titulo = "Mi menor natural: subindo e descendo, mão esquerda"
+tipo = "escala"
+mao = "esquerda"
+objetivo = "Tocar a escala de Mi menor natural subindo e descendo, uma oitava, com a mão esquerda."
+instrucoes = "Use a mão esquerda. Suba e volte sem parar na nota mais aguda: Mi, Fá#, Sol, Lá, Si, Dó, Ré, Mi, Ré, Dó, Si, Lá, Sol, Fá# e Mi. Um sustenido: Fá#. Comece com o dedo 5."
+dedilhado = "5-4-3-2-1-3-2-1-2-3-1-2-3-4-5"
+passos = "E3 F#3 G3 A3 B3 C4 D4 E4 D4 C4 B3 A3 G3 F#3 E3"
+roteiro = [
+  "Sente-se de frente para o teclado, com a mão esquerda solta e os dedos curvos, uma oitava abaixo do Dó central.",
+  "Ponha o dedo 5 no Mi. Confira as teclas pretas da escala. Um sustenido: Fá#.",
+  "Depois do Lá, passe o polegar por baixo e toque o Si com o dedo 1.",
+  "Depois do Si, passe o dedo 3 por cima do polegar até o Dó.",
+  "Chegue ao Mi sem parar e volte pelo mesmo caminho, com os dedos ao contrário.",
+]
+erro = "Confira as teclas: Um sustenido: Fá#."
+conclusao = "Mi menor natural, subindo e descendo, mão esquerda, concluída."
+
+[[exercicio]]
+id = "d-nat-md-subdesc"
+titulo = "Ré menor natural: subindo e descendo, mão direita"
+tipo = "escala"
+mao = "direita"
+objetivo = "Tocar a escala de Ré menor natural subindo e descendo, uma oitava, com a mão direita."
+instrucoes = "Use a mão direita. Suba e volte sem parar na nota mais aguda: Ré, Mi, Fá, Sol, Lá, Sib, Dó, Ré, Dó, Sib, Lá, Sol, Fá, Mi e Ré. Um bemol: Sib. Comece com o dedo 1."
+dedilhado = "1-2-3-1-2-3-4-5-4-3-2-1-3-2-1"
+passos = "D4 E4 F4 G4 A4 Bb4 C5 D5 C5 Bb4 A4 G4 F4 E4 D4"
+roteiro = [
+  "Sente-se de frente para o teclado, com a mão direita solta e os dedos curvos, perto do Dó central.",
+  "Ponha o dedo 1 no Ré. Confira as teclas pretas da escala. Um bemol: Sib.",
+  "Depois do Fá, passe o polegar por baixo e toque o Sol com o dedo 1.",
+  "Chegue ao Ré sem parar e volte pelo mesmo caminho, com os dedos ao contrário.",
+]
+erro = "Confira as teclas: Um bemol: Sib."
+conclusao = "Ré menor natural, subindo e descendo, mão direita, concluída."
+
+[[exercicio]]
+id = "d-nat-me-subdesc"
+titulo = "Ré menor natural: subindo e descendo, mão esquerda"
+tipo = "escala"
+mao = "esquerda"
+objetivo = "Tocar a escala de Ré menor natural subindo e descendo, uma oitava, com a mão esquerda."
+instrucoes = "Use a mão esquerda. Suba e volte sem parar na nota mais aguda: Ré, Mi, Fá, Sol, Lá, Sib, Dó, Ré, Dó, Sib, Lá, Sol, Fá, Mi e Ré. Um bemol: Sib. Comece com o dedo 5."
+dedilhado = "5-4-3-2-1-3-2-1-2-3-1-2-3-4-5"
+passos = "D3 E3 F3 G3 A3 Bb3 C4 D4 C4 Bb3 A3 G3 F3 E3 D3"
+roteiro = [
+  "Sente-se de frente para o teclado, com a mão esquerda solta e os dedos curvos, uma oitava abaixo do Dó central.",
+  "Ponha o dedo 5 no Ré. Confira as teclas pretas da escala. Um bemol: Sib.",
+  "Depois do Sol, passe o polegar por baixo e toque o Lá com o dedo 1.",
+  "Depois do Lá, passe o dedo 3 por cima do polegar até o Sib.",
+  "Chegue ao Ré sem parar e volte pelo mesmo caminho, com os dedos ao contrário.",
+]
+erro = "Confira as teclas: Um bemol: Sib."
+conclusao = "Ré menor natural, subindo e descendo, mão esquerda, concluída."

@@ -22,10 +22,12 @@
 //!   configurável, compasso 1 = instante da primeira nota tocada na tentativa).
 
 use crate::gravacao::{EventoGravado, Gravacao, Mensagem};
+use crate::licoes::{Licao, Origem, Situacao};
 use piano_tutor_core::NotaMidi;
 use piano_tutor_core::ritmo::{Agendador, BPM_MAX, BPM_MIN, Formula};
 use piano_tutor_core::teclado::{ConfigNomes, rotulo};
 use std::fmt::Write as _;
+use std::ops::Range;
 use std::path::PathBuf;
 
 /// Janela padrão para aceitar um conjunto de notas como "juntas".
@@ -190,27 +192,36 @@ enum Avaliacao {
     Completo,
 }
 
-/// Exercício de fábrica: objetivo, instruções, gabarito, pré-requisito e feedback.
+/// Exercício: objetivo, instruções, gabarito, pré-requisito e feedback. Vem de uma Lição
+/// em arquivo (ADR-0009, módulo [`crate::licoes`]).
 #[derive(Clone, Debug, PartialEq)]
 pub struct Exercicio {
-    /// Número 1..=N, estável (usado no arquivo de progresso).
-    pub id: u8,
-    pub titulo: &'static str,
+    /// Identificador estável `licao/exercicio` (usado no arquivo de progresso).
+    pub id: String,
+    /// Posição 1..=N dentro da Lição.
+    pub numero: u16,
+    /// Índice da Lição em [`EstadoExercicios::licoes`].
+    pub licao: usize,
+    pub titulo: String,
     pub tipo: Tipo,
-    pub objetivo: &'static str,
-    pub instrucoes: &'static str,
-    /// Dedilhado sugerido (mão direita); vazio quando não se aplica.
-    pub dedilhado: &'static str,
+    /// Mão indicada (`direita`, `esquerda`, `ambas`); vazio quando não se aplica.
+    pub mao: String,
+    pub objetivo: String,
+    pub instrucoes: String,
+    /// Dedilhado sugerido; vazio quando não se aplica.
+    pub dedilhado: String,
     /// Gabarito: passos na ordem exigida.
     pub passos: Vec<Passo>,
-    /// Exercício que precisa estar concluído antes.
-    pub prerequisito: Option<u8>,
+    /// Como fazer, passo a passo (pode ser vazio: a tela monta um roteiro padrão).
+    pub roteiro: Vec<String>,
+    /// Exercício (id completo) que precisa estar concluído antes.
+    pub prerequisito: Option<String>,
     /// Mensagem a cada passo certo.
-    pub feedback_acerto: &'static str,
+    pub feedback_acerto: String,
     /// Orientação a cada nota errada.
-    pub feedback_erro: &'static str,
+    pub feedback_erro: String,
     /// Mensagem ao concluir.
-    pub conclusao: &'static str,
+    pub conclusao: String,
 }
 
 impl Exercicio {
@@ -229,157 +240,17 @@ impl Exercicio {
     }
 }
 
-/// Os 10 exercícios progressivos de fábrica.
+/// Id da Lição com os 10 exercícios originais da F05.
+pub const LICAO_INICIAL: &str = "primeiros-passos";
+
+/// Os 10 exercícios progressivos originais (Lição `primeiros-passos`, embutida).
 pub fn exercicios_de_fabrica() -> Vec<Exercicio> {
-    let seq = |xs: &[u8]| xs.iter().map(|x| Passo::nota(*x)).collect::<Vec<_>>();
-    vec![
-        Exercicio {
-            id: 1,
-            titulo: "Encontrar o Dó central",
-            tipo: Tipo::Localizar,
-            objetivo: "Localizar o Dó central (Dó4), a nota de referência do teclado.",
-            instrucoes: "O Dó central é a tecla branca logo à esquerda do grupo de duas teclas pretas, no meio do teclado. Toque essa tecla.",
-            dedilhado: "",
-            passos: seq(&[60]),
-            prerequisito: None,
-            feedback_acerto: "Esse é o Dó central, o Dó do meio do teclado.",
-            feedback_erro: "Procure o grupo de duas teclas pretas perto do meio e toque a branca à esquerda dele.",
-            conclusao: "Você achou o Dó central. Todas as outras notas se medem a partir dele.",
-        },
-        Exercicio {
-            id: 2,
-            titulo: "Notas brancas de Dó a Sol",
-            tipo: Tipo::Sequencia,
-            objetivo: "Tocar as cinco primeiras notas brancas, subindo e descendo.",
-            instrucoes: "Toque Dó, Ré, Mi, Fá, Sol; depois Sol, Fá, Mi, Ré, Dó, uma tecla por vez, na ordem.",
-            dedilhado: "Mão direita: 1-2-3-4-5-5-4-3-2-1",
-            passos: seq(&[60, 62, 64, 65, 67, 67, 65, 64, 62, 60]),
-            prerequisito: Some(1),
-            feedback_acerto: "Nota certa, siga para a próxima.",
-            feedback_erro: "Veja a tecla marcada no teclado e toque-a; a anterior continua valendo.",
-            conclusao: "Dez notas na ordem certa: você domina as cinco notas brancas de Dó a Sol.",
-        },
-        Exercicio {
-            id: 3,
-            titulo: "Três notas em ordem",
-            tipo: Tipo::Sequencia,
-            objetivo: "Tocar três notas em ordem a partir de uma instrução escrita.",
-            instrucoes: "Toque Mi, depois Dó, depois Sol (todas na região do Dó central).",
-            dedilhado: "Mão direita: 3-1-5",
-            passos: seq(&[64, 60, 67]),
-            prerequisito: Some(2),
-            feedback_acerto: "Certo, essa nota veio na ordem pedida.",
-            feedback_erro: "A ordem é Mi, Dó, Sol. Toque a nota marcada; sem pressa.",
-            conclusao: "Três notas na ordem certa.",
-        },
-        Exercicio {
-            id: 4,
-            titulo: "Sustenidos e bemóis",
-            tipo: Tipo::Sequencia,
-            objetivo: "Localizar as teclas pretas (sustenidos e bemóis).",
-            instrucoes: "Toque Dó#, Mib, Fá#, Sib, Sol# (as teclas pretas). Dó# e Réb são a mesma tecla.",
-            dedilhado: "",
-            passos: seq(&[61, 63, 66, 70, 68]),
-            prerequisito: Some(3),
-            feedback_acerto: "Tecla preta certa.",
-            feedback_erro: "Tecle a preta marcada: sustenido (#) fica à direita da branca, bemol (b) à esquerda da próxima.",
-            conclusao: "Cinco teclas pretas encontradas.",
-        },
-        Exercicio {
-            id: 5,
-            titulo: "Intervalos: terças e quintas",
-            tipo: Tipo::Intervalos,
-            objetivo: "Tocar duas notas juntas e reconhecer terças e quintas.",
-            instrucoes: "Toque as duas notas ao mesmo tempo: Dó-Mi (terça maior), Ré-Fá (terça menor), Dó-Sol (quinta justa), Sol-Ré (quinta justa).",
-            dedilhado: "Mão direita: 1-3 para terças, 1-5 para quintas",
-            passos: vec![
-                Passo::exato(&[60, 64], "terça maior"),
-                Passo::exato(&[62, 65], "terça menor"),
-                Passo::exato(&[60, 67], "quinta justa"),
-                Passo::exato(&[67, 74], "quinta justa"),
-            ],
-            prerequisito: Some(4),
-            feedback_acerto: "Intervalo certo, as duas notas juntas.",
-            feedback_erro: "Toque só as duas notas marcadas, juntas, como um golpe só.",
-            conclusao: "Quatro intervalos (terças e quintas) tocados juntos.",
-        },
-        Exercicio {
-            id: 6,
-            titulo: "Escala de Dó maior subindo",
-            tipo: Tipo::Escala,
-            objetivo: "Tocar a escala de Dó maior, uma oitava, subindo.",
-            instrucoes: "Toque Dó, Ré, Mi, Fá, Sol, Lá, Si, Dó (oitava acima), em ordem e sem pular nota.",
-            dedilhado: "Mão direita: 1-2-3-1-2-3-4-5",
-            passos: seq(&[60, 62, 64, 65, 67, 69, 71, 72]),
-            prerequisito: Some(5),
-            feedback_acerto: "Degrau certo da escala.",
-            feedback_erro: "A escala de Dó maior só usa teclas brancas; toque a próxima marcada.",
-            conclusao: "Escala de Dó maior completa, subindo.",
-        },
-        Exercicio {
-            id: 7,
-            titulo: "Tríade de Dó maior",
-            tipo: Tipo::Acorde,
-            objetivo: "Tocar Dó, Mi e Sol ao mesmo tempo, em três posições.",
-            instrucoes: "Toque as três notas juntas (dentro da janela de tempo). Vale qualquer inversão e notas dobradas em outra oitava.",
-            dedilhado: "Mão direita: 1-3-5",
-            passos: vec![
-                Passo::acorde(&[60, 64, 67], "Dó maior"),
-                Passo::acorde(&[64, 67, 72], "Dó maior, 1ª inversão"),
-                Passo::acorde(&[67, 72, 76], "Dó maior, 2ª inversão"),
-            ],
-            prerequisito: Some(6),
-            feedback_acerto: "Acorde completo, as notas soaram juntas.",
-            feedback_erro: "Dó maior é só Dó, Mi e Sol; toque as três ao mesmo tempo, sem nota a mais.",
-            conclusao: "Tríade de Dó maior em três posições.",
-        },
-        Exercicio {
-            id: 8,
-            titulo: "Tríades maiores e menores",
-            tipo: Tipo::Acorde,
-            objetivo: "Diferenciar acordes maiores e menores.",
-            instrucoes: "Toque Dó maior, Lá menor, Sol maior, Mi menor, Fá maior e Ré menor, cada um com as notas juntas.",
-            dedilhado: "Mão direita: 1-3-5",
-            passos: vec![
-                Passo::acorde(&[60, 64, 67], "Dó maior"),
-                Passo::acorde(&[57, 60, 64], "Lá menor"),
-                Passo::acorde(&[55, 59, 62], "Sol maior"),
-                Passo::acorde(&[52, 55, 59], "Mi menor"),
-                Passo::acorde(&[53, 57, 60], "Fá maior"),
-                Passo::acorde(&[50, 53, 57], "Ré menor"),
-            ],
-            prerequisito: Some(7),
-            feedback_acerto: "Acorde certo.",
-            feedback_erro: "Maior tem a terça maior (4 semitons); menor tem a terça menor (3 semitons). Confira a nota do meio.",
-            conclusao: "Seis tríades, maiores e menores, tocadas corretamente.",
-        },
-        Exercicio {
-            id: 9,
-            titulo: "Arpejo de Dó maior",
-            tipo: Tipo::Arpejo,
-            objetivo: "Tocar as notas do acorde uma de cada vez, na sequência correta.",
-            instrucoes: "Toque Dó, Mi, Sol, Dó (oitava acima) e desça Sol, Mi, Dó, uma nota de cada vez, na ordem.",
-            dedilhado: "Mão direita subindo: 1-2-3-5; descendo: 5-3-2-1",
-            passos: seq(&[60, 64, 67, 72, 67, 64, 60]),
-            prerequisito: Some(8),
-            feedback_acerto: "Nota do arpejo na ordem certa.",
-            feedback_erro: "No arpejo a ordem importa: toque a nota marcada, uma de cada vez.",
-            conclusao: "Arpejo de Dó maior completo, subindo e descendo.",
-        },
-        Exercicio {
-            id: 10,
-            titulo: "Ouvir e repetir",
-            tipo: Tipo::OuvirERepetir,
-            objetivo: "Repetir de ouvido uma frase curta tocada pelo app.",
-            instrucoes: "Use Ouvir para escutar a frase de seis notas e toque-a no teclado. As teclas não são marcadas; ouça quantas vezes quiser. Use a dica se travar.",
-            dedilhado: "",
-            passos: seq(&[64, 64, 65, 67, 67, 65]),
-            prerequisito: Some(9),
-            feedback_acerto: "Você ouviu e acertou essa nota.",
-            feedback_erro: "Essa nota não é a da frase. Ouça de novo (botão Ouvir) e tente outra.",
-            conclusao: "Frase repetida de ouvido, sem ajuda visual.",
-        },
-    ]
+    let mut erros = Vec::new();
+    crate::licoes::licoes_de_fabrica(&mut erros)
+        .into_iter()
+        .find(|l| l.id == LICAO_INICIAL)
+        .map(|l| l.exercicios)
+        .unwrap_or_default()
 }
 
 /// Classificação de uma nota tocada.
@@ -584,6 +455,12 @@ impl Default for ConfigExercicios {
 /// Estado do professor assistido.
 #[derive(Clone, Debug)]
 pub struct EstadoExercicios {
+    /// Lições em ordem de Trilha (os Exercícios ficam em `exercicios`, na mesma ordem).
+    pub licoes: Vec<Licao>,
+    /// Faixa de `exercicios` de cada Lição (paralelo a `licoes`).
+    pub faixas: Vec<Range<usize>>,
+    /// Problemas ao ler arquivos de Lição (mostrados na tela).
+    pub erros_carga: Vec<String>,
     pub exercicios: Vec<Exercicio>,
     /// Progresso, paralelo a `exercicios`.
     pub progresso: Vec<Progresso>,
@@ -601,15 +478,61 @@ pub struct EstadoExercicios {
     sujo: bool,
 }
 
+/// Id da versão 1 do progresso (`3`) para o id atual (`primeiros-passos/3`).
+fn id_migrado(v: &str) -> String {
+    if !v.is_empty() && v.bytes().all(|b| b.is_ascii_digit()) {
+        format!("{LICAO_INICIAL}/{v}")
+    } else {
+        v.to_owned()
+    }
+}
+
 impl EstadoExercicios {
+    /// Todas as Lições (fábrica e `<pasta>/licoes/`) e o progresso salvo na pasta.
     pub fn novo(pasta: Option<PathBuf>) -> Self {
-        Self::com_exercicios(exercicios_de_fabrica(), pasta)
+        let mut erros = Vec::new();
+        let licoes = crate::licoes::carregar_todas(pasta.as_deref(), &mut erros);
+        let mut e = Self::com_licoes(licoes, pasta);
+        e.erros_carga = erros;
+        e
     }
 
-    /// Estado com exercícios próprios (testes e lições futuras). Lê o progresso da pasta.
+    /// Estado com exercícios soltos (testes): ficam numa Lição só.
     pub fn com_exercicios(exercicios: Vec<Exercicio>, pasta: Option<PathBuf>) -> Self {
+        let licao = Licao {
+            id: LICAO_INICIAL.to_owned(),
+            trilha: "Exercícios".to_owned(),
+            ordem_trilha: 0,
+            ordem: 0,
+            titulo: "Exercícios".to_owned(),
+            descricao: String::new(),
+            nivel: String::new(),
+            situacao: Situacao::Proposta,
+            fontes: Vec::new(),
+            requer: Vec::new(),
+            exercicios,
+            origem: Origem::Fabrica("testes"),
+        };
+        Self::com_licoes(vec![licao], pasta)
+    }
+
+    /// Estado a partir de Lições já lidas. Lê o progresso da pasta.
+    pub fn com_licoes(mut licoes: Vec<Licao>, pasta: Option<PathBuf>) -> Self {
+        let mut exercicios = Vec::new();
+        let mut faixas = Vec::with_capacity(licoes.len());
+        for (i, l) in licoes.iter_mut().enumerate() {
+            let inicio = exercicios.len();
+            for mut x in std::mem::take(&mut l.exercicios) {
+                x.licao = i;
+                exercicios.push(x);
+            }
+            faixas.push(inicio..exercicios.len());
+        }
         let n = exercicios.len();
         let mut e = Self {
+            licoes,
+            faixas,
+            erros_carga: Vec::new(),
             exercicios,
             progresso: vec![Progresso::default(); n],
             config: ConfigExercicios::default(),
@@ -650,23 +573,75 @@ impl EstadoExercicios {
         let Some(ex) = self.exercicios.get(indice) else {
             return false;
         };
-        match ex.prerequisito {
+        let exercicio_ok = match &ex.prerequisito {
             None => true,
-            Some(id) => self
-                .exercicios
-                .iter()
-                .position(|x| x.id == id)
-                .is_some_and(|i| self.concluido(i)),
-        }
+            Some(id) => self.posicao(id).is_some_and(|i| self.concluido(i)),
+        };
+        exercicio_ok && self.licoes_requeridas_ok(ex.licao)
     }
 
-    /// Texto do bloqueio ("conclua o exercício N").
+    /// Índice do exercício de id `id`.
+    pub fn posicao(&self, id: &str) -> Option<usize> {
+        self.exercicios.iter().position(|x| x.id == id)
+    }
+
+    /// Índice da Lição de id `id`.
+    pub fn posicao_licao(&self, id: &str) -> Option<usize> {
+        self.licoes.iter().position(|l| l.id == id)
+    }
+
+    /// (concluídos, total) de uma Lição.
+    pub fn andamento_licao(&self, licao: usize) -> (usize, usize) {
+        let Some(f) = self.faixas.get(licao) else {
+            return (0, 0);
+        };
+        (f.clone().filter(|i| self.concluido(*i)).count(), f.len())
+    }
+
+    /// Lição com todos os exercícios concluídos.
+    pub fn licao_concluida(&self, licao: usize) -> bool {
+        let (feitos, total) = self.andamento_licao(licao);
+        total > 0 && feitos == total
+    }
+
+    fn licoes_requeridas_ok(&self, licao: usize) -> bool {
+        self.licoes.get(licao).is_none_or(|l| {
+            l.requer.iter().all(|r| {
+                self.posicao_licao(r)
+                    .is_none_or(|i| self.licao_concluida(i))
+            })
+        })
+    }
+
+    /// Lição do exercício atual.
+    pub fn licao_atual(&self) -> Option<&Licao> {
+        self.licoes.get(self.exercicio()?.licao)
+    }
+
+    /// Texto do bloqueio ("conclua antes ...").
     pub fn motivo_bloqueio(&self, indice: usize) -> Option<String> {
         if self.desbloqueado(indice) {
             return None;
         }
-        let id = self.exercicios.get(indice)?.prerequisito?;
-        Some(format!("conclua antes o exercício {id}"))
+        let ex = self.exercicios.get(indice)?;
+        if let Some(i) = ex.prerequisito.as_deref().and_then(|id| self.posicao(id))
+            && !self.concluido(i)
+        {
+            let p = &self.exercicios[i];
+            return Some(format!(
+                "conclua antes o exercício {}: {}",
+                p.numero, p.titulo
+            ));
+        }
+        let l = self.licoes.get(ex.licao)?;
+        let faltam: Vec<&str> = l
+            .requer
+            .iter()
+            .filter_map(|r| self.posicao_licao(r))
+            .filter(|i| !self.licao_concluida(*i))
+            .map(|i| self.licoes[i].titulo.as_str())
+            .collect();
+        Some(format!("conclua antes a Lição {}", faltam.join(", ")))
     }
 
     pub fn janela_ns(&self) -> u64 {
@@ -713,7 +688,7 @@ impl EstadoExercicios {
             }
             Feedback::Certo => format!(
                 "Certo! {}",
-                ex.map(|e| e.feedback_acerto).unwrap_or_default()
+                ex.map(|e| e.feedback_acerto.as_str()).unwrap_or_default()
             ),
             Feedback::Parcial { faltam } => {
                 format!("Boa, faltam: {}. Toque juntas.", nomes(faltam))
@@ -729,7 +704,7 @@ impl EstadoExercicios {
                 };
                 format!(
                     "Nota errada.{dica} {} Pode tentar de novo.",
-                    ex.map(|e| e.feedback_erro).unwrap_or_default()
+                    ex.map(|e| e.feedback_erro.as_str()).unwrap_or_default()
                 )
             }
             Feedback::ForaDaJanela => format!(
@@ -740,7 +715,7 @@ impl EstadoExercicios {
                 "Exercício concluído: {} acertos, {} erros. {}",
                 t.acertos,
                 t.erros,
-                ex.map(|e| e.conclusao).unwrap_or_default()
+                ex.map(|e| e.conclusao.as_str()).unwrap_or_default()
             ),
             Feedback::TempoEsgotado => {
                 "Tempo esgotado: a tentativa recomeçou. Desligue o limite se preferir sem pressa."
@@ -996,6 +971,19 @@ impl EstadoExercicios {
         true
     }
 
+    /// Abre a Lição `licao` no primeiro exercício liberado e ainda não concluído (ou no
+    /// primeiro liberado). `false` se nenhum está liberado.
+    pub fn abrir_licao(&mut self, licao: usize) -> bool {
+        let Some(f) = self.faixas.get(licao).cloned() else {
+            return false;
+        };
+        let alvo = f
+            .clone()
+            .find(|i| self.desbloqueado(*i) && !self.concluido(*i))
+            .or_else(|| f.clone().find(|i| self.desbloqueado(*i)));
+        alvo.is_some_and(|i| self.selecionar(i))
+    }
+
     /// Próximo exercício, se existir e estiver liberado.
     pub fn avancar(&mut self) -> bool {
         self.selecionar(self.atual + 1)
@@ -1014,7 +1002,7 @@ impl EstadoExercicios {
     // ---------- persistência ----------
 
     pub fn para_texto(&self) -> String {
-        let mut s = String::from("# Piano Tutor: progresso dos exercícios v1\n");
+        let mut s = String::from("# Piano Tutor: progresso dos exercícios v2\n");
         let _ = writeln!(s, "janela_ms={}", self.config.janela_ms);
         let _ = writeln!(s, "limite_s={}", self.config.limite_s);
         let _ = writeln!(s, "dica={}", u8::from(self.config.mostrar_dica));
@@ -1023,11 +1011,14 @@ impl EstadoExercicios {
             let _ = writeln!(s, "atual={}", e.id);
         }
         for (ex, p) in self.exercicios.iter().zip(&self.progresso) {
-            let id = ex.id;
-            let _ = writeln!(s, "ex{id}.acertos={}", p.acertos);
-            let _ = writeln!(s, "ex{id}.erros={}", p.erros);
-            let _ = writeln!(s, "ex{id}.concluido={}", u8::from(p.concluido));
-            let _ = writeln!(s, "ex{id}.vezes={}", p.vezes);
+            if *p == Progresso::default() {
+                continue;
+            }
+            let id = &ex.id;
+            let _ = writeln!(s, "ex.{id}.acertos={}", p.acertos);
+            let _ = writeln!(s, "ex.{id}.erros={}", p.erros);
+            let _ = writeln!(s, "ex.{id}.concluido={}", u8::from(p.concluido));
+            let _ = writeln!(s, "ex.{id}.vezes={}", p.vezes);
         }
         s
     }
@@ -1037,7 +1028,7 @@ impl EstadoExercicios {
     pub fn aplicar_texto(&mut self, texto: &str) {
         self.progresso = vec![Progresso::default(); self.exercicios.len()];
         self.config = ConfigExercicios::default();
-        let mut atual_id: Option<u8> = None;
+        let mut atual_id: Option<String> = None;
         for linha in texto.lines() {
             let Some((k, v)) = linha.trim().split_once('=') else {
                 continue;
@@ -1064,7 +1055,7 @@ impl EstadoExercicios {
                         self.config.bpm_grade = x;
                     }
                 }
-                "atual" => atual_id = v.parse().ok(),
+                "atual" => atual_id = Some(id_migrado(v)),
                 _ => self.aplicar_chave_exercicio(k, v),
             }
         }
@@ -1075,24 +1066,32 @@ impl EstadoExercicios {
             }
         }
         self.atual = atual_id
-            .and_then(|id| self.exercicios.iter().position(|e| e.id == id))
+            .and_then(|id| self.posicao(&id))
             .filter(|i| self.desbloqueado(*i))
             .unwrap_or(0);
         self.tentativa = Tentativa::default();
     }
 
+    /// Chaves `ex.<licao>/<exercicio>.<campo>` (v2) e `ex<N>.<campo>` (v1, migra para
+    /// `primeiros-passos/N`).
     fn aplicar_chave_exercicio(&mut self, k: &str, v: &str) {
-        let Some(resto) = k.strip_prefix("ex") else {
+        let (id, campo) = if let Some(resto) = k.strip_prefix("ex.") {
+            let Some((id, campo)) = resto.rsplit_once('.') else {
+                return;
+            };
+            (id.to_owned(), campo)
+        } else if let Some(resto) = k.strip_prefix("ex") {
+            let Some((n, campo)) = resto.split_once('.') else {
+                return;
+            };
+            if n.is_empty() || !n.bytes().all(|b| b.is_ascii_digit()) {
+                return;
+            }
+            (id_migrado(n), campo)
+        } else {
             return;
         };
-        let Some((id, campo)) = resto.split_once('.') else {
-            return;
-        };
-        let Some(i) = id
-            .parse::<u8>()
-            .ok()
-            .and_then(|id| self.exercicios.iter().position(|e| e.id == id))
-        else {
+        let Some(i) = self.posicao(&id) else {
             return;
         };
         let p = &mut self.progresso[i];
@@ -1186,10 +1185,11 @@ impl EstadoExercicios {
             }
             .aproveitamento()
             .map_or("sem notas".to_owned(), |a| format!("{a}%"));
+            let licao = self.licoes.get(ex.licao).map_or("", |l| l.titulo.as_str());
             let _ = writeln!(
                 s,
-                "{}. {} [{}]: {situacao}; acertos {}, erros {}, aproveitamento {aprov}",
-                ex.id,
+                "{licao} {}. {} [{}]: {situacao}; acertos {}, erros {}, aproveitamento {aprov}",
+                ex.numero,
                 ex.titulo,
                 ex.tipo.texto(),
                 p.acertos,
@@ -1277,20 +1277,23 @@ mod testes {
         let ex = exercicios_de_fabrica();
         assert_eq!(ex.len(), 10);
         for (i, x) in ex.iter().enumerate() {
-            assert_eq!(usize::from(x.id), i + 1);
+            assert_eq!(usize::from(x.numero), i + 1);
             for t in [
-                x.titulo,
-                x.objetivo,
-                x.instrucoes,
-                x.feedback_acerto,
-                x.feedback_erro,
-                x.conclusao,
+                &x.titulo,
+                &x.objetivo,
+                &x.instrucoes,
+                &x.feedback_acerto,
+                &x.feedback_erro,
+                &x.conclusao,
             ] {
                 assert!(!t.is_empty(), "exercício {} com texto vazio", x.id);
             }
             assert!(!x.passos.is_empty());
             assert!(x.passos.iter().all(|p| !p.notas.is_empty()));
-            assert_eq!(x.prerequisito, if i == 0 { None } else { Some(x.id - 1) });
+            assert_eq!(
+                x.prerequisito,
+                (i > 0).then(|| format!("primeiros-passos/{i}"))
+            );
         }
         assert_eq!(ex[1].passos.len(), 10, "o exercício 2 tem 10 notas");
     }
@@ -1314,23 +1317,24 @@ mod testes {
             Tipo::Arpejo,
             Tipo::OuvirERepetir,
         ];
-        let mut titulos: Vec<&str> = ex.iter().map(|x| x.titulo).collect();
+        let mut titulos: Vec<&str> = ex.iter().map(|x| x.titulo.as_str()).collect();
         titulos.sort_unstable();
         titulos.dedup();
         assert_eq!(titulos.len(), 10, "títulos únicos");
 
         for (i, x) in ex.iter().enumerate() {
             let rotulo = format!("exercício {} ({})", x.id, x.titulo);
-            assert_eq!(usize::from(x.id), i + 1, "{rotulo}: id sequencial");
+            assert_eq!(usize::from(x.numero), i + 1, "{rotulo}: id sequencial");
+            assert_eq!(x.id, format!("primeiros-passos/{}", i + 1));
             assert_eq!(x.tipo, tipos_esperados[i], "{rotulo}: tipo");
             // Nome, objetivo, instruções, feedback de acerto/erro e conclusão.
             for (campo, texto) in [
-                ("titulo", x.titulo),
-                ("objetivo", x.objetivo),
-                ("instrucoes", x.instrucoes),
-                ("feedback_acerto", x.feedback_acerto),
-                ("feedback_erro", x.feedback_erro),
-                ("conclusao", x.conclusao),
+                ("titulo", &x.titulo),
+                ("objetivo", &x.objetivo),
+                ("instrucoes", &x.instrucoes),
+                ("feedback_acerto", &x.feedback_acerto),
+                ("feedback_erro", &x.feedback_erro),
+                ("conclusao", &x.conclusao),
             ] {
                 assert!(
                     texto.trim().len() >= 10,
@@ -1358,7 +1362,7 @@ mod testes {
             // Pré-requisito: o primeiro é livre; os demais exigem o anterior.
             assert_eq!(
                 x.prerequisito,
-                if i == 0 { None } else { Some(x.id - 1) },
+                (i > 0).then(|| format!("primeiros-passos/{i}")),
                 "{rotulo}: pré-requisito"
             );
             // Só o último é de ouvido (guias escondidas).
@@ -1388,7 +1392,7 @@ mod testes {
                 }
             }
             // Dedilhado sugerido nos exercícios em que se aplica.
-            if matches!(x.id, 2 | 3 | 5 | 6 | 7 | 8 | 9) {
+            if matches!(x.numero, 2 | 3 | 5 | 6 | 7 | 8 | 9) {
                 assert!(!x.dedilhado.is_empty(), "{rotulo}: dedilhado sugerido");
             }
         }
@@ -1401,7 +1405,7 @@ mod testes {
 
         // Jogabilidade: tocar o gabarito (notas de cada passo dentro da janela) conclui cada um.
         for x in &ex {
-            let mut e = em(x.id);
+            let mut e = em(x.numero as u8);
             let mut t_ms = 0u64;
             let mut ultima = Classificacao::Ignorada;
             for p in &x.passos {
@@ -1424,7 +1428,7 @@ mod testes {
                 "exercício {}: um acerto por passo",
                 x.id
             );
-            assert!(e.concluido(usize::from(x.id) - 1));
+            assert!(e.concluido(usize::from(x.numero) - 1));
         }
     }
 
@@ -1646,10 +1650,10 @@ mod testes {
         let mut e = EstadoExercicios::novo(None);
         assert!(e.desbloqueado(0));
         assert!(!e.desbloqueado(1));
-        assert!(!e.desbloqueado(99));
+        assert!(!e.desbloqueado(99_999));
         assert_eq!(
             e.motivo_bloqueio(1).as_deref(),
-            Some("conclua antes o exercício 1")
+            Some("conclua antes o exercício 1: Encontrar o Dó central")
         );
         assert!(!e.avancar(), "bloqueado até concluir o 1");
         assert!(!e.selecionar(5));
@@ -1674,7 +1678,8 @@ mod testes {
         for p in &mut e.progresso {
             p.concluido = true;
         }
-        assert!(e.selecionar(9));
+        let ultimo = e.exercicios.len() - 1;
+        assert!(e.selecionar(ultimo));
         assert!(!e.avancar());
     }
 
@@ -1809,7 +1814,7 @@ mod testes {
         assert_eq!(rel, pasta.join(ARQUIVO_EXPORTADO));
         let txt = std::fs::read_to_string(&rel).expect("ler relatório");
         assert!(txt.contains("1. Encontrar o Dó central"));
-        assert!(txt.contains("Concluídos: 1 de 10"));
+        assert!(txt.contains(&format!("Concluídos: 1 de {}", e.exercicios.len())));
         assert!(txt.contains("bloqueado"));
 
         e.apagar_progresso();
@@ -1994,5 +1999,58 @@ mod testes {
         let de_novo = Gravacao::de_smf(&g.para_smf().expect("exporta"), "t").expect("lê");
         let m = |x: &Gravacao| x.eventos.iter().map(|v| v.msg).collect::<Vec<_>>();
         assert_eq!(m(&g), m(&de_novo));
+    }
+    #[test]
+    fn progresso_v1_migra_para_ids_da_licao_e_v2_volta_igual() {
+        let mut e = EstadoExercicios::novo(None);
+        e.aplicar_texto("ex1.concluido=1\nex1.acertos=3\nex2.concluido=1\nex2.erros=2\natual=3");
+        assert!(e.concluido(0) && e.concluido(1));
+        assert_eq!(e.progresso[0].acertos, 3);
+        assert_eq!(e.progresso[1].erros, 2);
+        assert_eq!(
+            e.exercicio().map(|x| x.id.as_str()),
+            Some("primeiros-passos/3")
+        );
+        let texto = e.para_texto();
+        assert!(texto.contains("ex.primeiros-passos/1.acertos=3"), "{texto}");
+        assert!(texto.contains("atual=primeiros-passos/3"));
+        assert!(
+            !texto.contains("ex.primeiros-passos/4."),
+            "exercício sem progresso não é gravado"
+        );
+        let mut b = EstadoExercicios::novo(None);
+        b.aplicar_texto(&texto);
+        assert_eq!(b.progresso, e.progresso);
+        assert_eq!(b.indice(), e.indice());
+    }
+
+    #[test]
+    fn licao_que_requer_outra_fica_bloqueada_ate_concluir_a_outra() {
+        let mut avisos = Vec::new();
+        let base = |id: &str, requer: &str| {
+            format!(
+                "[licao]\nid = \"{id}\"\ntrilha = \"T\"\ntitulo = \"{id}\"\nrequer = [{requer}]\n\n\
+                 [[exercicio]]\nid = \"a\"\ntitulo = \"A\"\ntipo = \"sequencia\"\n\
+                 objetivo = \"o\"\ninstrucoes = \"i\"\npassos = \"C4\"\n"
+            )
+        };
+        let l1 = crate::licoes::ler_licao(&base("um", ""), Origem::Fabrica("1"), &mut avisos)
+            .expect("um");
+        let l2 =
+            crate::licoes::ler_licao(&base("dois", "\"um\""), Origem::Fabrica("2"), &mut avisos)
+                .expect("dois");
+        let mut e = EstadoExercicios::com_licoes(vec![l1, l2], None);
+        assert!(e.desbloqueado(0));
+        assert!(!e.desbloqueado(1));
+        assert_eq!(
+            e.motivo_bloqueio(1).as_deref(),
+            Some("conclua antes a Lição um")
+        );
+        toca(&mut e, &[60], 0, 0);
+        assert!(e.licao_concluida(0));
+        assert_eq!(e.andamento_licao(0), (1, 1));
+        assert!(e.desbloqueado(1));
+        assert!(e.avancar());
+        assert_eq!(e.licao_atual().map(|l| l.id.as_str()), Some("dois"));
     }
 }

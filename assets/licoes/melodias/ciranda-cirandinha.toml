@@ -1,0 +1,148 @@
+[licao]
+id = "melodias-ciranda-cirandinha"
+trilha = "Melodias"
+ordem_trilha = 60
+ordem = 6
+titulo = "Ciranda, cirandinha"
+descricao = "Cantiga de roda em Dó (versão transposta), com saltos e frases mais longas."
+nivel = "basico"
+situacao = "proposta"
+fontes = ["Cantiga de roda folclórica, autoria desconhecida: domínio público", "Mendes, A.; Santiago, G., Introdução ao teclado, vol. 2, UFSCar (https://www.servidores.ufscar.br/glauber/wp-content/uploads/2021/04/Santiago_Mendes_Introducao_ao_Teclado_v2.pdf)", "Fernandes, J. N. (org.), Canções do Brasil para conjunto Orff, Tomo I, Instituto Villa-Lobos/UNIRIO, 2017 (https://www.unirio.br/unirio000.html/cla/ivl/publicacoes/cancoes_do_brasil_tomo1.pdf)", "Santos, C. E. F., Teclado I, SEAD/UFBA (https://educapes.capes.gov.br/bitstream/capes/1175040/2/eBook_Teclado%20I_SEAD-UFBA.pdf)"]
+requer = ["melodias-brilha-brilha-estrelinha"]
+
+[[exercicio]]
+id = "comeco"
+titulo = "Começo"
+tipo = "sequencia"
+mao = "direita"
+objetivo = "Tocar as quatro primeiras notas."
+instrucoes = "Toque Dó, Dó, Mi e Mi. Os dedos são 1, 1, 3 e 3."
+dedilhado = "1-1-3-3"
+passos = "C4 C4 E4 E4"
+roteiro = [
+  "Ponha o polegar direito no Dó central.",
+  "Toque o Dó duas vezes.",
+  "Pule para o Mi com o dedo 3.",
+  "Toque o Mi duas vezes.",
+]
+acerto = "Nota certa."
+
+[[exercicio]]
+id = "vamos-todos-cirandar"
+titulo = "Vamos todos cirandar"
+tipo = "sequencia"
+mao = "direita"
+objetivo = "Tocar a frase até o Dó e o arpejo final."
+instrucoes = "Toque Sol, Sol, Fá, Mi, Ré, Sol, Mi, Ré, Dó, Mi e Sol."
+passos = "G4 G4 F4 E4 D4 G4 E4 D4 C4 E4 G4"
+roteiro = [
+  "Ponha a mão direita na posição de Dó.",
+  "Toque Sol, Sol, Fá e Mi, descendo.",
+  "Toque Ré, salte ao Sol e desça por Mi e Ré.",
+  "Termine com Dó, Mi e Sol, subindo.",
+]
+acerto = "Nota certa."
+erro = "Sol, Sol, Fá, Mi, Ré, Sol, Mi, Ré, Dó, Mi, Sol."
+
+[[exercicio]]
+id = "primeira-parte"
+titulo = "Primeira parte completa"
+tipo = "sequencia"
+mao = "direita"
+objetivo = "Tocar a primeira parte inteira."
+instrucoes = "Toque as quinze notas, do começo até o Sol final."
+passos = "C4 C4 E4 E4 G4 G4 F4 E4 D4 G4 E4 D4 C4 E4 G4"
+roteiro = [
+  "Ponha o polegar direito no Dó central.",
+  "Toque Dó, Dó, Mi, Mi e depois Sol, Sol, Fá, Mi.",
+  "Toque Ré, Sol, Mi, Ré.",
+  "Termine com Dó, Mi e Sol.",
+]
+acerto = "Nota certa."
+erro = "Dó, Dó, Mi, Mi e depois Sol, Sol, Fá, Mi..."
+
+[[exercicio]]
+id = "vamos-dar-a-meia-volta"
+titulo = "Vamos dar a meia-volta"
+tipo = "sequencia"
+mao = "direita"
+objetivo = "Tocar a descida de Fá até Dó."
+instrucoes = "Toque Fá, Mi, Ré e Dó. A melodia desce por passos."
+dedilhado = "4-3-2-1"
+passos = "F4 E4 D4 C4"
+roteiro = [
+  "Ponha a mão direita na posição de Dó.",
+  "Comece no Fá com o dedo 4.",
+  "Desça por Mi e Ré.",
+  "Termine no Dó com o polegar.",
+]
+acerto = "Nota certa."
+
+[[exercicio]]
+id = "salto-grave"
+titulo = "O salto grave"
+tipo = "sequencia"
+mao = "direita"
+objetivo = "Tocar o trecho que desce ao Sol grave e salta ao Fá."
+instrucoes = "Toque Si, Sol, Fá e Ré. O Si e o Sol ficam abaixo do Dó central. Dê o salto do Sol ao Fá com atenção."
+passos = "B3 G3 F4 D4"
+roteiro = [
+  "Leve a mão para baixo do Dó central.",
+  "Toque o Si e o Sol, ambos abaixo do Dó.",
+  "Salte até o Fá acima do Dó central.",
+  "Termine no Ré. Faça devagar, para sentir o salto.",
+]
+acerto = "Nota certa."
+erro = "Si e Sol ficam abaixo do Dó central. Fá e Ré ficam acima."
+
+[[exercicio]]
+id = "final-da-segunda-parte"
+titulo = "Final da segunda parte"
+tipo = "sequencia"
+mao = "direita"
+objetivo = "Tocar o final em Dó."
+instrucoes = "Toque Mi, Dó, Ré, Si e Dó. O Si fica abaixo do Dó central. Termine no Dó."
+passos = "E4 C4 D4 B3 C4"
+roteiro = [
+  "Ponha a mão direita na posição de Dó.",
+  "Toque Mi e Dó, e suba ao Ré.",
+  "Desça ao Si, abaixo do Dó central.",
+  "Termine no Dó.",
+]
+acerto = "Nota certa."
+erro = "Mi, Dó, Ré, Si grave, Dó."
+
+[[exercicio]]
+id = "ouvir-primeira"
+titulo = "Ouvir a primeira parte"
+tipo = "ouvir"
+mao = "direita"
+objetivo = "Ouvir e repetir a primeira parte."
+instrucoes = "Ouça a frase. Depois toque de memória."
+passos = "C4 C4 E4 E4 G4 G4 F4 E4 D4 G4 E4 D4 C4 E4 G4"
+roteiro = [
+  "Ouça a frase uma vez, até o fim.",
+  "Ponha o polegar direito no Dó central.",
+  "Lembre: sobe com saltos, desce em passos e termina em arpejo.",
+  "Toque de memória.",
+]
+acerto = "Frase repetida."
+erro = "Ouça de novo."
+
+[[exercicio]]
+id = "ouvir-segunda"
+titulo = "Ouvir a segunda parte"
+tipo = "ouvir"
+mao = "direita"
+objetivo = "Ouvir e repetir a segunda parte."
+instrucoes = "Ouça a frase, com o salto grave. Depois toque de memória."
+passos = "F4 E4 D4 C4 B3 G3 F4 D4 E4 C4 D4 B3 C4"
+roteiro = [
+  "Ouça a frase com atenção, até o fim.",
+  "Ponha a mão direita na posição de Dó.",
+  "Lembre: desce em passos, desce ao Sol grave e salta ao Fá.",
+  "Toque de memória.",
+]
+acerto = "Frase repetida."
+erro = "Ouça de novo."
+conclusao = "Você tocou Ciranda, cirandinha."

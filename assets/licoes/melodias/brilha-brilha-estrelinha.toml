@@ -1,0 +1,133 @@
+[licao]
+id = "melodias-brilha-brilha-estrelinha"
+trilha = "Melodias"
+ordem_trilha = 60
+ordem = 4
+titulo = "Brilha, brilha, estrelinha"
+descricao = "A melodia francesa de 1761 conhecida como Brilha, brilha, estrelinha, em Dó."
+nivel = "iniciante"
+situacao = "proposta"
+fontes = ["Melodia francesa 'Ah! vous dirai-je, maman', publicada em 1761: domínio público", "Wikipedia: Twinkle, Twinkle, Little Star (https://en.wikipedia.org/wiki/Twinkle,_Twinkle,_Little_Star)", "Wikipedia: Ah! vous dirai-je, maman (https://en.wikipedia.org/wiki/Ah!_vous_dirai-je,_maman)"]
+requer = ["melodias-ode-a-alegria"]
+
+[[exercicio]]
+id = "primeira-linha"
+titulo = "Primeira linha"
+tipo = "sequencia"
+mao = "direita"
+objetivo = "Tocar a primeira linha."
+instrucoes = "Toque Dó, Dó, Sol, Sol, Lá, Lá e Sol. O dedo 5 toca o Sol e estica ao Lá."
+passos = "C4 C4 G4 G4 A4 A4 G4"
+roteiro = [
+  "Ponha a mão direita na posição de Dó.",
+  "Toque o Dó duas vezes e salte ao Sol.",
+  "Toque o Sol duas vezes e estique o dedo 5 ao Lá.",
+  "Toque o Lá duas vezes e volte ao Sol.",
+]
+acerto = "Nota certa."
+erro = "Dó, Dó, Sol, Sol, Lá, Lá, Sol."
+
+[[exercicio]]
+id = "segunda-linha"
+titulo = "Segunda linha"
+tipo = "sequencia"
+mao = "direita"
+objetivo = "Tocar a descida em passos."
+instrucoes = "Toque Fá, Fá, Mi, Mi, Ré, Ré e Dó. A melodia desce por passos."
+dedilhado = "4-4-3-3-2-2-1"
+passos = "F4 F4 E4 E4 D4 D4 C4"
+roteiro = [
+  "Ponha a mão direita na posição de Dó.",
+  "Toque o Fá duas vezes com o dedo 4.",
+  "Toque o Mi duas vezes e o Ré duas vezes.",
+  "Termine no Dó com o polegar.",
+]
+acerto = "Nota certa."
+erro = "Fá, Fá, Mi, Mi, Ré, Ré, Dó."
+
+[[exercicio]]
+id = "terceira-linha"
+titulo = "Terceira linha"
+tipo = "sequencia"
+mao = "direita"
+objetivo = "Tocar a linha que se repete."
+instrucoes = "Toque Sol, Sol, Fá, Fá, Mi, Mi e Ré. Essa linha aparece duas vezes na melodia."
+dedilhado = "5-5-4-4-3-3-2"
+passos = "G4 G4 F4 F4 E4 E4 D4"
+roteiro = [
+  "Ponha a mão direita na posição de Dó.",
+  "Comece com o dedo 5 no Sol e toque duas vezes.",
+  "Desça para o Fá e o Mi, duas vezes cada.",
+  "Termine no Ré com o dedo 2.",
+]
+acerto = "Nota certa."
+erro = "Sol, Sol, Fá, Fá, Mi, Mi, Ré."
+
+[[exercicio]]
+id = "duas-linhas"
+titulo = "Primeira e segunda linhas"
+tipo = "sequencia"
+mao = "direita"
+objetivo = "Juntar as duas primeiras linhas."
+instrucoes = "Toque a primeira linha e depois a segunda, sem pausa."
+passos = "C4 C4 G4 G4 A4 A4 G4 F4 F4 E4 E4 D4 D4 C4"
+roteiro = [
+  "Ponha a mão direita na posição de Dó.",
+  "Toque a primeira linha, até o Sol.",
+  "Passe ao Fá e desça por Mi e Ré.",
+  "Termine no Dó com o polegar.",
+]
+acerto = "Nota certa."
+erro = "Primeiro a subida, depois a descida."
+
+[[exercicio]]
+id = "ouvir-primeira"
+titulo = "Ouvir a primeira linha"
+tipo = "ouvir"
+mao = "direita"
+objetivo = "Ouvir e repetir a primeira linha."
+instrucoes = "Ouça a frase. Depois toque de memória."
+passos = "C4 C4 G4 G4 A4 A4 G4"
+roteiro = [
+  "Ouça a frase uma vez, até o fim.",
+  "Ponha a mão direita na posição de Dó.",
+  "Lembre: duas vezes cada nota, subindo até o Lá.",
+  "Toque de memória.",
+]
+acerto = "Frase repetida."
+erro = "Ouça de novo."
+
+[[exercicio]]
+id = "ouvir-terceira"
+titulo = "Ouvir a terceira linha"
+tipo = "ouvir"
+mao = "direita"
+objetivo = "Ouvir e repetir a linha que se repete."
+instrucoes = "Ouça a frase. Depois toque de memória."
+passos = "G4 G4 F4 F4 E4 E4 D4"
+roteiro = [
+  "Ouça a frase uma vez, até o fim.",
+  "Ponha a mão direita na posição de Dó.",
+  "Lembre: começa no Sol e desce por passos.",
+  "Toque de memória.",
+]
+acerto = "Frase repetida."
+erro = "Ouça de novo."
+
+[[exercicio]]
+id = "ouvir-duas-linhas"
+titulo = "Ouvir as duas primeiras linhas"
+tipo = "ouvir"
+mao = "direita"
+objetivo = "Ouvir e repetir catorze notas."
+instrucoes = "Ouça as duas linhas seguidas. Depois toque de memória."
+passos = "C4 C4 G4 G4 A4 A4 G4 F4 F4 E4 E4 D4 D4 C4"
+roteiro = [
+  "Ouça as duas linhas com atenção.",
+  "Ponha a mão direita na posição de Dó.",
+  "Lembre: sobe com saltos e desce em passos.",
+  "Toque de memória, do Dó ao Dó.",
+]
+acerto = "Frase repetida."
+erro = "Ouça de novo."
+conclusao = "Você tocou o começo e o fim da melodia."

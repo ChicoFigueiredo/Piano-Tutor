@@ -1,0 +1,133 @@
+[licao]
+id = "fundamentos-cinco-dedos-sol"
+trilha = "Fundamentos"
+ordem_trilha = 10
+ordem = 4
+titulo = "Cinco dedos em Sol"
+descricao = "Posição de cinco dedos em Sol, de Sol a Ré, nas duas mãos."
+nivel = "iniciante"
+situacao = "proposta"
+fontes = ["Dummies: Piano for Dummies, posições de Dó e Sol (https://www.dummies.com/article/academics-the-arts/music/instruments/piano/how-to-play-the-piano-or-keyboard-in-c-and-g-position-153031/)", "Wikipedia: Fingering (music) (https://en.wikipedia.org/wiki/Fingering_(music))"]
+requer = ["fundamentos-cinco-dedos-do"]
+
+[[exercicio]]
+id = "direita-subindo"
+titulo = "Direita subindo"
+tipo = "sequencia"
+mao = "direita"
+objetivo = "Tocar de Sol a Ré com a mão direita."
+instrucoes = "Mude a mão: o polegar vai para o Sol acima do Dó central. Toque Sol, Lá, Si, Dó e Ré."
+dedilhado = "1-2-3-4-5"
+passos = "G4 A4 B4 C5 D5"
+roteiro = [
+  "Leve a mão direita para a direita, até o polegar ficar no Sol.",
+  "Os dedos ficam sobre Lá, Si, Dó e Ré.",
+  "Toque do dedo 1 ao dedo 5.",
+  "As cinco notas são todas brancas.",
+]
+acerto = "Degrau certo."
+erro = "Cinco brancas seguidas, a partir do Sol."
+
+[[exercicio]]
+id = "direita-descendo"
+titulo = "Direita descendo"
+tipo = "sequencia"
+mao = "direita"
+objetivo = "Descer de Ré a Sol com a mão direita."
+instrucoes = "Comece no Ré, com o dedo 5. Desça até o Sol, com o polegar."
+dedilhado = "5-4-3-2-1"
+passos = "D5 C5 B4 A4 G4"
+roteiro = [
+  "Comece com o dedo 5 no Ré.",
+  "Desça, dedo por dedo, até o polegar no Sol.",
+  "Mantenha o pulso solto.",
+  "Cada nota soa uma vez.",
+]
+acerto = "Degrau certo."
+
+[[exercicio]]
+id = "direita-ida-e-volta"
+titulo = "Direita, ida e volta"
+tipo = "sequencia"
+mao = "direita"
+objetivo = "Subir e descer na posição de Sol."
+instrucoes = "Toque Sol, Lá, Si, Dó, Ré e volte até o Sol."
+dedilhado = "1-2-3-4-5-4-3-2-1"
+passos = "G4 A4 B4 C5 D5 C5 B4 A4 G4"
+roteiro = [
+  "Posicione o polegar direito no Sol.",
+  "Suba até o Ré com o dedo 5.",
+  "Desça pelas mesmas teclas até o Sol.",
+  "Toque o Ré uma vez só.",
+]
+acerto = "Degrau certo."
+
+[[exercicio]]
+id = "esquerda-subindo"
+titulo = "Esquerda subindo"
+tipo = "sequencia"
+mao = "esquerda"
+objetivo = "Tocar de Sol a Ré com a mão esquerda."
+instrucoes = "A esquerda fica uma oitava abaixo. Ponha o dedo 5 no Sol grave. Toque Sol, Lá, Si, Dó e Ré."
+dedilhado = "5-4-3-2-1"
+passos = "G3 A3 B3 C4 D4"
+roteiro = [
+  "A esquerda fica uma oitava abaixo da direita.",
+  "Coloque o dedo 5 no Sol grave e o polegar no Ré.",
+  "Suba do dedo 5 ao dedo 1.",
+  "Ouça o som subindo.",
+]
+acerto = "Degrau certo."
+
+[[exercicio]]
+id = "esquerda-ida-e-volta"
+titulo = "Esquerda, ida e volta"
+tipo = "sequencia"
+mao = "esquerda"
+objetivo = "Subir e descer com a esquerda em Sol."
+instrucoes = "Toque Sol, Lá, Si, Dó, Ré e volte até o Sol, com a mão esquerda."
+dedilhado = "5-4-3-2-1-2-3-4-5"
+passos = "G3 A3 B3 C4 D4 C4 B3 A3 G3"
+roteiro = [
+  "Posicione a esquerda com o dedo 5 no Sol grave.",
+  "Suba até o Ré com o polegar.",
+  "Desça pelas mesmas teclas.",
+  "Chegue ao Sol e pare.",
+]
+acerto = "Degrau certo."
+
+[[exercicio]]
+id = "direita-saltando"
+titulo = "Direita pulando um dedo"
+tipo = "sequencia"
+mao = "direita"
+objetivo = "Tocar uma tecla sim, outra não na posição de Sol."
+instrucoes = "Toque Sol, Si e Ré, depois volte. Use os dedos 1, 3 e 5."
+dedilhado = "1-3-5-3-1"
+passos = "G4 B4 D5 B4 G4"
+roteiro = [
+  "Ponha a mão direita na posição de Sol.",
+  "Toque o Sol com o polegar e o Si com o dedo 3.",
+  "Pule o Dó e toque o Ré com o dedo 5.",
+  "Volte por Si até o Sol.",
+]
+acerto = "Salto certo."
+
+[[exercicio]]
+id = "sol-e-do"
+titulo = "Sol e Dó, uma mão por vez"
+tipo = "sequencia"
+mao = "direita"
+objetivo = "Trocar de posição sem olhar muito para a mão."
+instrucoes = "Toque Dó, Mi, Sol na posição de Dó. Depois leve a mão para o Sol e toque Sol, Si, Ré."
+dedilhado = "1-3-5-1-3-5"
+passos = "C4 E4 G4 G4 B4 D5"
+roteiro = [
+  "Comece com o polegar no Dó central e toque Dó, Mi e Sol.",
+  "Levante a mão e leve o polegar para o Sol.",
+  "Toque Sol, Si e Ré.",
+  "Procure olhar para a música, não para a mão.",
+]
+acerto = "Posição trocada."
+erro = "Depois do Sol, o polegar vai ao Sol."
+conclusao = "Você troca de posição com calma."

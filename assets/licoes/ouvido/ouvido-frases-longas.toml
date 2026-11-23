@@ -1,0 +1,191 @@
+[licao]
+id = "ouvido-frases-longas"
+trilha = "Ouvido e intervalos"
+ordem_trilha = 50
+ordem = 7
+titulo = "Ouvir e repetir: frases de quatro a seis notas"
+descricao = "Frases de quatro a seis notas, de ida e volta, e começos de melodias tradicionais."
+nivel = "basico"
+situacao = "proposta"
+fontes = ["Intervalo (música), Wikipédia: https://pt.wikipedia.org/wiki/Intervalo_(música)", "Acorde, Wikipédia: https://pt.wikipedia.org/wiki/Acorde", "Frère Jacques, Au clair de la lune, Ah! vous dirai-je, maman e Ode à Alegria: melodias de domínio público"]
+requer = []
+
+[[exercicio]]
+id = "quatro-sobe-graus"
+titulo = "Quatro notas subindo por graus"
+tipo = "ouvir"
+mao = "direita"
+objetivo = "Ouvir e repetir quatro notas que sobem por graus."
+instrucoes = "O app toca uma frase de 4 notas. Ouça e repita no teclado, na mesma ordem. As notas são vizinhas. A primeira nota é o Dó."
+passos = "C4 D4 E4 F4"
+roteiro = [
+  "Ouça a frase inteira sem tocar, com atenção ao desenho: sobe, desce ou salta.",
+  "Cantarole ou assobie a frase baixinho para fixá-la.",
+  "Ache no teclado a primeira nota, que é o Dó.",
+  "Toque as notas seguintes, comparando cada uma com o que você ouviu.",
+  "Se errar, peça para ouvir de novo ou use a dica para ver as teclas.",
+]
+erro = "Ouça de novo e tente outra vez. Peça a dica se precisar ver as teclas."
+conclusao = "Você repetiu a frase de ouvido."
+
+[[exercicio]]
+id = "quatro-desce-graus"
+titulo = "Quatro notas descendo por graus"
+tipo = "ouvir"
+mao = "direita"
+objetivo = "Ouvir e repetir quatro notas que descem por graus."
+instrucoes = "O app toca uma frase de 4 notas. Ouça e repita no teclado, na mesma ordem. As notas são vizinhas. A primeira nota é o Sol."
+passos = "G4 F4 E4 D4"
+roteiro = [
+  "Ouça a frase inteira sem tocar, com atenção ao desenho: sobe, desce ou salta.",
+  "Cantarole ou assobie a frase baixinho para fixá-la.",
+  "Ache no teclado a primeira nota, que é o Sol.",
+  "Toque as notas seguintes, comparando cada uma com o que você ouviu.",
+  "Se errar, peça para ouvir de novo ou use a dica para ver as teclas.",
+]
+erro = "Ouça de novo e tente outra vez. Peça a dica se precisar ver as teclas."
+conclusao = "Você repetiu a frase de ouvido."
+
+[[exercicio]]
+id = "quatro-zigue-zague"
+titulo = "Quatro notas em zigue-zague"
+tipo = "ouvir"
+mao = "direita"
+objetivo = "Ouvir e repetir uma frase em zigue-zague."
+instrucoes = "O app toca uma frase de 4 notas. Ouça e repita no teclado, na mesma ordem. A frase sobe e desce, alternando. A primeira nota é o Dó."
+passos = "C4 E4 D4 F4"
+roteiro = [
+  "Ouça a frase inteira sem tocar, com atenção ao desenho: sobe, desce ou salta.",
+  "Cantarole ou assobie a frase baixinho para fixá-la.",
+  "Ache no teclado a primeira nota, que é o Dó.",
+  "Toque as notas seguintes, comparando cada uma com o que você ouviu.",
+  "Se errar, peça para ouvir de novo ou use a dica para ver as teclas.",
+]
+erro = "Ouça de novo e tente outra vez. Peça a dica se precisar ver as teclas."
+conclusao = "Você repetiu a frase de ouvido."
+
+[[exercicio]]
+id = "cinco-simetrica"
+titulo = "Cinco notas: sobe e desce"
+tipo = "ouvir"
+mao = "direita"
+objetivo = "Ouvir e repetir uma frase que desce e volta."
+instrucoes = "O app toca uma frase de 5 notas. Ouça e repita no teclado, na mesma ordem. A frase é simétrica. A primeira nota é o Mi."
+passos = "E4 D4 C4 D4 E4"
+roteiro = [
+  "Ouça a frase inteira sem tocar, com atenção ao desenho: sobe, desce ou salta.",
+  "Cantarole ou assobie a frase baixinho para fixá-la.",
+  "Ache no teclado a primeira nota, que é o Mi.",
+  "Toque as notas seguintes, comparando cada uma com o que você ouviu.",
+  "Se errar, peça para ouvir de novo ou use a dica para ver as teclas.",
+]
+erro = "Ouça de novo e tente outra vez. Peça a dica se precisar ver as teclas."
+conclusao = "Você repetiu a frase de ouvido."
+
+[[exercicio]]
+id = "cinco-arpejo-ida-volta"
+titulo = "Cinco notas: arpejo de ida e volta"
+tipo = "ouvir"
+mao = "direita"
+objetivo = "Ouvir e repetir um arpejo de ida e volta."
+instrucoes = "O app toca uma frase de 5 notas. Ouça e repita no teclado, na mesma ordem. O arpejo sobe e volta ao começo. A primeira nota é o Dó."
+passos = "C4 E4 G4 E4 C4"
+roteiro = [
+  "Ouça a frase inteira sem tocar, com atenção ao desenho: sobe, desce ou salta.",
+  "Cantarole ou assobie a frase baixinho para fixá-la.",
+  "Ache no teclado a primeira nota, que é o Dó.",
+  "Toque as notas seguintes, comparando cada uma com o que você ouviu.",
+  "Se errar, peça para ouvir de novo ou use a dica para ver as teclas.",
+]
+erro = "Ouça de novo e tente outra vez. Peça a dica se precisar ver as teclas."
+conclusao = "Você repetiu a frase de ouvido."
+
+[[exercicio]]
+id = "seis-saltos"
+titulo = "Seis notas com saltos"
+tipo = "ouvir"
+mao = "direita"
+objetivo = "Ouvir e repetir uma frase de seis notas."
+instrucoes = "O app toca uma frase de 6 notas. Ouça e repita no teclado, na mesma ordem. A frase tem saltos de terça e passos vizinhos. A primeira nota é o Ré."
+passos = "D4 F4 A4 G4 F4 D4"
+roteiro = [
+  "Ouça a frase inteira sem tocar, com atenção ao desenho: sobe, desce ou salta.",
+  "Cantarole ou assobie a frase baixinho para fixá-la.",
+  "Ache no teclado a primeira nota, que é o Ré.",
+  "Toque as notas seguintes, comparando cada uma com o que você ouviu.",
+  "Se errar, peça para ouvir de novo ou use a dica para ver as teclas.",
+]
+erro = "Ouça de novo e tente outra vez. Peça a dica se precisar ver as teclas."
+conclusao = "Você repetiu a frase de ouvido."
+
+[[exercicio]]
+id = "frere-jacques"
+titulo = "Início de Frère Jacques"
+tipo = "ouvir"
+mao = "direita"
+objetivo = "Ouvir e repetir o começo de uma canção conhecida."
+instrucoes = "O app toca uma frase de 4 notas. Ouça e repita no teclado, na mesma ordem. É o começo de uma canção tradicional francesa (domínio público). A primeira nota é o Dó."
+passos = "C4 D4 E4 C4"
+roteiro = [
+  "Ouça a frase inteira sem tocar, com atenção ao desenho: sobe, desce ou salta.",
+  "Cantarole ou assobie a frase baixinho para fixá-la.",
+  "Ache no teclado a primeira nota, que é o Dó.",
+  "Toque as notas seguintes, comparando cada uma com o que você ouviu.",
+  "Se errar, peça para ouvir de novo ou use a dica para ver as teclas.",
+]
+erro = "Ouça de novo e tente outra vez. Peça a dica se precisar ver as teclas."
+conclusao = "Você repetiu a frase de ouvido."
+
+[[exercicio]]
+id = "clair-de-lune"
+titulo = "Início de Au clair de la lune"
+tipo = "ouvir"
+mao = "direita"
+objetivo = "Ouvir e repetir o começo de uma canção conhecida."
+instrucoes = "O app toca uma frase de 6 notas. Ouça e repita no teclado, na mesma ordem. É o começo de uma canção tradicional francesa (domínio público). A primeira nota é o Dó."
+passos = "C4 C4 C4 D4 E4 D4"
+roteiro = [
+  "Ouça a frase inteira sem tocar, com atenção ao desenho: sobe, desce ou salta.",
+  "Cantarole ou assobie a frase baixinho para fixá-la.",
+  "Ache no teclado a primeira nota, que é o Dó.",
+  "Toque as notas seguintes, comparando cada uma com o que você ouviu.",
+  "Se errar, peça para ouvir de novo ou use a dica para ver as teclas.",
+]
+erro = "Ouça de novo e tente outra vez. Peça a dica se precisar ver as teclas."
+conclusao = "Você repetiu a frase de ouvido."
+
+[[exercicio]]
+id = "brilha-estrelinha"
+titulo = "Início de Brilha, brilha, estrelinha"
+tipo = "ouvir"
+mao = "direita"
+objetivo = "Ouvir e repetir o começo de uma canção conhecida."
+instrucoes = "O app toca uma frase de 6 notas. Ouça e repita no teclado, na mesma ordem. É o começo de uma melodia tradicional francesa do século 18 (domínio público). A primeira nota é o Dó."
+passos = "C4 C4 G4 G4 A4 A4"
+roteiro = [
+  "Ouça a frase inteira sem tocar, com atenção ao desenho: sobe, desce ou salta.",
+  "Cantarole ou assobie a frase baixinho para fixá-la.",
+  "Ache no teclado a primeira nota, que é o Dó.",
+  "Toque as notas seguintes, comparando cada uma com o que você ouviu.",
+  "Se errar, peça para ouvir de novo ou use a dica para ver as teclas.",
+]
+erro = "Ouça de novo e tente outra vez. Peça a dica se precisar ver as teclas."
+conclusao = "Você repetiu a frase de ouvido."
+
+[[exercicio]]
+id = "ode-alegria"
+titulo = "Início da Ode à Alegria"
+tipo = "ouvir"
+mao = "direita"
+objetivo = "Ouvir e repetir o começo do tema de Beethoven."
+instrucoes = "O app toca uma frase de 6 notas. Ouça e repita no teclado, na mesma ordem. É o começo do tema de Beethoven (domínio público). A primeira nota é o Mi."
+passos = "E4 E4 F4 G4 G4 F4"
+roteiro = [
+  "Ouça a frase inteira sem tocar, com atenção ao desenho: sobe, desce ou salta.",
+  "Cantarole ou assobie a frase baixinho para fixá-la.",
+  "Ache no teclado a primeira nota, que é o Mi.",
+  "Toque as notas seguintes, comparando cada uma com o que você ouviu.",
+  "Se errar, peça para ouvir de novo ou use a dica para ver as teclas.",
+]
+erro = "Ouça de novo e tente outra vez. Peça a dica se precisar ver as teclas."
+conclusao = "Você repetiu a frase de ouvido."

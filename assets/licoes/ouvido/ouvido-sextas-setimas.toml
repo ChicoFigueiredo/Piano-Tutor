@@ -1,0 +1,137 @@
+[licao]
+id = "ouvido-sextas-setimas"
+trilha = "Ouvido e intervalos"
+ordem_trilha = 50
+ordem = 3
+titulo = "Intervalos harmônicos: sextas e sétimas"
+descricao = "Sextas e sétimas, maiores e menores, e o panorama completo a partir do Dó."
+nivel = "basico"
+situacao = "proposta"
+fontes = ["Intervalo (música), Wikipédia: https://pt.wikipedia.org/wiki/Intervalo_(música)", "Acorde, Wikipédia: https://pt.wikipedia.org/wiki/Acorde"]
+requer = []
+
+[[exercicio]]
+id = "sexta-maior"
+titulo = "Sexta maior"
+tipo = "intervalos"
+mao = "direita"
+objetivo = "Tocar e ouvir a sexta maior (nove semitons)."
+instrucoes = "A sexta maior soa aberta e doce. Toque as duas teclas juntas: Dó e Lá (sexta maior); Sol e Mi (sexta maior); Ré e Si (sexta maior); Fá e Ré (sexta maior)."
+passos = "[C4 A4]:sexta_maior [G4 E5]:sexta_maior [D4 B4]:sexta_maior [F4 D5]:sexta_maior"
+roteiro = [
+  "Ponha dois dedos sobre as teclas do primeiro intervalo: Dó e Lá.",
+  "Escolha os dedos pelo tamanho: vizinhos para intervalos pequenos; abra a mão, com o 1 e o 5, nos grandes.",
+  "Aperte as duas teclas ao mesmo tempo e ouça o som inteiro.",
+  "Confira o tamanho: de Dó a Lá são 9 semitons, contando cada tecla, branca ou preta.",
+  "Solte e passe ao próximo intervalo com a mesma calma.",
+]
+erro = "Confira o espaço entre as duas teclas."
+conclusao = "Intervalos tocados e ouvidos."
+
+[[exercicio]]
+id = "sexta-menor"
+titulo = "Sexta menor"
+tipo = "intervalos"
+mao = "direita"
+objetivo = "Tocar e ouvir a sexta menor (oito semitons)."
+instrucoes = "A sexta menor soa mais escura. Toque as duas teclas juntas: Mi e Dó (sexta menor); Lá e Fá (sexta menor); Si e Sol (sexta menor); Dó e Láb (sexta menor)."
+passos = "[E4 C5]:sexta_menor [A3 F4]:sexta_menor [B3 G4]:sexta_menor [C4 Ab4]:sexta_menor"
+roteiro = [
+  "Ponha dois dedos sobre as teclas do primeiro intervalo: Mi e Dó.",
+  "Escolha os dedos pelo tamanho: vizinhos para intervalos pequenos; abra a mão, com o 1 e o 5, nos grandes.",
+  "Aperte as duas teclas ao mesmo tempo e ouça o som inteiro.",
+  "Confira o tamanho: de Mi a Dó são 8 semitons, contando cada tecla, branca ou preta.",
+  "Solte e passe ao próximo intervalo com a mesma calma.",
+]
+erro = "Confira o espaço entre as duas teclas."
+conclusao = "Intervalos tocados e ouvidos."
+
+[[exercicio]]
+id = "sextas-mistas"
+titulo = "Sextas maiores e menores"
+tipo = "intervalos"
+mao = "direita"
+objetivo = "Distinguir a sexta maior da menor."
+instrucoes = "A menor é meio tom mais curta. Toque as duas teclas juntas: Dó e Lá (sexta maior); Mi e Dó (sexta menor); Ré e Si (sexta maior); Lá e Fá (sexta menor)."
+passos = "[C4 A4]:sexta_maior [E4 C5]:sexta_menor [D4 B4]:sexta_maior [A3 F4]:sexta_menor"
+roteiro = [
+  "Ponha dois dedos sobre as teclas do primeiro intervalo: Dó e Lá.",
+  "Escolha os dedos pelo tamanho: vizinhos para intervalos pequenos; abra a mão, com o 1 e o 5, nos grandes.",
+  "Aperte as duas teclas ao mesmo tempo e ouça o som inteiro.",
+  "Confira o tamanho: de Dó a Lá são 9 semitons, contando cada tecla, branca ou preta.",
+  "Solte e passe ao próximo intervalo com a mesma calma.",
+]
+erro = "Confira o espaço entre as duas teclas."
+conclusao = "Intervalos tocados e ouvidos."
+
+[[exercicio]]
+id = "setima-menor"
+titulo = "Sétima menor"
+tipo = "intervalos"
+mao = "direita"
+objetivo = "Tocar e ouvir a sétima menor (dez semitons)."
+instrucoes = "A sétima menor soa tensa e quase pede resolução. Toque as duas teclas juntas: Ré e Dó (sétima menor); Sol e Fá (sétima menor); Dó e Sib (sétima menor); Lá e Sol (sétima menor)."
+passos = "[D4 C5]:sétima_menor [G3 F4]:sétima_menor [C4 Bb4]:sétima_menor [A3 G4]:sétima_menor"
+roteiro = [
+  "Ponha dois dedos sobre as teclas do primeiro intervalo: Ré e Dó.",
+  "Escolha os dedos pelo tamanho: vizinhos para intervalos pequenos; abra a mão, com o 1 e o 5, nos grandes.",
+  "Aperte as duas teclas ao mesmo tempo e ouça o som inteiro.",
+  "Confira o tamanho: de Ré a Dó são 10 semitons, contando cada tecla, branca ou preta.",
+  "Solte e passe ao próximo intervalo com a mesma calma.",
+]
+erro = "Confira o espaço entre as duas teclas."
+conclusao = "Intervalos tocados e ouvidos."
+
+[[exercicio]]
+id = "setima-maior"
+titulo = "Sétima maior"
+tipo = "intervalos"
+mao = "direita"
+objetivo = "Tocar e ouvir a sétima maior (onze semitons)."
+instrucoes = "A sétima maior fica a um semitom da oitava e soa muito tensa. Toque as duas teclas juntas: Dó e Si (sétima maior); Fá e Mi (sétima maior); Sol e Fá# (sétima maior); Ré e Dó# (sétima maior)."
+passos = "[C4 B4]:sétima_maior [F4 E5]:sétima_maior [G3 F#4]:sétima_maior [D4 C#5]:sétima_maior"
+roteiro = [
+  "Ponha dois dedos sobre as teclas do primeiro intervalo: Dó e Si.",
+  "Escolha os dedos pelo tamanho: vizinhos para intervalos pequenos; abra a mão, com o 1 e o 5, nos grandes.",
+  "Aperte as duas teclas ao mesmo tempo e ouça o som inteiro.",
+  "Confira o tamanho: de Dó a Si são 11 semitons, contando cada tecla, branca ou preta.",
+  "Solte e passe ao próximo intervalo com a mesma calma.",
+]
+erro = "Confira o espaço entre as duas teclas."
+conclusao = "Intervalos tocados e ouvidos."
+
+[[exercicio]]
+id = "setimas-mistas"
+titulo = "Sétimas maiores e menores"
+tipo = "intervalos"
+mao = "direita"
+objetivo = "Distinguir a sétima maior da menor."
+instrucoes = "A maior chega quase à oitava. Toque as duas teclas juntas: Ré e Dó (sétima menor); Dó e Si (sétima maior); Sol e Fá (sétima menor); Fá e Mi (sétima maior)."
+passos = "[D4 C5]:sétima_menor [C4 B4]:sétima_maior [G3 F4]:sétima_menor [F4 E5]:sétima_maior"
+roteiro = [
+  "Ponha dois dedos sobre as teclas do primeiro intervalo: Ré e Dó.",
+  "Escolha os dedos pelo tamanho: vizinhos para intervalos pequenos; abra a mão, com o 1 e o 5, nos grandes.",
+  "Aperte as duas teclas ao mesmo tempo e ouça o som inteiro.",
+  "Confira o tamanho: de Ré a Dó são 10 semitons, contando cada tecla, branca ou preta.",
+  "Solte e passe ao próximo intervalo com a mesma calma.",
+]
+erro = "Confira o espaço entre as duas teclas."
+conclusao = "Intervalos tocados e ouvidos."
+
+[[exercicio]]
+id = "todos-a-partir-do-do"
+titulo = "Todos os intervalos a partir do Dó"
+tipo = "intervalos"
+mao = "direita"
+objetivo = "Percorrer os intervalos maiores e justos a partir do Dó."
+instrucoes = "A nota de baixo fica parada e a de cima sobe. Toque as duas teclas juntas: Dó e Ré (segunda maior); Dó e Mi (terça maior); Dó e Fá (quarta justa); Dó e Sol (quinta justa); Dó e Lá (sexta maior); Dó e Si (sétima maior); Dó e Dó (oitava justa)."
+passos = "[C4 D4]:segunda_maior [C4 E4]:terça_maior [C4 F4]:quarta_justa [C4 G4]:quinta_justa [C4 A4]:sexta_maior [C4 B4]:sétima_maior [C4 C5]:oitava_justa"
+roteiro = [
+  "Ponha dois dedos sobre as teclas do primeiro intervalo: Dó e Ré.",
+  "Escolha os dedos pelo tamanho: vizinhos para intervalos pequenos; abra a mão, com o 1 e o 5, nos grandes.",
+  "Aperte as duas teclas ao mesmo tempo e ouça o som inteiro.",
+  "Confira o tamanho: de Dó a Ré são 2 semitons, contando cada tecla, branca ou preta.",
+  "Solte e passe ao próximo intervalo com a mesma calma.",
+]
+erro = "Confira o espaço entre as duas teclas."
+conclusao = "Intervalos tocados e ouvidos."
