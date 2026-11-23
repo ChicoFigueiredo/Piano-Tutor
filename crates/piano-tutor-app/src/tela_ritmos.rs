@@ -8,7 +8,8 @@ use bancada_casca::egui::{
     Ui, vec2,
 };
 use piano_tutor_core::ritmo::{
-    BPM_MAX, BPM_MIN, Formula, INSTRUMENTOS, Julgamento, Subdivisao, VEL_ACENTO,
+    BPM_MAX, BPM_MIN, CorFeedback, Formula, INSTRUMENTOS, Subdivisao, TOLERANCIA_MAX_MS,
+    TOLERANCIA_MIN_MS, VEL_ACENTO,
 };
 
 const VERDE: Color32 = Color32::from_rgb(70, 200, 110);
@@ -124,6 +125,9 @@ fn desenhar_transporte(ui: &mut Ui, r: &mut EstadoRitmo, som: &mut ServicoSom) {
             r.tap(som.agora_ns());
         }
     });
+    if let Some(aviso) = &r.aviso_andamento {
+        ui.label(RichText::new(aviso).color(AMBAR));
+    }
     ui.horizontal_wrapped(|ui| {
         ui.checkbox(&mut r.config.metronomo, "Metrônomo");
         ui.checkbox(&mut r.config.bateria, "Bateria");
@@ -399,7 +403,13 @@ fn desenhar_exercicio(ui: &mut Ui, r: &mut EstadoRitmo) {
     };
     ui.horizontal_wrapped(|ui| {
         ui.label("Tolerância");
-        ui.add(Slider::new(&mut e.tolerancia_ms, 10..=150).suffix(" ms"));
+        let mut tolerancia = e.tolerancia_ms;
+        if ui
+            .add(Slider::new(&mut tolerancia, TOLERANCIA_MIN_MS..=TOLERANCIA_MAX_MS).suffix(" ms"))
+            .changed()
+        {
+            e.definir_tolerancia_ms(tolerancia);
+        }
         ui.label("Compensação de latência");
         ui.add(Slider::new(&mut e.compensacao_ms, -100..=100).suffix(" ms"));
         if ui.button("Zerar").clicked() {
@@ -420,12 +430,12 @@ fn desenhar_exercicio(ui: &mut Ui, r: &mut EstadoRitmo) {
     );
     ui.horizontal_wrapped(|ui| {
         for (d, j) in e.toques.iter().rev().take(16) {
-            let (cor, t) = match j {
-                Julgamento::NoTempo => (VERDE, "no tempo"),
-                Julgamento::Adiantado => (AMBAR, "adiantado"),
-                Julgamento::Atrasado => (VERMELHO, "atrasado"),
+            let cor = match j.cor() {
+                CorFeedback::Verde => VERDE,
+                CorFeedback::Ambar => AMBAR,
+                CorFeedback::Vermelho => VERMELHO,
             };
-            ui.label(RichText::new(format!("{t} {d:+.0} ms")).color(cor));
+            ui.label(RichText::new(format!("{} {d:+.0} ms", j.texto())).color(cor));
         }
     });
 }
@@ -434,8 +444,10 @@ fn desenhar_exercicio(ui: &mut Ui, r: &mut EstadoRitmo) {
 mod testes {
     use super::*;
     use crate::som::apoio_testes::servico_pronto;
-    use bancada_casca::egui::{Context, RawInput, Rect, pos2, vec2};
+    use bancada_casca::egui::{Context, Event, Modifiers, RawInput, Rect, pos2, vec2};
     use piano_tutor_audio::RelogioManual;
+    use piano_tutor_audio::sintetizador::RegistroFalso;
+    use piano_tutor_core::ritmo::Julgamento;
     use std::sync::Arc;
     use std::time::Duration;
 
@@ -517,5 +529,52 @@ mod testes {
         r.parar_e_silenciar(&mut som);
         quadro(&ctx, &mut som, &mut r);
         assert!(!r.tocando());
+    }
+
+    #[test]
+    fn teclas_1_a_8_sao_oito_teclas_distintas() {
+        let distintas: std::collections::HashSet<_> = TECLAS_PADS.iter().collect();
+        assert_eq!(distintas.len(), 8);
+    }
+
+    #[test]
+    fn cada_tecla_de_1_a_8_dispara_o_pad_dela_no_canal_10() {
+        let ctx = Context::default();
+        let relogio = Arc::new(RelogioManual::novo());
+        let (mut som, motor) = servico_pronto(relogio.clone());
+        relogio.avancar(Duration::from_secs(1));
+        motor.renderizar_no_relogio(256);
+        let mut r = EstadoRitmo::novo(None);
+        for tecla in TECLAS_PADS {
+            let entrada = RawInput {
+                screen_rect: Some(Rect::from_min_size(pos2(0.0, 0.0), vec2(1280.0, 800.0))),
+                events: vec![Event::Key {
+                    key: tecla,
+                    physical_key: Some(tecla),
+                    pressed: true,
+                    repeat: false,
+                    modifiers: Modifiers::NONE,
+                }],
+                ..Default::default()
+            };
+            ctx.run_ui(entrada, |ui| desenhar_tela(ui, &mut r, &mut som))
+                .drop_without_applying_deltas();
+        }
+        motor.renderizar_no_relogio(256 * 4);
+        let notas: Vec<(u8, u8)> = motor
+            .registro()
+            .iter()
+            .filter_map(|e| match *e {
+                RegistroFalso::Ligada { canal, nota, .. } => Some((canal, nota)),
+                _ => None,
+            })
+            .collect();
+        // Uma nota por tecla, na ordem das teclas 1 a 8 = INSTRUMENTOS[0..8], no canal 10.
+        let esperado: Vec<(u8, u8)> = INSTRUMENTOS[..8]
+            .iter()
+            .map(|i| (crate::som::CANAL_PERCUSSAO, i.nota_gm))
+            .collect();
+        assert_eq!(notas, esperado);
+        assert!(!r.tocando(), "pad não inicia o sequenciador");
     }
 }
