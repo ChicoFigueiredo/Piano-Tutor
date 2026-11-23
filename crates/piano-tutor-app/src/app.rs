@@ -18,6 +18,7 @@ use crate::acoes;
 use crate::acordes::EstadoAcordes;
 use crate::baixar_sf2::{BaixadorSf2, FLUIDR3_GM, abridor_http, caminho_baixado};
 use crate::calibracao::{Calibracao, PerfilTeclado};
+use crate::dedos::{NOMENCLATURAS, NomenclaturaDedos};
 use crate::espelho::EstadoEspelho;
 use crate::estado::{
     Efeito, EstadoApp, ROTA_ACORDES, ROTA_CALIBRACAO, ROTA_EXERCICIOS, ROTA_GRAVACAO, ROTA_MONITOR,
@@ -26,7 +27,7 @@ use crate::estado::{
 use crate::exercicios::EstadoExercicios;
 use crate::gravacao::EstadoGravacao;
 use crate::monitor::{EstadoMonitor, pasta_de_sessoes_do_ambiente};
-use crate::preferencias::PreferenciasSom;
+use crate::preferencias::{ARQUIVO_PREFERENCIAS_EXIBICAO, PreferenciasExibicao, PreferenciasSom};
 use crate::ritmo::EstadoRitmo;
 use crate::seletor_instrumento::{self, EstadoSeletor};
 use crate::som::{EstadoSom, ServicoSom, abridor_cpal, carregador_arquivo, sf2_encontrado};
@@ -195,11 +196,19 @@ impl AppPianoTutor {
             Some(t) => EstadoEspelho::calibrado(t),
             None => EstadoEspelho::novo(),
         };
+        let exibicao = pasta_dados
+            .as_ref()
+            .and_then(|p| PreferenciasExibicao::ler(&p.join(ARQUIVO_PREFERENCIAS_EXIBICAO)))
+            .unwrap_or_default();
+        let mut estado = EstadoApp::novo();
+        estado.definir_nomenclatura_dedos(exibicao.dedos);
+        let mut espelho = espelho;
+        espelho.nomenclatura = exibicao.dedos;
         let prefs_pendentes = pasta_dados
             .as_ref()
             .and_then(|p| PreferenciasSom::ler(&p.join(ARQUIVO_PREFERENCIAS)));
         Self {
-            estado: EstadoApp::novo(),
+            estado,
             espelho,
             monitor: EstadoMonitor::novo(d.fonte_midi, Arc::clone(&d.relogio), d.pasta_sessoes),
             som: d.som,
@@ -240,6 +249,16 @@ impl AppPianoTutor {
         let _ = self.som.definir_config_teclado(p.teclado);
     }
 
+    /// Troca a nomenclatura dos dedos no teclado e grava nas preferências de exibição.
+    pub fn trocar_dedos(&mut self, n: NomenclaturaDedos) {
+        self.estado.definir_nomenclatura_dedos(n);
+        self.espelho.nomenclatura = n;
+        if let Some(pasta) = self.pasta_dados.as_ref() {
+            let p = PreferenciasExibicao { dedos: n };
+            let _ = p.gravar(&pasta.join(ARQUIVO_PREFERENCIAS_EXIBICAO));
+        }
+    }
+
     fn salvar_preferencias(&mut self) {
         let Some(pasta) = self.pasta_dados.as_ref() else {
             return;
@@ -271,7 +290,11 @@ impl AppPianoTutor {
     }
 
     fn trocar_faixa(&mut self, perfil: Option<&PerfilTeclado>) {
-        let (zoom, nomes) = (self.espelho.zoom(), self.espelho.nomes);
+        let (zoom, nomes, dedos) = (
+            self.espelho.zoom(),
+            self.espelho.nomes,
+            self.espelho.nomenclatura,
+        );
         self.panico();
         self.espelho = match perfil.and_then(PerfilTeclado::teclado) {
             Some(t) => EstadoEspelho::calibrado(t),
@@ -279,6 +302,7 @@ impl AppPianoTutor {
         };
         self.espelho.definir_zoom(zoom);
         self.espelho.nomes = nomes;
+        self.espelho.nomenclatura = dedos;
     }
 
     fn salvar_calibracao(&mut self) {
@@ -635,6 +659,42 @@ pub fn data_civil(dias: i64) -> String {
     format!("{y:04}-{m:02}-{d:02}")
 }
 
+/// Seletor do Ribbon: ícone de mão e lista com as três nomenclaturas; abaixo (fora do modo
+/// compacto) a legenda polegar/mínimo da escolhida. Devolve a nova escolha.
+fn seletor_dedos(
+    ui: &mut egui::Ui,
+    atual: NomenclaturaDedos,
+    compacto: bool,
+) -> Option<NomenclaturaDedos> {
+    let mut escolhida = atual;
+    ui.vertical(|ui| {
+        ui.horizontal(|ui| {
+            ui.label(egui::RichText::new(crate::icones::glifo("dedos")).size(18.0))
+                .on_hover_text("Como o dedo aparece nas bolinhas do teclado");
+            egui::ComboBox::from_id_salt("piano.seletor-dedos")
+                .width(if compacto { 96.0 } else { 112.0 })
+                .selected_text(egui::RichText::new(atual.curto()).monospace())
+                .show_ui(ui, |ui| {
+                    for n in NOMENCLATURAS {
+                        ui.selectable_value(&mut escolhida, n, n.curto())
+                            .on_hover_text(n.dica());
+                    }
+                })
+                .response
+                .on_hover_text(atual.dica());
+        });
+        if !compacto {
+            let (p, m) = (atual.rotulo(1).unwrap_or(""), atual.rotulo(5).unwrap_or(""));
+            ui.label(
+                egui::RichText::new(format!("polegar {p} · mínimo {m}"))
+                    .small()
+                    .weak(),
+            );
+        }
+    });
+    (escolhida != atual).then_some(escolhida)
+}
+
 /// Configuração da casca: título, tokens, temas e tema inicial.
 pub fn config() -> ConfigCasca {
     let mut config = ConfigCasca::nova(TITULO, TOKENS_JSON, TEMAS_JSON);
@@ -717,6 +777,7 @@ impl AppCasca for AppPianoTutor {
         let com_teclado = [ROTA_TECLADO, ROTA_ACORDES, ROTA_EXERCICIOS];
         if rota.como_texto() != ROTA_ACORDES && rota.como_texto() != ROTA_EXERCICIOS {
             self.espelho.guias.clear();
+            self.espelho.dedos.clear();
         }
         if !com_teclado.contains(&rota.como_texto()) {
             // Fora da tela Espelho ninguém recebe o "solta": não deixa nota presa.
@@ -813,6 +874,13 @@ impl AppCasca for AppPianoTutor {
     }
 
     fn desenhar_controle_ribbon(&mut self, ui: &mut egui::Ui, id: &str, compacto: bool) {
+        if id == acoes::CONTROLE_DEDOS {
+            let atual = self.estado.nomenclatura_dedos();
+            if let Some(n) = seletor_dedos(ui, atual, compacto) {
+                self.trocar_dedos(n);
+            }
+            return;
+        }
         if id != acoes::CONTROLE_INSTRUMENTO {
             return;
         }
@@ -904,6 +972,10 @@ impl AppCasca for AppPianoTutor {
             Some(Efeito::AbrirRota(rota)) => abrir(ctx, rota),
             Some(Efeito::Panico) => {
                 self.panico();
+                ctx.request_repaint();
+            }
+            Some(Efeito::TrocarDedos(n)) => {
+                self.trocar_dedos(n);
                 ctx.request_repaint();
             }
             None => {}

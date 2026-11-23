@@ -1,11 +1,15 @@
 //! O registro de ações e as abas do Ribbon, como dados puros (sem janela).
 
+use crate::dedos::NOMENCLATURAS;
 use crate::estado::{EstadoApp, TEMAS, ids};
 use bancada_casca::egui::Key;
 use bancada_casca::{Aba, Acao, Atalho, Grupo, ids as ids_casca};
 
 /// Id do seletor de instrumento (com busca) desenhado pelo app no Ribbon.
 pub const CONTROLE_INSTRUMENTO: &str = "piano.seletor-instrumento";
+
+/// Id do seletor da nomenclatura dos dedos (números ou letras) desenhado pelo app no Ribbon.
+pub const CONTROLE_DEDOS: &str = "piano.seletor-dedos";
 
 /// Atalho do Pânico: Ctrl+. (Esc já é da casca: fecha paleta, bastidores e KeyTips). Com Ctrl,
 /// dispara mesmo com um campo de texto em foco.
@@ -53,6 +57,15 @@ pub fn acoes(estado: &EstadoApp) -> Vec<Acao> {
             .dica("Passa ao próximo tema")
             .atalho(Atalho::ctrl(Key::T)),
     ];
+    let dedos = estado.nomenclatura_dedos();
+    for n in NOMENCLATURAS {
+        lista.push(
+            Acao::nova(ids::dedos(n), n.nome())
+                .icone("dedos")
+                .dica(n.dica())
+                .alternancia(n == dedos),
+        );
+    }
     let atual = estado.tema_atual().id;
     for tema in TEMAS {
         lista.push(
@@ -69,6 +82,8 @@ pub fn abas() -> Vec<Aba> {
     let ids_dos_temas: Vec<String> = TEMAS.iter().map(|t| ids::tema(t.id)).collect();
     let mut grupo_tema: Vec<&str> = vec![ids::TEMA_ALTERNAR];
     grupo_tema.extend(ids_dos_temas.iter().map(String::as_str));
+    let ids_dos_dedos: Vec<String> = NOMENCLATURAS.iter().map(|n| ids::dedos(*n)).collect();
+    let grupo_dedos: Vec<&str> = ids_dos_dedos.iter().map(String::as_str).collect();
 
     vec![
         Aba::nova("inicio", "Início", "I")
@@ -91,9 +106,11 @@ pub fn abas() -> Vec<Aba> {
                 "Música",
                 &[ids::PARTITURA, ids::GRAVACAO],
             ))
+            .grupo(Grupo::novo("dedos", "Dedilhado", &[]).com_controle(CONTROLE_DEDOS))
             .grupo(Grupo::novo("ajuda", "Ajuda", &[ids::SOBRE])),
         Aba::nova("exibir", "Exibir", "E")
             .grupo(Grupo::novo("tema", "Tema", &grupo_tema))
+            .grupo(Grupo::novo("dedos-exibir", "Dedilhado", &grupo_dedos))
             .grupo(Grupo::novo(
                 "ribbon",
                 "Ribbon",
@@ -146,13 +163,35 @@ mod testes {
             "piano.tema.ebano",
             "piano.tema.grafite",
             "piano.tema.executivo",
+            "piano.dedos.numeros",
+            "piano.dedos.letras",
+            "piano.dedos.ingles-antigo",
         ] {
             assert!(l.get(id).is_some(), "falta a ação {id}");
         }
-        assert_eq!(l.len(), 17);
+        assert_eq!(l.len(), 20);
         let ids: HashSet<&str> = l.iter().map(|a| a.id.as_str()).collect();
         assert_eq!(ids.len(), l.len());
         assert!(ids.iter().all(|i| i.starts_with("piano.")));
+    }
+
+    #[test]
+    fn seletor_de_dedos_marca_so_a_nomenclatura_escolhida_e_fica_no_exibir() {
+        use crate::dedos::NomenclaturaDedos;
+        let mut e = EstadoApp::novo();
+        e.definir_nomenclatura_dedos(NomenclaturaDedos::LetrasPt);
+        let l = ListaDeAcoes::nova(acoes(&e)).expect("ids únicos");
+        let marcadas: Vec<&str> = l
+            .iter()
+            .filter(|a| a.id.starts_with(ids::PREFIXO_DEDOS) && a.marcada)
+            .map(|a| a.id.as_str())
+            .collect();
+        assert_eq!(marcadas, vec!["piano.dedos.letras"]);
+        let exibir = abas()
+            .into_iter()
+            .find(|a| a.id == "exibir")
+            .expect("aba Exibir");
+        assert!(exibir.acoes().any(|i| i == "piano.dedos.numeros"));
     }
 
     #[test]

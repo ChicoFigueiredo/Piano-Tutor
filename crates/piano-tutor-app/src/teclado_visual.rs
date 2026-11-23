@@ -328,6 +328,8 @@ struct Marca {
     esquerda: bool,
     mao: Color32,
     tom: f32,
+    /// Rótulo do dedo sugerido (já na nomenclatura escolhida), quando a Lição informa.
+    dedo: Option<&'static str>,
 }
 
 // ---------------------------------------------------------------------------------------------
@@ -353,6 +355,7 @@ pub fn pintar_teclado(
         esquerda: estilo.eh_mao_esquerda(g.nota),
         mao: estilo.cor_da_mao(g.nota),
         tom: opacidade_do_tom(estilo.velocidade_de(g.nota)),
+        dedo: e.rotulo_do_dedo(g.nota),
     };
 
     pintar_caixa(p, area, w, estilo);
@@ -540,6 +543,9 @@ fn pintar_branca(
             (m.mao, Stroke::new(2.0, escurecer(m.mao, 0.4)))
         };
         p.circle(centro, 0.34 * w, fundo, traco);
+        if let Some(d) = m.dedo {
+            pintar_dedo(p, centro, w, d, escurecer(m.mao, 0.2));
+        }
     }
     if m.errada {
         pintar_x(
@@ -558,7 +564,7 @@ fn pintar_branca(
         );
     }
     if m.guia {
-        pintar_ponto_guia(p, centro_ponto_guia_branca(r, w), w, m.mao);
+        pintar_ponto_guia(p, centro_ponto_guia_branca(r, w), w, m.mao, m.dedo, false);
     }
     if w < LARGURA_MIN_ROTULO_PX {
         return;
@@ -687,6 +693,14 @@ fn pintar_preta(
             (m.mao, Stroke::new(1.0, BRANCO))
         };
         p.add(Shape::convex_polygon(pontos, fundo, traco));
+        if let Some(d) = m.dedo {
+            let tinta = if m.esquerda {
+                BRANCO
+            } else {
+                escurecer(m.mao, 0.2)
+            };
+            pintar_dedo(p, centro, 0.85 * w, d, tinta);
+        }
     }
     if m.errada {
         pintar_x(
@@ -705,14 +719,21 @@ fn pintar_preta(
         );
     }
     if m.guia {
-        pintar_ponto_guia(p, Pos2::new(centro_x, r.bottom() - 1.3 * w), w, m.mao);
+        pintar_ponto_guia(
+            p,
+            Pos2::new(centro_x, r.bottom() - 1.3 * w),
+            w,
+            m.mao,
+            m.dedo,
+            true,
+        );
     }
     if w < LARGURA_MIN_ROTULO_PX || estilo.rotulos == Rotulos::Nenhum {
         return;
     }
     if m.guia && !m.ligada {
         p.text(
-            Pos2::new(centro_x, r.bottom() - 1.3 * w - 0.3 * w),
+            Pos2::new(centro_x, r.bottom() - 1.3 * w - 0.4 * w),
             Align2::CENTER_BOTTOM,
             texto_tela(nome_sem_oitava(g.nota, e.nomes)),
             FontId::proportional(TEXTO_PX),
@@ -740,10 +761,34 @@ pub fn centro_ponto_guia_branca(r: Rect, largura_branca: f32) -> Pos2 {
     Pos2::new(r.center().x, r.bottom() - 1.45 * largura_branca)
 }
 
-/// Ponto da tecla-guia: miolo na cor da mão com anel escuro (forma própria, não só cor).
-fn pintar_ponto_guia(p: &Painter, c: Pos2, w: f32, mao: Color32) {
-    p.circle(c, 0.26 * w, mao, Stroke::new(2.0, escurecer(mao, 0.35)));
-    p.circle_filled(c, 0.09 * w, escurecer(mao, 0.35));
+/// Ponto da tecla-guia: miolo na cor da mão com anel escuro (forma própria, não só cor). Com
+/// dedilhado, o miolo dá lugar ao dedo (número ou letra) e a bolinha cresce um pouco.
+fn pintar_ponto_guia(p: &Painter, c: Pos2, w: f32, mao: Color32, dedo: Option<&str>, preta: bool) {
+    let anel = escurecer(mao, 0.35);
+    match dedo {
+        Some(d) => {
+            // Na preta a bolinha precisa caber na largura da tecla (~0,6 da branca).
+            let fator = if preta { 0.72 } else { 1.0 };
+            p.circle(c, 0.38 * w * fator, mao, Stroke::new(2.0, anel));
+            pintar_dedo(p, c, w * fator, d, escurecer(mao, 0.2));
+        }
+        None => {
+            p.circle(c, 0.26 * w, mao, Stroke::new(2.0, anel));
+            p.circle_filled(c, 0.09 * w, anel);
+        }
+    }
+}
+
+/// Número ou letra do dedo, centrado na bolinha; o tamanho acompanha a largura da tecla.
+fn pintar_dedo(p: &Painter, c: Pos2, w: f32, dedo: &str, cor: Color32) {
+    let px = (0.52 * w).clamp(9.0, 20.0);
+    p.text(
+        c,
+        Align2::CENTER_CENTER,
+        dedo,
+        FontId::proportional(px),
+        cor,
+    );
 }
 
 /// "X" desenhado (a fonte embutida não tem o glifo): marca de nota errada.

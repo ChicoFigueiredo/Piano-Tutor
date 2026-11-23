@@ -21,6 +21,7 @@ pub mod app;
 pub mod baixar_sf2;
 pub mod calibracao;
 pub mod dados_usuario;
+pub mod dedos;
 pub mod espelho;
 pub mod estado;
 pub mod exercicios;

@@ -7,6 +7,7 @@
 //! Ponto de entrada do gerenciador MIDI: [`EstadoEspelho::aplicar_evento`]. Os eventos da
 //! simulação saem por [`EstadoEspelho::drenar_simulados`] para também soarem.
 
+use crate::dedos::NomenclaturaDedos;
 use crate::roda_bend::RodaBend;
 use bancada_casca::egui::{Key, Rect};
 use piano_tutor_core::NotaMidi;
@@ -225,6 +226,10 @@ pub struct EstadoEspelho {
     pub ultimo_desenho: Option<ResumoDesenho>,
     /// Teclas-guia (acorde, escala ou exercício a tocar), marcadas em verde.
     pub guias: Vec<NotaMidi>,
+    /// Dedo sugerido (1 polegar … 5 mínimo) de cada tecla-guia, quando a Lição informa.
+    pub dedos: Vec<(NotaMidi, u8)>,
+    /// Como o dedo aparece dentro da bolinha (números ou letras); vem das preferências.
+    pub nomenclatura: NomenclaturaDedos,
     /// Ponto de divisão do som (mão esquerda em azul abaixo dele), copiado do serviço de som.
     pub divisao: Option<u8>,
     /// Roda de pitch bend virtual (roda do mouse sobre o teclado). O app a leva ao som.
@@ -265,9 +270,17 @@ impl EstadoEspelho {
             simulados: Vec::new(),
             ultimo_desenho: None,
             guias: Vec::new(),
+            dedos: Vec::new(),
+            nomenclatura: NomenclaturaDedos::default(),
             divisao: None,
             roda_bend: RodaBend::nova(),
         }
+    }
+
+    /// Rótulo do dedo sugerido para `nota` na nomenclatura escolhida.
+    pub fn rotulo_do_dedo(&self, nota: NotaMidi) -> Option<&'static str> {
+        let (_, d) = self.dedos.iter().find(|(n, _)| *n == nota)?;
+        self.nomenclatura.rotulo(*d)
     }
 
     pub fn teclado(&self) -> Teclado61 {

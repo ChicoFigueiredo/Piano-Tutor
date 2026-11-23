@@ -4,6 +4,8 @@
 /// Versão do aplicativo, mostrada na barra de status.
 pub const VERSAO: &str = env!("CARGO_PKG_VERSION");
 
+use crate::dedos::NomenclaturaDedos;
+
 /// Um tema oferecido ao usuário. O `id` existe em `dados/temas.json`.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct TemaApp {
@@ -69,6 +71,8 @@ pub enum Efeito {
     AbrirRota(&'static str),
     /// All-notes-off imediato no motor de áudio (e Espelho limpo).
     Panico,
+    /// Nova nomenclatura dos dedos: o app a leva ao teclado e salva nas preferências.
+    TrocarDedos(NomenclaturaDedos),
 }
 
 /// Ids das ações do app (prefixo `piano.`). As da casca (`casca.*`) ficam com a casca.
@@ -86,6 +90,12 @@ pub mod ids {
     pub const EXERCICIOS: &str = "piano.exercicios";
     pub const GRAVACAO: &str = "piano.gravacao";
     pub const PARTITURA: &str = "piano.partitura";
+    pub const PREFIXO_DEDOS: &str = "piano.dedos.";
+
+    /// Id da ação que escolhe a nomenclatura dos dedos (`piano.dedos.numeros` etc.).
+    pub fn dedos(n: crate::dedos::NomenclaturaDedos) -> String {
+        format!("{PREFIXO_DEDOS}{}", n.chave())
+    }
 
     /// Id da ação que escolhe um tema específico.
     pub fn tema(id_do_tema: &str) -> String {
@@ -98,6 +108,7 @@ pub mod ids {
 pub struct EstadoApp {
     tema: usize,
     ribbon_recolhido: bool,
+    dedos: NomenclaturaDedos,
 }
 
 impl Default for EstadoApp {
@@ -111,11 +122,21 @@ impl EstadoApp {
         Self {
             tema: 0,
             ribbon_recolhido: false,
+            dedos: NomenclaturaDedos::Numeros,
         }
     }
 
     pub fn tema_atual(&self) -> TemaApp {
         TEMAS[self.tema]
+    }
+
+    /// Nomenclatura dos dedos em uso (marcada no Ribbon).
+    pub fn nomenclatura_dedos(&self) -> NomenclaturaDedos {
+        self.dedos
+    }
+
+    pub fn definir_nomenclatura_dedos(&mut self, n: NomenclaturaDedos) {
+        self.dedos = n;
     }
 
     pub fn ribbon_recolhido(&self) -> bool {
@@ -183,6 +204,11 @@ impl EstadoApp {
         }
         if id == ids::PANICO {
             return Some(Efeito::Panico);
+        }
+        if let Some(chave) = id.strip_prefix(ids::PREFIXO_DEDOS) {
+            let n = NomenclaturaDedos::de_chave(chave)?;
+            self.dedos = n;
+            return Some(Efeito::TrocarDedos(n));
         }
         let id_do_tema = id.strip_prefix(ids::PREFIXO_TEMA)?;
         if self.definir_tema(id_do_tema) {

@@ -193,7 +193,7 @@ pub fn desenhar_tela(
         .show(ui, |ui| {
             desenhar_seletores(ui, e);
             ui.add_space(8.0);
-            desenhar_ficha(ui, e);
+            desenhar_ficha(ui, e, espelho.nomenclatura);
             ui.add_space(8.0);
             desenhar_execucao(ui, e, som);
             ui.add_space(6.0);
@@ -201,10 +201,12 @@ pub fn desenhar_tela(
             desenhar_erros(ui, e);
             ui.add_space(6.0);
             espelho.guias = e.guias();
+            espelho.dedos = e.dedos();
             desenhar_teclado_embutido(ui, espelho);
             ui.label(
                 RichText::new(
-                    "Bolinha verde = tecla a tocar. Azul = tecla que você está tocando. \
+                    "Bolinha verde = tecla a tocar, com o dedo sugerido dentro (escolha números ou \
+                     letras em Início > Dedilhado). Azul = tecla que você está tocando. \
                      O resultado também aparece em texto: [OK] certo, [X] errado, [...] falta nota.",
                 )
                 .weak(),
@@ -380,7 +382,7 @@ pub fn roteiro(ex: &Exercicio) -> Vec<String> {
 }
 
 /// Ficha do exercício: Lição, objetivo, roteiro numerado e sequência do gabarito.
-fn desenhar_ficha(ui: &mut Ui, e: &EstadoExercicios) {
+fn desenhar_ficha(ui: &mut Ui, e: &EstadoExercicios, dedos: crate::dedos::NomenclaturaDedos) {
     let Some(ex) = e.exercicio() else {
         ui.label("Nenhum exercício disponível.");
         return;
@@ -451,7 +453,8 @@ fn desenhar_ficha(ui: &mut Ui, e: &EstadoExercicios) {
             ui.label(RichText::new("Sequência").strong());
             desenhar_sequencia(ui, e, ex);
             if !ex.dedilhado.is_empty() {
-                ui.label(RichText::new(format!("Dedilhado: {}", ex.dedilhado)).weak());
+                let texto = crate::dedos::dedilhado_na_nomenclatura(&ex.dedilhado, dedos);
+                ui.label(RichText::new(format!("Dedilhado: {texto}")).weak());
             }
             match ex.prerequisito.as_deref().and_then(|id| e.posicao(id)) {
                 Some(i) => ui.label(

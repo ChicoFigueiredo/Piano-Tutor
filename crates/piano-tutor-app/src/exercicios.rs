@@ -661,6 +661,21 @@ impl EstadoExercicios {
             .unwrap_or_default()
     }
 
+    /// Dedo sugerido de cada tecla-guia do passo atual (vazio sem guias ou sem dedilhado que
+    /// cubra todas as notas do gabarito; ver [`crate::dedos::dedos_por_passo`]).
+    pub fn dedos(&self) -> Vec<(NotaMidi, u8)> {
+        let Some(ex) = self.exercicio() else {
+            return Vec::new();
+        };
+        if self.guias().is_empty() {
+            return Vec::new();
+        }
+        crate::dedos::dedos_por_passo(&ex.dedilhado, &ex.passos)
+            .into_iter()
+            .nth(self.tentativa.passo)
+            .unwrap_or_default()
+    }
+
     /// Passos do gabarito para o app tocar (cada passo é um grupo de notas).
     pub fn passos_para_ouvir(&self) -> Vec<Vec<NotaMidi>> {
         self.exercicio()
@@ -2052,5 +2067,43 @@ mod testes {
         assert!(e.desbloqueado(1));
         assert!(e.avancar());
         assert_eq!(e.licao_atual().map(|l| l.id.as_str()), Some("dois"));
+    }
+}
+
+#[cfg(test)]
+mod testes_dedos {
+    use super::*;
+
+    /// Quantos exercícios das Lições embutidas ganham dedo nas bolinhas (dedilhado que cobre
+    /// todas as notas do gabarito). Os demais ficam sem dedo, de propósito.
+    #[test]
+    fn licoes_embutidas_com_dedilhado_viram_dedos_nas_bolinhas() {
+        let e = EstadoExercicios::novo(None);
+        let com_texto: Vec<&Exercicio> = e
+            .exercicios
+            .iter()
+            .filter(|x| !x.dedilhado.is_empty())
+            .collect();
+        let com_dedos: Vec<&&Exercicio> = com_texto
+            .iter()
+            .filter(|x| !crate::dedos::dedos_por_passo(&x.dedilhado, &x.passos).is_empty())
+            .collect();
+        for x in com_texto
+            .iter()
+            .filter(|x| crate::dedos::dedos_por_passo(&x.dedilhado, &x.passos).is_empty())
+        {
+            eprintln!(
+                "sem dedo: {} ({} notas) dedilhado={:?}",
+                x.id,
+                x.passos.iter().map(|p| p.notas.len()).sum::<usize>(),
+                x.dedilhado
+            );
+        }
+        eprintln!(
+            "com dedilhado: {}, com dedos: {}",
+            com_texto.len(),
+            com_dedos.len()
+        );
+        assert!(!com_dedos.is_empty());
     }
 }

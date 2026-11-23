@@ -75,6 +75,7 @@ pub fn desenhar_tela(
             }
             ui.add_space(8.0);
             espelho.guias = a.guias();
+            espelho.dedos.clear();
             desenhar_teclado_embutido(ui, espelho);
             ui.label(
                 RichText::new("Bolinha verde = tecla a tocar. Azul = tecla que você está tocando.")
