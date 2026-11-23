@@ -18,8 +18,8 @@
   "titulo_fase": "Preparação, inventário e laboratório",
   "item": "Ribbon funcional, 2+ temas, Ctrl+F1 recolhe, status exibido",
   "estado": "evidencia_nuvem",
-  "pct": 75,
-  "nota": "app.rs com teste de Ctrl+F1; docs/aceite/F00/app-nuvem.md e .png (Xvfb)."
+  "pct": 85,
+  "nota": "Ribbon com ícones SVG próprios, seletor de instrumento com busca, 5 temas (Grafite, Executivo, Noite, Claro, Ébano), abertura; capturas em Xvfb; falta olhar no KDE."
  },
  {
   "id": "F00-3",
@@ -160,9 +160,9 @@
   "ordem_fase": 2,
   "titulo_fase": "Espelho virtual das 61 teclas",
   "item": "Latência MIDI→tela p95 ≤ 60 ms medida e publicada",
-  "estado": "nao_iniciado",
-  "pct": 5,
-  "nota": "espelho-nuvem.md declara NÃO VERIFICADO; sem metodologia nem medição."
+  "estado": "parcial",
+  "pct": 15,
+  "nota": "Ferramenta latencia-quadros e método de câmera 240 fps em docs/aceite/F03/roteiro-medicao-latencia.md; sem medição."
  },
  {
   "id": "F02-5",
@@ -216,8 +216,8 @@
   "titulo_fase": "Motor sonoro SoundFont e troca de instrumentos",
   "item": "MIDI→áudio p95 ≤ 50 ms medido por loopback",
   "estado": "parcial",
-  "pct": 20,
-  "nota": "jitter-offline.md é modelado e declara latência real NÃO VERIFICADA; sem loopback no equipamento."
+  "pct": 35,
+  "nota": "piano-tutor-diag latencia-loopback e latencia-midi prontos, lógica testada com sinais sintéticos; sem medição real."
  },
  {
   "id": "F03-5",
@@ -270,9 +270,9 @@
   "ordem_fase": 4,
   "titulo_fase": "Núcleo de teoria musical",
   "item": "Testes dos 128 MIDI, 12 classes, intervalos/tonalidades e A4=440 Hz",
-  "estado": "parcial",
-  "pct": 45,
-  "nota": "Evidência F04 PASS para 128 notas, intervalos e A4; tonalidades menores/demais sem teste (NÃO VERIFICADO)."
+  "estado": "evidencia_nuvem",
+  "pct": 80,
+  "nota": "15 maiores e 15 menores, relativas, escalas das 12 tônicas testadas (Tonalidade, Modo); docs/aceite/F04/evidencia.md."
  },
  {
   "id": "F04-2",
@@ -281,9 +281,9 @@
   "ordem_fase": 4,
   "titulo_fase": "Núcleo de teoria musical",
   "item": "Distinguir acorde, arpejo e nota isolada sem impor rótulo",
-  "estado": "parcial",
-  "pct": 35,
-  "nota": "Sem rótulo em notas/pares testado; classificação de arpejo não tem teste (docs/aceite/F04/evidencia.md)."
+  "estado": "evidencia_nuvem",
+  "pct": 75,
+  "nota": "classificar_gesto (nota, acorde, arpejo, sequência, ambíguo) com 10 testes e ligado na tela de acordes; janelas sem calibração real."
  },
  {
   "id": "F04-3",
@@ -292,9 +292,9 @@
   "ordem_fase": 4,
   "titulo_fase": "Núcleo de teoria musical",
   "item": "Identificar Dó-Mi-Sol e inversões; enarmonia por contexto",
-  "estado": "parcial",
-  "pct": 45,
-  "nota": "Acordes e inversões PASS em teoria.rs; grafia enarmônica por contexto sem teste."
+  "estado": "evidencia_nuvem",
+  "pct": 75,
+  "nota": "Grafia enarmônica por tonalidade testada e seletor de tonalidade na tela de acordes."
  },
  {
   "id": "F04-4",
@@ -314,9 +314,9 @@
   "ordem_fase": 4,
   "titulo_fase": "Núcleo de teoria musical",
   "item": "Sem erro acumulado após 1.000 compassos no mapa simbólico",
-  "estado": "parcial",
-  "pct": 40,
-  "nota": "Teste cobre ~485 compassos (ns inteiros); falta teste literal de 1.000."
+  "estado": "evidencia_nuvem",
+  "pct": 85,
+  "nota": "Testes literais de 1.000 compassos no mapa simbólico e no agendador, sem erro acumulado."
  },
  {
   "id": "F04-6",
@@ -325,9 +325,9 @@
   "ordem_fase": 4,
   "titulo_fase": "Núcleo de teoria musical",
   "item": "Implementação e testes completos",
-  "estado": "parcial",
-  "pct": 45,
-  "nota": "Núcleo implementado; lacunas de teste em 1d, 2b, 3c e 5."
+  "estado": "codigo",
+  "pct": 75,
+  "nota": "Lacunas 1d, 2b, 3c e 5 fechadas; UI ligada; falta conferência com teclado real."
  },
  {
   "id": "F04-7",
@@ -348,8 +348,8 @@
   "titulo_fase": "Núcleo de teoria musical",
   "item": "Formatação, análise estática e testes executados e documentados",
   "estado": "evidencia_nuvem",
-  "pct": 70,
-  "nota": "Execução de cargo test documentada; fmt/clippy não detalhados na evidência."
+  "pct": 80,
+  "nota": "fmt, clippy -D warnings e cargo test documentados na evidência."
  },
  {
   "id": "F04-9",
@@ -380,9 +380,9 @@
   "ordem_fase": 5,
   "titulo_fase": "Metrônomo, compassos e sincronização",
   "item": "120 BPM: semínima 500 ms; erro médio ≤2 ms e jitter p95 ≤10 ms offline",
-  "estado": "parcial",
-  "pct": 45,
-  "nota": "500 ms exatos testado; falta render offline do metrônomo com métricas e medição real."
+  "estado": "evidencia_nuvem",
+  "pct": 70,
+  "nota": "Render offline a 120 bpm: erro médio e jitter p95 0 ms (despertar ideal) e ~0,6/0,13 ms (despertar modelado); falta áudio real."
  },
  {
   "id": "F08-2",
@@ -402,9 +402,9 @@
   "ordem_fase": 5,
   "titulo_fase": "Metrônomo, compassos e sincronização",
   "item": "Três exercícios adiantado/certo/atrasado com tolerâncias configuráveis",
-  "estado": "parcial",
-  "pct": 45,
-  "nota": "Julgamento testado; tolerância só no padrão e feedback visual sem teste."
+  "estado": "codigo",
+  "pct": 65,
+  "nota": "Tolerância configurável e feedback por julgamento testados."
  },
  {
   "id": "F08-4",
@@ -414,8 +414,8 @@
   "titulo_fase": "Metrônomo, compassos e sincronização",
   "item": "Mudar BPM durante execução sem clique duplo nem salto",
   "estado": "codigo",
-  "pct": 55,
-  "nota": "mudar_bpm_no_meio_nao_duplica_nem_salta passa; sinalização ao usuário sem teste."
+  "pct": 70,
+  "nota": "Aviso de mudança de andamento na tela, testado; inclusive no áudio renderizado."
  },
  {
   "id": "F08-5",
@@ -436,8 +436,8 @@
   "titulo_fase": "Metrônomo, compassos e sincronização",
   "item": "Implementação e testes completos",
   "estado": "codigo",
-  "pct": 55,
-  "nota": "core/ritmo.rs e app/ritmo.rs com testes; lacunas listadas em docs/aceite/F08."
+  "pct": 70,
+  "nota": "Lacunas da F08 fechadas em software; ver evidência."
  },
  {
   "id": "F08-7",
@@ -457,9 +457,9 @@
   "ordem_fase": 5,
   "titulo_fase": "Metrônomo, compassos e sincronização",
   "item": "Formatação, análise estática e testes executados e documentados",
-  "estado": "codigo",
-  "pct": 55,
-  "nota": "Testes documentados; clippy/fmt não citados explicitamente para F08."
+  "estado": "evidencia_nuvem",
+  "pct": 70,
+  "nota": "fmt, clippy e testes citados em docs/aceite/F08."
  },
  {
   "id": "F08-9",
@@ -513,8 +513,8 @@
   "titulo_fase": "Gravar, importar e reproduzir MIDI",
   "item": "Aviso ao fechar com gravação ativa e recuperação temporária",
   "estado": "codigo",
-  "pct": 55,
-  "nota": "tem_dados_nao_salvos e salvar_recuperacao ligados em app.rs:716; teste de rascunho."
+  "pct": 65,
+  "nota": "Recuperação também grava a captura em andamento (gravacao-em-andamento.mid), com teste."
  },
  {
   "id": "F06-4",
@@ -523,9 +523,9 @@
   "ordem_fase": 6,
   "titulo_fase": "Gravar, importar e reproduzir MIDI",
   "item": "Round-trip em 3 arquivos MIDI de referência (multicanal, andamento)",
-  "estado": "parcial",
-  "pct": 40,
-  "nota": "Testes tipo 1 e mudança de andamento com dados sintéticos; sem 3 arquivos de referência."
+  "estado": "evidencia_nuvem",
+  "pct": 70,
+  "nota": "3 MIDIs de referência CC0 (tipo 1 multicanal, mudança de andamento, pedal/acordes) com ida e volta testada."
  },
  {
   "id": "F06-5",
@@ -556,9 +556,9 @@
   "ordem_fase": 6,
   "titulo_fase": "Gravar, importar e reproduzir MIDI",
   "item": "Evidência rastreável de cada aceite",
-  "estado": "nao_iniciado",
-  "pct": 0,
-  "nota": "Não existe docs/aceite/F06."
+  "estado": "evidencia_nuvem",
+  "pct": 70,
+  "nota": "docs/aceite/F06/evidencia.md."
  },
  {
   "id": "F06-8",
@@ -567,9 +567,9 @@
   "ordem_fase": 6,
   "titulo_fase": "Gravar, importar e reproduzir MIDI",
   "item": "Formatação, análise estática e testes documentados",
-  "estado": "nao_iniciado",
-  "pct": 0,
-  "nota": "Sem documento de resultados para F06."
+  "estado": "evidencia_nuvem",
+  "pct": 70,
+  "nota": "fmt, clippy e testes documentados em docs/aceite/F06."
  },
  {
   "id": "F06-9",
@@ -578,9 +578,9 @@
   "ordem_fase": 6,
   "titulo_fase": "Gravar, importar e reproduzir MIDI",
   "item": "Riscos, licenças e limitações registrados",
-  "estado": "nao_iniciado",
-  "pct": 0,
-  "nota": "Sem registro dedicado para F06."
+  "estado": "evidencia_nuvem",
+  "pct": 55,
+  "nota": "Riscos, licenças (fixtures CC0) e limitações registrados."
  },
  {
   "id": "F06-10",
@@ -634,8 +634,8 @@
   "titulo_fase": "Professor assistido",
   "item": "10 exercícios completos; progressão avança e retrocede",
   "estado": "codigo",
-  "pct": 55,
-  "nota": "Teste progressao_avanca_retrocede_e_bloqueia; contagem/campos dos 10 exercícios não conferidos."
+  "pct": 70,
+  "nota": "Teste confere os 10 exercícios com campos completos e gabarito jogável."
  },
  {
   "id": "F05-5",
@@ -644,9 +644,9 @@
   "ordem_fase": 7,
   "titulo_fase": "Professor assistido",
   "item": "Feedback com replay (F06) e compasso do erro (F08)",
-  "estado": "parcial",
-  "pct": 25,
-  "nota": "Cabeçalho de exercicios.rs lista replay e compasso como pendentes; só há registro de eventos."
+  "estado": "codigo",
+  "pct": 60,
+  "nota": "Compasso/tempo do erro e \"Ouvir o que toquei\" (replay pela F06) implementados e testados; tela e som não verificados."
  },
  {
   "id": "F05-6",
@@ -666,9 +666,9 @@
   "ordem_fase": 7,
   "titulo_fase": "Professor assistido",
   "item": "Implementação e testes completos",
-  "estado": "parcial",
-  "pct": 45,
-  "nota": "Núcleo testado, mas integração com F06/F08 pendente."
+  "estado": "codigo",
+  "pct": 65,
+  "nota": "Integração com F06 e grade da F08 feita; falta uso real."
  },
  {
   "id": "F05-8",
@@ -677,9 +677,9 @@
   "ordem_fase": 7,
   "titulo_fase": "Professor assistido",
   "item": "Evidência rastreável de cada aceite",
-  "estado": "nao_iniciado",
-  "pct": 0,
-  "nota": "Não existe docs/aceite/F05."
+  "estado": "evidencia_nuvem",
+  "pct": 70,
+  "nota": "docs/aceite/F05/evidencia.md mapeia critérios a testes."
  },
  {
   "id": "F05-9",
@@ -688,9 +688,9 @@
   "ordem_fase": 7,
   "titulo_fase": "Professor assistido",
   "item": "Formatação, análise estática e testes documentados",
-  "estado": "nao_iniciado",
-  "pct": 0,
-  "nota": "Sem documento de resultados para F05."
+  "estado": "evidencia_nuvem",
+  "pct": 70,
+  "nota": "fmt, clippy e testes documentados em docs/aceite/F05."
  },
  {
   "id": "F05-10",
@@ -699,9 +699,9 @@
   "ordem_fase": 7,
   "titulo_fase": "Professor assistido",
   "item": "Riscos, licenças e limitações registrados",
-  "estado": "parcial",
-  "pct": 15,
-  "nota": "Só limitações em comentário de código; sem registro formal."
+  "estado": "evidencia_nuvem",
+  "pct": 55,
+  "nota": "Riscos e limitações registrados em docs/aceite/F05."
  },
  {
   "id": "F05-11",
@@ -787,9 +787,9 @@
   "ordem_fase": 9,
   "titulo_fase": "Pads, drum machine e looper",
   "item": "Oito pads disparam 8 sons distintos; choke groups",
-  "estado": "parcial",
-  "pct": 40,
-  "nota": "Choke testado (chimbal 42 corta 46); distinção dos 8 sons sem teste, oitava não auditada."
+  "estado": "codigo",
+  "pct": 60,
+  "nota": "Oito pads mapeados em 8 notas GM distintas, testado; distinção audível não verificada."
  },
  {
   "id": "F09-2",
@@ -798,9 +798,9 @@
   "ordem_fase": 9,
   "titulo_fase": "Pads, drum machine e looper",
   "item": "Sequenciador 16 passos salva/recarrega/reproduz; 3/4 e 6/8 com grade",
-  "estado": "parcial",
-  "pct": 45,
-  "nota": "Ida e volta do arquivo testada; sem render do padrão nem teste de grade 6/8."
+  "estado": "codigo",
+  "pct": 65,
+  "nota": "Grade em 4/4, 3/4 e 6/8 testada e padrão renderizado offline."
  },
  {
   "id": "F09-3",
@@ -809,9 +809,9 @@
   "ordem_fase": 9,
   "titulo_fase": "Pads, drum machine e looper",
   "item": "Metrônomo, sequenciador e piano no mesmo clock de áudio",
-  "estado": "parcial",
-  "pct": 40,
-  "nota": "Todos via ServicoSom (inspeção de código); sem teste de sincronia com o piano."
+  "estado": "codigo",
+  "pct": 65,
+  "nota": "Metrônomo, sequenciador e piano no mesmo relógio de áudio, comparação por frame testada."
  },
  {
   "id": "F09-4",
@@ -843,8 +843,8 @@
   "titulo_fase": "Pads, drum machine e looper",
   "item": "Padrão de acompanhamento livre/licenciado para o REVAS",
   "estado": "parcial",
-  "pct": 30,
-  "nota": "11 padrões de fábrica validados, mas licença/autoria não declarada."
+  "pct": 40,
+  "nota": "Autoria dos 11 padrões documentada como \"a confirmar pelo titular\" em docs/aceite/F09/padroes-de-fabrica.md."
  },
  {
   "id": "F10-1",
@@ -1337,9 +1337,9 @@
   "ordem_fase": 14,
   "titulo_fase": "Consolidação, Linux e distribuição",
   "item": "Migrações preservam dados; backup/rollback por versão demonstrado",
-  "estado": "nao_iniciado",
-  "pct": 0,
-  "nota": "Sem código/evidência em docs/aceite/F14; fase dependente de F10–F13 e hardware."
+  "estado": "codigo",
+  "pct": 50,
+  "nota": "dados_usuario.rs: versão, backup antes de migrar (sem SoundFonts), limite de 5, rollback; ligado na inicialização; sem uso real."
  },
  {
   "id": "F14-6",

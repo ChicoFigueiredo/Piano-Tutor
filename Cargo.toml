@@ -21,7 +21,7 @@ dbg_macro = "warn"
 todo = "warn"
 unwrap_used = "warn"
 
-# TEMPORÁRIO (cerebro): bancada-casca local, branch claude/piano-tutor-controles-ribbon (commit 26b4c96),
+# TEMPORÁRIO (cerebro): bancada-casca local, branch claude/piano-tutor-controles-ribbon (commit 6d296a7),
 # com controles do app no Ribbon e ícone da janela. Trocar pelo rev publicado quando o branch subir.
 [patch."https://github.com/ChicoFigueiredo/bancada"]
 bancada-casca = { path = "/home/chico/bancada-noite/crates/bancada-casca" }
