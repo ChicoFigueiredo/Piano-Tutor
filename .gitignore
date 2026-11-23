@@ -22,3 +22,6 @@
 /data/
 /models/
 .claude/worktrees/
+
+# Exceção: MIDIs sintéticos CC0 de referência da F06 (tests/fixtures/LEIAME.md).
+!crates/piano-tutor-app/tests/fixtures/*.mid

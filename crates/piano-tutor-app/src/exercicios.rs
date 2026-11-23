@@ -1145,6 +1145,139 @@ mod testes {
         assert_eq!(ex[1].passos.len(), 10, "o exercício 2 tem 10 notas");
     }
 
+    /// F05-4: os 10 exercícios progressivos de fábrica existem, com todos os campos, e o
+    /// gabarito de cada um é jogável (tocar o gabarito conclui o exercício).
+    #[test]
+    fn dez_exercicios_progressivos_tem_campos_completos_e_gabarito_jogavel() {
+        let ex = exercicios_de_fabrica();
+        assert_eq!(ex.len(), 10, "são exatamente 10 exercícios de fábrica");
+
+        let tipos_esperados = [
+            Tipo::Localizar,
+            Tipo::Sequencia,
+            Tipo::Sequencia,
+            Tipo::Sequencia,
+            Tipo::Intervalos,
+            Tipo::Escala,
+            Tipo::Acorde,
+            Tipo::Acorde,
+            Tipo::Arpejo,
+            Tipo::OuvirERepetir,
+        ];
+        let mut titulos: Vec<&str> = ex.iter().map(|x| x.titulo).collect();
+        titulos.sort_unstable();
+        titulos.dedup();
+        assert_eq!(titulos.len(), 10, "títulos únicos");
+
+        for (i, x) in ex.iter().enumerate() {
+            let rotulo = format!("exercício {} ({})", x.id, x.titulo);
+            assert_eq!(usize::from(x.id), i + 1, "{rotulo}: id sequencial");
+            assert_eq!(x.tipo, tipos_esperados[i], "{rotulo}: tipo");
+            // Nome, objetivo, instruções, feedback de acerto/erro e conclusão.
+            for (campo, texto) in [
+                ("titulo", x.titulo),
+                ("objetivo", x.objetivo),
+                ("instrucoes", x.instrucoes),
+                ("feedback_acerto", x.feedback_acerto),
+                ("feedback_erro", x.feedback_erro),
+                ("conclusao", x.conclusao),
+            ] {
+                assert!(
+                    texto.trim().len() >= 10,
+                    "{rotulo}: campo {campo} vazio ou curto demais"
+                );
+            }
+            assert!(!x.tipo.texto().is_empty(), "{rotulo}: rótulo do tipo");
+            // Gabarito: notas dentro das 61 teclas (Dó2..Dó7 = 36..96), sem conjunto vazio.
+            assert!(!x.passos.is_empty(), "{rotulo}: sem gabarito");
+            for p in &x.passos {
+                assert!(!p.notas.is_empty(), "{rotulo}: passo vazio");
+                for nota in &p.notas {
+                    assert!(
+                        (36..=96).contains(&nota.numero()),
+                        "{rotulo}: nota {} fora das 61 teclas",
+                        nota.numero()
+                    );
+                }
+            }
+            assert_eq!(
+                x.gabarito_texto().split("  >  ").count(),
+                x.passos.len(),
+                "{rotulo}: gabarito em texto com um trecho por passo"
+            );
+            // Pré-requisito: o primeiro é livre; os demais exigem o anterior.
+            assert_eq!(
+                x.prerequisito,
+                if i == 0 { None } else { Some(x.id - 1) },
+                "{rotulo}: pré-requisito"
+            );
+            // Só o último é de ouvido (guias escondidas).
+            assert_eq!(x.de_ouvido(), i == 9, "{rotulo}: de_ouvido");
+            // Forma do gabarito conforme o tipo.
+            match x.tipo {
+                Tipo::Localizar | Tipo::Sequencia | Tipo::Escala | Tipo::Arpejo => {
+                    assert!(
+                        x.passos.iter().all(|p| p.notas.len() == 1 && !p.por_classe),
+                        "{rotulo}: passos de uma nota exata"
+                    );
+                }
+                Tipo::Intervalos => {
+                    assert!(
+                        x.passos.iter().all(|p| p.notas.len() == 2 && !p.por_classe),
+                        "{rotulo}: intervalos de duas notas exatas"
+                    );
+                }
+                Tipo::Acorde => {
+                    assert!(
+                        x.passos.iter().all(|p| p.notas.len() == 3 && p.por_classe),
+                        "{rotulo}: tríades por classe de altura"
+                    );
+                }
+                Tipo::OuvirERepetir => {
+                    assert!(x.passos.len() >= 4, "{rotulo}: frase curta");
+                }
+            }
+            // Dedilhado sugerido nos exercícios em que se aplica.
+            if matches!(x.id, 2 | 3 | 5 | 6 | 7 | 8 | 9) {
+                assert!(!x.dedilhado.is_empty(), "{rotulo}: dedilhado sugerido");
+            }
+        }
+
+        // Progressão: a tarefa fica mais complexa ao longo da lista (de 1 nota a 3 notas juntas).
+        assert_eq!(ex[0].passos.len(), 1);
+        assert_eq!(ex[1].passos.len(), 10);
+        assert_eq!(ex[5].passos.len(), 8, "escala de uma oitava");
+        assert_eq!(ex[8].passos.len(), 7, "arpejo subindo e descendo");
+
+        // Jogabilidade: tocar o gabarito (notas de cada passo dentro da janela) conclui cada um.
+        for x in &ex {
+            let mut e = em(x.id);
+            let mut t_ms = 0u64;
+            let mut ultima = Classificacao::Ignorada;
+            for p in &x.passos {
+                for nota in &p.notas {
+                    ultima = e.classificar(true, *nota, t_ms * MS);
+                    t_ms += 5;
+                }
+                t_ms += 500;
+            }
+            assert_eq!(
+                ultima,
+                Classificacao::ExercicioCompleto,
+                "exercício {}: o gabarito deve concluir",
+                x.id
+            );
+            assert_eq!(e.tentativa.erros, 0, "exercício {}: sem erros", x.id);
+            assert_eq!(
+                e.tentativa.acertos as usize,
+                x.passos.len(),
+                "exercício {}: um acerto por passo",
+                x.id
+            );
+            assert!(e.concluido(usize::from(x.id) - 1));
+        }
+    }
+
     #[test]
     fn exercicio_de_dez_notas_com_acertos_e_erros_injetados_classifica_100_por_cento() {
         let mut e = em(2);

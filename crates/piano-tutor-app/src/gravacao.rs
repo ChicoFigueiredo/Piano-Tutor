@@ -2227,4 +2227,542 @@ mod testes {
         };
         assert_eq!(aberta.notas()[0].fim_ns, 900 * MS);
     }
+    // --- F06-4: três arquivos MIDI de referência (sintéticos, CC0) -----------------------------
+    //
+    // Os arquivos ficam em `tests/fixtures/` e são gerados por este módulo
+    // (`gerar_arquivos_de_referencia`, ignorado por padrão). O teste
+    // `arquivos_de_referencia_commitados_sao_os_gerados` garante que o conteúdo versionado é
+    // exatamente o que o gerador produz. Cada arquivo: importar, conferir contra uma lista
+    // esperada escrita à mão (ticks e mensagens), exportar, reimportar e comparar.
+
+    /// Item de uma trilha de referência.
+    enum Item {
+        Msg(Mensagem),
+        /// Meta de andamento, em µs por semínima.
+        Tempo(u32),
+        /// Meta de fórmula de compasso (4/4), ignorada na importação.
+        Compasso,
+    }
+
+    /// Uma trilha: eventos `(tick absoluto, item)` em ordem e o tick do fim da trilha.
+    struct TrilhaRef {
+        itens: Vec<(u64, Item)>,
+        fim: u64,
+    }
+
+    fn codificar(msg: Mensagem) -> Vec<u8> {
+        match msg {
+            Mensagem::NotaLigada {
+                canal,
+                nota,
+                velocidade,
+            } => vec![0x90 | canal, nota, velocidade],
+            Mensagem::NotaDesligada {
+                canal,
+                nota,
+                velocidade,
+            } => vec![0x80 | canal, nota, velocidade],
+            Mensagem::Controle {
+                canal,
+                controle,
+                valor,
+            } => vec![0xB0 | canal, controle, valor],
+            Mensagem::Programa { canal, programa } => vec![0xC0 | canal, programa],
+        }
+    }
+
+    /// Monta o arquivo (tipo 0 ou 1) com os bytes escritos pelo teste, sem usar `para_smf`.
+    fn montar_smf(tipo: u16, ppq: u16, trilhas: &[TrilhaRef]) -> Vec<u8> {
+        let mut f = cabecalho(tipo, trilhas.len() as u16, ppq);
+        for t in trilhas {
+            let mut corpo = Vec::new();
+            let mut atual = 0u64;
+            for (tick, item) in &t.itens {
+                escrever_vlq(&mut corpo, tick - atual).expect("vlq");
+                atual = *tick;
+                match item {
+                    Item::Msg(m) => corpo.extend(codificar(*m)),
+                    Item::Tempo(us) => {
+                        corpo.extend_from_slice(&[0xFF, 0x51, 0x03]);
+                        corpo.extend_from_slice(&us.to_be_bytes()[1..]);
+                    }
+                    Item::Compasso => {
+                        corpo.extend_from_slice(&[0xFF, 0x58, 0x04, 4, 2, 24, 8]);
+                    }
+                }
+            }
+            escrever_vlq(&mut corpo, t.fim - atual).expect("vlq");
+            corpo.extend_from_slice(&[0xFF, 0x2F, 0x00]);
+            f.extend(trilha(&corpo));
+        }
+        f
+    }
+
+    /// Mensagens esperadas na importação: trilhas juntas, ordenadas por tick; no mesmo tick vale
+    /// a ordem das trilhas e, dentro da trilha, a ordem do arquivo.
+    fn esperado(trilhas: &[TrilhaRef]) -> Vec<(u64, Mensagem)> {
+        let mut v: Vec<(u64, Mensagem)> = Vec::new();
+        for t in trilhas {
+            for (tick, item) in &t.itens {
+                if let Item::Msg(m) = item {
+                    // Regra do MIDI: `NoteOn` com velocidade 0 é um soltar.
+                    let m = match *m {
+                        Mensagem::NotaLigada {
+                            canal,
+                            nota,
+                            velocidade: 0,
+                        } => Mensagem::NotaDesligada {
+                            canal,
+                            nota,
+                            velocidade: 0,
+                        },
+                        outra => outra,
+                    };
+                    v.push((*tick, m));
+                }
+            }
+        }
+        v.sort_by_key(|(t, _)| *t);
+        v
+    }
+
+    /// Instante em ns de um tick, por conta independente do código testado: soma de segmentos
+    /// `ticks × µs × 1000 / ppq`, arredondada uma única vez no fim de cada segmento.
+    fn tick_em_ns(tick: u64, tempos: &[(u64, u32)], ppq: u64) -> u64 {
+        let mut ns = 0u128;
+        let (mut t0, mut us) = (0u64, u128::from(US_POR_SEMINIMA_PADRAO));
+        for &(t, novo) in tempos.iter().filter(|(t, _)| *t < tick) {
+            ns += u128::from(t - t0) * us * 1000 / u128::from(ppq);
+            (t0, us) = (t, u128::from(novo));
+        }
+        ns += u128::from(tick - t0) * us * 1000 / u128::from(ppq);
+        ns as u64
+    }
+
+    fn lig_c(canal: u8, nota: u8, velocidade: u8) -> Item {
+        Item::Msg(lig(canal, nota, velocidade))
+    }
+
+    fn des_c(canal: u8, nota: u8, velocidade: u8) -> Item {
+        Item::Msg(des_v(canal, nota, velocidade))
+    }
+
+    fn ctl(canal: u8, controle: u8, valor: u8) -> Item {
+        Item::Msg(Mensagem::Controle {
+            canal,
+            controle,
+            valor,
+        })
+    }
+
+    fn prog(canal: u8, programa: u8) -> Item {
+        Item::Msg(Mensagem::Programa { canal, programa })
+    }
+
+    /// Referência 1: tipo 1, 4 trilhas, três canais (0 piano, 1 cordas, 9 percussão), 120 bpm.
+    fn trilhas_multicanal() -> Vec<TrilhaRef> {
+        vec![
+            TrilhaRef {
+                itens: vec![(0, Item::Tempo(500_000)), (0, Item::Compasso)],
+                fim: 1920,
+            },
+            TrilhaRef {
+                itens: vec![
+                    (0, prog(0, 0)),
+                    (0, lig_c(0, 60, 80)),
+                    (480, des_c(0, 60, 64)),
+                    (480, lig_c(0, 64, 90)),
+                    (960, des_c(0, 64, 64)),
+                    (960, lig_c(0, 67, 100)),
+                    (1440, des_c(0, 67, 64)),
+                ],
+                fim: 1920,
+            },
+            TrilhaRef {
+                itens: vec![
+                    (0, prog(1, 40)),
+                    (0, lig_c(1, 48, 70)),
+                    (0, lig_c(1, 55, 70)),
+                    (1440, des_c(1, 48, 30)),
+                    (1440, des_c(1, 55, 30)),
+                ],
+                fim: 1920,
+            },
+            TrilhaRef {
+                itens: vec![
+                    (0, lig_c(9, 36, 110)),
+                    (60, des_c(9, 36, 0)),
+                    (480, lig_c(9, 42, 60)),
+                    (540, des_c(9, 42, 0)),
+                    (960, lig_c(9, 38, 100)),
+                    (1020, des_c(9, 38, 0)),
+                    (1440, lig_c(9, 42, 60)),
+                    (1500, des_c(9, 42, 0)),
+                ],
+                fim: 1920,
+            },
+        ]
+    }
+
+    /// Referência 2: tipo 0, uma trilha, 120 bpm, depois 60 bpm (tick 1920) e 240 bpm (tick 2880).
+    fn trilhas_andamento() -> Vec<TrilhaRef> {
+        let mut itens = vec![(0, Item::Tempo(500_000)), (0, prog(0, 0))];
+        // Quatro notas a 120 bpm, uma por tempo, cada uma com meia semínima de duração.
+        for (i, nota) in [60u8, 62, 64, 65].into_iter().enumerate() {
+            let t = i as u64 * 480;
+            itens.push((t, lig_c(0, nota, 80)));
+            itens.push((t + 240, des_c(0, nota, 64)));
+        }
+        itens.push((1920, Item::Tempo(1_000_000)));
+        for (i, nota) in [67u8, 69].into_iter().enumerate() {
+            let t = 1920 + i as u64 * 480;
+            itens.push((t, lig_c(0, nota, 85)));
+            itens.push((t + 240, des_c(0, nota, 64)));
+        }
+        itens.push((2880, Item::Tempo(250_000)));
+        for (i, nota) in [71u8, 72, 74, 76].into_iter().enumerate() {
+            let t = 2880 + i as u64 * 480;
+            itens.push((t, lig_c(0, nota, 90)));
+            itens.push((t + 240, des_c(0, nota, 64)));
+        }
+        vec![TrilhaRef { itens, fim: 4800 }]
+    }
+
+    /// Referência 3: tipo 0, um canal, pedal de sustain (CC64) com valores 127, 64 e 0, acordes
+    /// de 4 e 2 notas, escala de velocidades de 1 a 127 e `NoteOn` com velocidade 0 como soltar.
+    fn trilhas_pedal_e_velocidades() -> Vec<TrilhaRef> {
+        let mut itens = vec![
+            (0, Item::Tempo(500_000)),
+            (0, ctl(0, 64, 127)),
+            (0, lig_c(0, 60, 1)),
+            (0, lig_c(0, 64, 40)),
+            (0, lig_c(0, 67, 90)),
+            (0, lig_c(0, 72, 127)),
+            (480, des_c(0, 60, 64)),
+            (480, des_c(0, 64, 20)),
+            (480, des_c(0, 67, 127)),
+            (480, des_c(0, 72, 0)),
+            (600, ctl(0, 64, 0)),
+            (720, ctl(0, 64, 64)),
+            (840, lig_c(0, 62, 10)),
+            (840, lig_c(0, 65, 20)),
+            (1200, des_c(0, 62, 64)),
+            (1200, des_c(0, 65, 64)),
+            (1320, ctl(0, 64, 0)),
+        ];
+        for (i, (nota, vel)) in [(48u8, 16u8), (50, 32), (52, 64), (53, 96), (55, 127)]
+            .into_iter()
+            .enumerate()
+        {
+            let t = 1440 + i as u64 * 120;
+            itens.push((t, lig_c(0, nota, vel)));
+            // O último é solto com `NoteOn` de velocidade 0 (lido como soltar).
+            if nota == 55 {
+                itens.push((t + 120, lig_c(0, nota, 0)));
+            } else {
+                itens.push((t + 120, des_c(0, nota, 64)));
+            }
+        }
+        vec![TrilhaRef { itens, fim: 2400 }]
+    }
+
+    /// Importa, confere com a lista esperada, exporta, reimporta e compara. Devolve a primeira
+    /// importação para verificações específicas de cada referência.
+    fn ida_e_volta_de_referencia(
+        bytes: &[u8],
+        trilhas: &[TrilhaRef],
+        ppq: u16,
+        tempos_ticks: &[(u64, u32)],
+        tipo_original: u16,
+    ) -> Gravacao {
+        assert_eq!(&bytes[..4], b"MThd");
+        assert_eq!(
+            &bytes[8..10],
+            &tipo_original.to_be_bytes(),
+            "tipo do original"
+        );
+        assert_eq!(&bytes[10..12], &(trilhas.len() as u16).to_be_bytes());
+        assert_eq!(&bytes[12..14], &ppq.to_be_bytes());
+
+        // 1) Importação: altura, velocidade, canal, ordem e instante de cada mensagem.
+        let g = Gravacao::de_smf(bytes, "ref").expect("importa");
+        let esp = esperado(trilhas);
+        assert_eq!(g.eventos.len(), esp.len(), "quantidade de eventos");
+        for (i, (e, (tick, msg))) in g.eventos.iter().zip(&esp).enumerate() {
+            assert_eq!(e.msg, *msg, "evento {i}: mensagem e ordem");
+            let t = tick_em_ns(*tick, tempos_ticks, u64::from(ppq));
+            assert_eq!(e.t_ns, t, "evento {i} (tick {tick}): instante em ns");
+        }
+        let fim = trilhas.iter().map(|t| t.fim).max().unwrap_or(0);
+        assert_eq!(
+            g.duracao_ns,
+            tick_em_ns(fim, tempos_ticks, u64::from(ppq)),
+            "duração"
+        );
+        assert_eq!(
+            g.tempos.len(),
+            tempos_ticks
+                .iter()
+                .filter(|(t, u)| *t > 0 || *u != 500_000)
+                .count()
+        );
+        for ((t_ns, us), (tick, us_esp)) in g
+            .tempos
+            .iter()
+            .zip(tempos_ticks.iter().filter(|(t, u)| *t > 0 || *u != 500_000))
+        {
+            assert_eq!(*us, *us_esp);
+            assert_eq!(*t_ns, tick_em_ns(*tick, tempos_ticks, u64::from(ppq)));
+        }
+
+        // 2) Exportação (tipo 0 a 480 PPQ) e reimportação: nada se perde; tempo em até 1 tick.
+        let saida = g.para_smf().expect("exporta");
+        assert_eq!(&saida[8..10], &[0, 0], "exporta como tipo 0");
+        let g2 = Gravacao::de_smf(&saida, "ref").expect("reimporta");
+        mesmas_mensagens(&g, &g2);
+        assert_eq!(g2.eventos.len(), g.eventos.len());
+        assert!(g2.duracao_ns.abs_diff(g.duracao_ns) <= TICK_NS);
+        assert_eq!(g2.tempos.len(), g.tempos.len(), "mudanças de andamento");
+        for (a, b) in g.tempos.iter().zip(&g2.tempos) {
+            assert_eq!(a.1, b.1, "andamento");
+            assert!(a.0.abs_diff(b.0) <= TICK_NS, "instante da mudança");
+        }
+        // Canais, alturas e velocidades por posição (conjuntos iguais, mesma ordem).
+        assert_eq!(canais(&g), canais(&g2));
+        assert_eq!(g.notas().len(), g2.notas().len());
+
+        // 3) Estável: exportar a reimportação dá os mesmos eventos e os mesmos bytes.
+        let saida2 = g2.para_smf().expect("exporta de novo");
+        let g3 = Gravacao::de_smf(&saida2, "ref").expect("reimporta de novo");
+        assert_eq!(g3.eventos, g2.eventos);
+        assert_eq!(
+            saida2, saida,
+            "exportação estável a partir da segunda volta"
+        );
+        g
+    }
+
+    fn canais(g: &Gravacao) -> Vec<u8> {
+        let mut c: Vec<u8> = g
+            .eventos
+            .iter()
+            .map(|e| match e.msg {
+                Mensagem::NotaLigada { canal, .. }
+                | Mensagem::NotaDesligada { canal, .. }
+                | Mensagem::Controle { canal, .. }
+                | Mensagem::Programa { canal, .. } => canal,
+            })
+            .collect();
+        c.sort_unstable();
+        c.dedup();
+        c
+    }
+
+    fn arquivo_multicanal() -> Vec<u8> {
+        montar_smf(1, 480, &trilhas_multicanal())
+    }
+
+    fn arquivo_andamento() -> Vec<u8> {
+        montar_smf(0, 480, &trilhas_andamento())
+    }
+
+    fn arquivo_pedal() -> Vec<u8> {
+        montar_smf(0, 480, &trilhas_pedal_e_velocidades())
+    }
+
+    const REF_MULTICANAL: &[u8] = include_bytes!(concat!(
+        env!("CARGO_MANIFEST_DIR"),
+        "/tests/fixtures/referencia-1-tipo1-multicanal.mid"
+    ));
+    const REF_ANDAMENTO: &[u8] = include_bytes!(concat!(
+        env!("CARGO_MANIFEST_DIR"),
+        "/tests/fixtures/referencia-2-mudanca-de-andamento.mid"
+    ));
+    const REF_PEDAL: &[u8] = include_bytes!(concat!(
+        env!("CARGO_MANIFEST_DIR"),
+        "/tests/fixtures/referencia-3-pedal-acordes-velocidades.mid"
+    ));
+
+    /// Gera os arquivos de `tests/fixtures/`. Rodar uma vez, de propósito:
+    /// `cargo test -p piano-tutor-app gravacao::testes::gerar_arquivos_de_referencia -- --ignored`
+    #[test]
+    #[ignore = "só regenera os arquivos de referência versionados"]
+    fn gerar_arquivos_de_referencia() {
+        let pasta = Path::new(env!("CARGO_MANIFEST_DIR")).join("tests/fixtures");
+        std::fs::create_dir_all(&pasta).expect("pasta");
+        for (nome, dados) in [
+            ("referencia-1-tipo1-multicanal.mid", arquivo_multicanal()),
+            ("referencia-2-mudanca-de-andamento.mid", arquivo_andamento()),
+            (
+                "referencia-3-pedal-acordes-velocidades.mid",
+                arquivo_pedal(),
+            ),
+        ] {
+            std::fs::write(pasta.join(nome), dados).expect("grava");
+        }
+    }
+
+    #[test]
+    fn arquivos_de_referencia_commitados_sao_os_gerados() {
+        assert_eq!(REF_MULTICANAL, arquivo_multicanal().as_slice());
+        assert_eq!(REF_ANDAMENTO, arquivo_andamento().as_slice());
+        assert_eq!(REF_PEDAL, arquivo_pedal().as_slice());
+    }
+
+    #[test]
+    fn referencia_1_tipo_1_multicanal_ida_e_volta() {
+        let trilhas = trilhas_multicanal();
+        let g = ida_e_volta_de_referencia(REF_MULTICANAL, &trilhas, 480, &[], 1);
+        // Três canais (0, 1 e 9), sem mudança de andamento.
+        assert_eq!(canais(&g), vec![0, 1, 9]);
+        assert!(g.tempos.is_empty());
+        // Melodia no canal 0: Dó4, Mi4, Sol4, nesta ordem, a 0, 500 e 1000 ms.
+        let melodia: Vec<(u8, u64)> = g
+            .eventos
+            .iter()
+            .filter_map(|e| match e.msg {
+                Mensagem::NotaLigada { canal: 0, nota, .. } => Some((nota, e.t_ns)),
+                _ => None,
+            })
+            .collect();
+        assert_eq!(melodia, vec![(60, 0), (64, 500 * MS), (67, 1000 * MS)]);
+        // Percussão no canal 10 (índice 9): bumbo, chimbal, caixa, chimbal; 62,5 ms de duração.
+        let perc: Vec<u8> = g
+            .notas()
+            .iter()
+            .filter(|n| n.canal == 9)
+            .map(|n| n.nota)
+            .collect();
+        assert_eq!(perc, vec![36, 42, 38, 42]);
+        // Acorde de cordas (canal 1) com as duas notas no mesmo instante, depois da troca de programa.
+        assert!(g.eventos.iter().any(|e| e.msg
+            == Mensagem::Programa {
+                canal: 1,
+                programa: 40
+            }));
+        assert_eq!(g.duracao_ns, 2000 * MS);
+        assert_eq!(g.total_notas(), 3 + 2 + 4);
+    }
+
+    #[test]
+    fn referencia_2_mudanca_de_andamento_ida_e_volta() {
+        let trilhas = trilhas_andamento();
+        let tempos = [(0, 500_000), (1920, 1_000_000), (2880, 250_000)];
+        let g = ida_e_volta_de_referencia(REF_ANDAMENTO, &trilhas, 480, &tempos, 0);
+        // Mudanças de andamento: 60 bpm em 2 s e 240 bpm em 4 s.
+        assert_eq!(g.tempos, vec![(2000 * MS, 1_000_000), (4000 * MS, 250_000)]);
+        // Início de cada nota, em ms, conferido à mão: tempo a 120 bpm = 500 ms; a 60 bpm =
+        // 1000 ms; a 240 bpm = 250 ms.
+        let inicios: Vec<(u8, u64)> = g
+            .eventos
+            .iter()
+            .filter_map(|e| match e.msg {
+                Mensagem::NotaLigada { nota, .. } => Some((nota, e.t_ns / MS)),
+                _ => None,
+            })
+            .collect();
+        assert_eq!(
+            inicios,
+            vec![
+                (60, 0),
+                (62, 500),
+                (64, 1000),
+                (65, 1500),
+                (67, 2000),
+                (69, 3000),
+                (71, 4000),
+                (72, 4250),
+                (74, 4500),
+                (76, 4750),
+            ]
+        );
+        assert_eq!(g.duracao_ns, 5000 * MS);
+        // O arquivo exportado carrega as três metas de andamento (500000, 1000000, 250000).
+        let saida = g.para_smf().expect("exporta");
+        let metas = saida
+            .windows(3)
+            .filter(|w| w == &[0xFF, 0x51, 0x03])
+            .count();
+        assert_eq!(metas, 3, "metas de andamento no arquivo exportado");
+    }
+
+    #[test]
+    fn referencia_3_pedal_acordes_e_velocidades_ida_e_volta() {
+        let trilhas = trilhas_pedal_e_velocidades();
+        let g = ida_e_volta_de_referencia(REF_PEDAL, &trilhas, 480, &[], 0);
+        assert_eq!(canais(&g), vec![0]);
+        // Pedal: 127 (apertado), 0, 64 (meio) e 0, nesta ordem.
+        let pedal_valores: Vec<u8> = g
+            .eventos
+            .iter()
+            .filter_map(|e| match e.msg {
+                Mensagem::Controle {
+                    controle: 64,
+                    valor,
+                    ..
+                } => Some(valor),
+                _ => None,
+            })
+            .collect();
+        assert_eq!(pedal_valores, vec![127, 0, 64, 0]);
+        // O primeiro acorde tem quatro notas no mesmo instante com velocidades 1, 40, 90 e 127.
+        let acorde: Vec<(u8, u8, u64)> = g
+            .eventos
+            .iter()
+            .filter_map(|e| match e.msg {
+                Mensagem::NotaLigada {
+                    nota, velocidade, ..
+                } if e.t_ns == 0 => Some((nota, velocidade, e.t_ns)),
+                _ => None,
+            })
+            .collect();
+        assert_eq!(
+            acorde,
+            vec![(60, 1, 0), (64, 40, 0), (67, 90, 0), (72, 127, 0)]
+        );
+        // Escala de velocidades na parte final (16, 32, 64, 96, 127).
+        let velocidades: Vec<u8> = g
+            .notas()
+            .iter()
+            .filter(|n| n.inicio_ns >= 1500 * MS)
+            .map(|n| n.velocidade)
+            .collect();
+        assert_eq!(velocidades, vec![16, 32, 64, 96, 127]);
+        // O `NoteOn` com velocidade 0 virou soltar (e a nota fechou, sem ficar aberta).
+        assert!(g.eventos.iter().any(|e| matches!(
+            e.msg,
+            Mensagem::NotaDesligada {
+                nota: 55,
+                velocidade: 0,
+                ..
+            }
+        )));
+        let ultima = g.notas().into_iter().last().expect("nota");
+        assert_eq!(ultima.nota, 55);
+        assert!(
+            ultima.fim_ns < g.duracao_ns,
+            "nota 55 foi solta antes do fim"
+        );
+        // Notas e velocidades do primeiro acorde chegam iguais após exportar e reimportar.
+        let g2 = Gravacao::de_smf(&g.para_smf().expect("exporta"), "x").expect("lê");
+        assert_eq!(g2.eventos[..9], g.eventos[..9]);
+    }
+
+    #[test]
+    fn referencias_cortadas_ou_mutadas_nao_entram_em_panico() {
+        let mut semente = 0x00C0_FFEE_u32;
+        for bytes in [REF_MULTICANAL, REF_ANDAMENTO, REF_PEDAL] {
+            for n in 0..bytes.len() {
+                let _ = Gravacao::de_smf(&bytes[..n], "x");
+            }
+            for _ in 0..1000 {
+                let mut m = bytes.to_vec();
+                semente = semente.wrapping_mul(1_664_525).wrapping_add(1_013_904_223);
+                let i = (semente >> 8) as usize % m.len();
+                semente = semente.wrapping_mul(1_664_525).wrapping_add(1_013_904_223);
+                m[i] = (semente >> 16) as u8;
+                let _ = Gravacao::de_smf(&m, "x");
+            }
+        }
+    }
 }
