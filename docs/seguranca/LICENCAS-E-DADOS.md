@@ -67,3 +67,25 @@ Transitivas novas: nenhuma além das do `cpal` (alsa, alsa-sys, libc, dasp_sampl
 | `memchr` (transitiva) | já presente no `Cargo.lock` | MIT OR Unlicense | **NÃO VERIFICADO** uma a uma |
 
 Partituras empacotadas em `assets/partituras/`: três lieder do **OpenScore Lieder Corpus** (CC0 1.0, obras em domínio público), com origem, commit e SHA-256 em `assets/partituras/LEIA-ME.md`. Nenhuma fonte musical (Bravura etc.) é embutida: a notação é desenhada com formas próprias no painter do egui.
+
+## Dependências do `piano-tutor-core` para `.mxl` (F07)
+
+Versões fixadas com `=` em `crates/piano-tutor-core/Cargo.toml`; licenças lidas do campo `license` de cada `Cargo.toml` baixado (2026-11-22). Todas Rust puro, sem ligação a biblioteca C. `zip` entra com `default-features = false` e só `deflate-flate2` (sem AES, bzip2, zstd, lzma, ppmd, time nem zopfli); o `flate2` é fixado diretamente só para ligar o backend `rust_backend` (miniz_oxide).
+
+| Crate | Versão | Licença | Observação |
+| --- | --- | --- | --- |
+| `roxmltree` | 0.21.2 | MIT OR Apache-2.0 | (já existia) leitor XML |
+| `zip` | 9.8.1 | MIT | leitura e escrita do contêiner |
+| `flate2` | 1.1.11 | MIT OR Apache-2.0 | deflate |
+| `miniz_oxide` | 0.9.1 | MIT OR Zlib OR Apache-2.0 | transitiva |
+| `adler2` | 2.0.1 | 0BSD OR MIT OR Apache-2.0 | transitiva |
+| `simd-adler32` | 0.3.10 | MIT | transitiva |
+| `crc32fast` | 1.5.5 | MIT OR Apache-2.0 | transitiva |
+| `typed-path` | 0.13.0 | MIT OR Apache-2.0 | transitiva do `zip` |
+| `constant_time_eq` | 0.6.1 | CC0-1.0 OR MIT-0 OR Apache-2.0 | transitiva do `zip` |
+| `indexmap`, `hashbrown`, `equivalent` | 2.14.2, 0.17.2, 1.0.3 | MIT OR Apache-2.0 | transitivas do `zip` |
+| `getrandom`, `libc`, `cfg-if`, `memchr` | 0.4.3, 0.191, 1.0.5, 2.8.3 | MIT OR Apache-2.0 (memchr: Unlicense OR MIT) | transitivas do `zip` |
+| `zeroize`, `zeroize_derive` | 1.9.2, 1.5.0 | Apache-2.0 OR MIT | transitivas do `zip` |
+| `syn`, `quote`, `proc-macro2`, `unicode-ident` | 2.0.119, 1.0.47, 1.0.107, 1.0.27 | MIT OR Apache-2.0 (`unicode-ident` também Unicode-3.0) | só em compilação (derive) |
+
+`cargo deny`/`cargo license` **não foram executados**: a conferência acima é do campo `license` de cada crate, não de uma auditoria jurídica.

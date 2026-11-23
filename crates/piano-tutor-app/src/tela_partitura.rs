@@ -14,6 +14,7 @@ use crate::preferencias::{ARQUIVO_PREFERENCIAS_PARTITURA, PreferenciasPartitura}
 use crate::som::{EstadoSom, ServicoSom};
 use bancada_casca::egui::{self, Button, ComboBox, Key, RichText, Slider, TextEdit, Ui};
 use piano_tutor_core::NotaMidi;
+use piano_tutor_core::mxl::{MXL_TAMANHO_MAXIMO_BYTES, extrair_musicxml};
 use piano_tutor_core::partitura::{
     ErroPartitura, EventoReproducao, MapaAndamento, Partitura, TAMANHO_MAXIMO_BYTES,
 };
@@ -32,7 +33,7 @@ const BPM_PADRAO: f32 = 80.0;
 const MAX_ARQUIVOS_PASTA: usize = 64;
 
 /// Partituras empacotadas no executável (CC0, ver `assets/partituras/LEIA-ME.md`).
-pub const EMBUTIDAS: [(&str, &str); 3] = [
+pub const EMBUTIDAS: [(&str, &str); 5] = [
     (
         "Brahms: Wiegenlied, Op. 49 nº 4 (3/4)",
         include_str!("../../../assets/partituras/brahms-wiegenlied-op49-4.musicxml"),
@@ -44,6 +45,14 @@ pub const EMBUTIDAS: [(&str, &str); 3] = [
     (
         "Fauré: Barcarolle, Op. 7 nº 3 (6/8)",
         include_str!("../../../assets/partituras/faure-barcarolle-op7-3.musicxml"),
+    ),
+    (
+        "Beethoven: Ode à Alegria, tema (4/4)",
+        include_str!("../../../assets/partituras/beethoven-ode-a-alegria-tema.musicxml"),
+    ),
+    (
+        "Tradicional: Brilha, brilha, estrelinha (4/4, Sol maior)",
+        include_str!("../../../assets/partituras/tradicional-brilha-brilha-estrelinha.musicxml"),
     ),
 ];
 
@@ -191,18 +200,22 @@ fn ler_arquivo(caminho: &Path) -> Result<String, String> {
         .and_then(|e| e.to_str())
         .map(str::to_lowercase)
         .unwrap_or_default();
-    if ext == "mxl" {
-        return Err(
-            "arquivos .mxl (zip) ainda não são lidos: descompacte e abra o .musicxml de dentro"
-                .into(),
-        );
-    }
-    if ext != "musicxml" && ext != "xml" {
-        return Err("use um arquivo .musicxml ou .xml".into());
+    if ext != "musicxml" && ext != "xml" && ext != "mxl" {
+        return Err("use um arquivo .musicxml, .xml ou .mxl".into());
     }
     let meta = std::fs::metadata(caminho).map_err(|e| format!("{}: {e}", caminho.display()))?;
     if !meta.is_file() {
         return Err(format!("{} não é um arquivo", caminho.display()));
+    }
+    if ext == "mxl" {
+        if meta.len() > MXL_TAMANHO_MAXIMO_BYTES as u64 {
+            return Err(format!(
+                "arquivo grande demais ({} bytes; máximo {MXL_TAMANHO_MAXIMO_BYTES})",
+                meta.len()
+            ));
+        }
+        let bytes = std::fs::read(caminho).map_err(|e| format!("{}: {e}", caminho.display()))?;
+        return extrair_musicxml(&bytes).map_err(|e| e.to_string());
     }
     if meta.len() > TAMANHO_MAXIMO_BYTES as u64 {
         return Err(format!(
@@ -245,7 +258,7 @@ impl EstadoPartitura {
                     .map(|e| e.path())
                     .filter(|p| {
                         p.extension().and_then(|e| e.to_str()).is_some_and(|e| {
-                            matches!(e.to_lowercase().as_str(), "musicxml" | "xml")
+                            matches!(e.to_lowercase().as_str(), "musicxml" | "xml" | "mxl")
                         })
                     })
                     .collect();
@@ -368,7 +381,7 @@ impl EstadoPartitura {
         }
     }
 
-    /// Abre um arquivo digitado (`.musicxml` ou `.xml`).
+    /// Abre um arquivo digitado (`.musicxml`, `.xml` ou `.mxl`).
     pub fn abrir_caminho(&mut self, caminho: &str) {
         let c = Path::new(caminho.trim());
         self.parar_sem_som();
@@ -800,6 +813,7 @@ mod testes {
     use bancada_casca::egui::{Context, RawInput, Rect, pos2, vec2};
     use piano_tutor_audio::RelogioManual;
     use piano_tutor_audio::sintetizador::RegistroFalso;
+    use piano_tutor_core::mxl::empacotar_mxl;
     use piano_tutor_core::tempo::Relogio;
     use std::sync::Arc;
 
@@ -823,9 +837,10 @@ mod testes {
 </measure></part></score-partwise>"#;
 
     #[test]
-    fn novo_lista_as_tres_embutidas_e_carrega_a_primeira() {
+    fn novo_lista_as_embutidas_e_carrega_a_primeira() {
         let e = EstadoPartitura::novo(None);
-        assert_eq!(e.fontes.len(), 3);
+        assert_eq!(e.fontes.len(), EMBUTIDAS.len());
+        assert_eq!(e.fontes.len(), 5);
         assert!(e.erro.is_none(), "{:?}", e.erro);
         let p = e.partitura().expect("carregada");
         assert_eq!(p.compassos.len(), 19);
@@ -975,8 +990,41 @@ mod testes {
                 .as_deref()
                 .is_some_and(|m| m.contains("XML inválido"))
         );
+        // .mxl que não existe, que não é zip e uma bomba: recusados com mensagem, sem pânico.
         e.abrir_caminho(&pasta.join("a.mxl").to_string_lossy());
         assert!(e.erro.as_deref().is_some_and(|m| m.contains(".mxl")));
+        let falso = pasta.join("falso.mxl");
+        std::fs::write(&falso, "isto não é zip").expect("grava");
+        e.abrir_caminho(&falso.to_string_lossy());
+        assert!(
+            e.erro
+                .as_deref()
+                .is_some_and(|m| m.contains("arquivo .mxl recusado")),
+            "{:?}",
+            e.erro
+        );
+        let bomba = empacotar_mxl("score.xml", &" ".repeat(9 * 1024 * 1024)).expect("zip");
+        let arq_bomba = pasta.join("bomba.mxl");
+        std::fs::write(&arq_bomba, bomba).expect("grava");
+        e.abrir_caminho(&arq_bomba.to_string_lossy());
+        assert!(
+            e.erro
+                .as_deref()
+                .is_some_and(|m| m.contains("limite de segurança")),
+            "{:?}",
+            e.erro
+        );
+        // .mxl válido abre, com o mesmo conteúdo do .musicxml embutido, e exporta o XML.
+        let bom_mxl = pasta.join("ode.mxl");
+        std::fs::write(
+            &bom_mxl,
+            empacotar_mxl("ode.musicxml", EMBUTIDAS[3].1).expect("zip"),
+        )
+        .expect("grava");
+        e.abrir_caminho(&bom_mxl.to_string_lossy());
+        assert!(e.erro.is_none(), "{:?}", e.erro);
+        assert_eq!(e.partitura().map(|p| p.compassos.len()), Some(16));
+        assert_eq!(e.xml, EMBUTIDAS[3].1);
         e.abrir_caminho(&pasta.join("a.txt").to_string_lossy());
         assert!(e.erro.is_some());
         let boa = pasta.join("boa.musicxml");
@@ -994,7 +1042,7 @@ mod testes {
         std::fs::create_dir_all(pasta.join("partituras")).expect("pasta");
         std::fs::write(pasta.join("partituras/pequena.musicxml"), PEQUENA).expect("grava");
         let e = EstadoPartitura::novo(Some(pasta.clone()));
-        assert_eq!(e.fontes.len(), 4);
+        assert_eq!(e.fontes.len(), EMBUTIDAS.len() + 1);
         let _ = std::fs::remove_dir_all(&pasta);
     }
 }
