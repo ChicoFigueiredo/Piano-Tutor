@@ -13,23 +13,26 @@
 //! **Produtor único da fila de áudio.** Só esta thread (UI/controle) envia comandos ao motor,
 //! pelo [`ServicoSom`].
 
+use crate::abertura::{self, Abertura};
 use crate::acoes;
 use crate::acordes::EstadoAcordes;
 use crate::baixar_sf2::{BaixadorSf2, FLUIDR3_GM, abridor_http, caminho_baixado};
 use crate::calibracao::{Calibracao, PerfilTeclado};
 use crate::espelho::EstadoEspelho;
 use crate::estado::{
-    BOAS_VINDAS, Efeito, EstadoApp, ROTA_ACORDES, ROTA_CALIBRACAO, ROTA_EXERCICIOS, ROTA_GRAVACAO,
-    ROTA_MONITOR, ROTA_PARTITURA, ROTA_RITMOS, ROTA_TECLADO, ROTA_TIMBRES, TEMAS, VERSAO,
+    Efeito, EstadoApp, ROTA_ACORDES, ROTA_CALIBRACAO, ROTA_EXERCICIOS, ROTA_GRAVACAO, ROTA_MONITOR,
+    ROTA_PARTITURA, ROTA_RITMOS, ROTA_TECLADO, ROTA_TIMBRES, TEMAS, VERSAO, ids,
 };
 use crate::exercicios::EstadoExercicios;
 use crate::gravacao::EstadoGravacao;
 use crate::monitor::{EstadoMonitor, pasta_de_sessoes_do_ambiente};
 use crate::preferencias::PreferenciasSom;
 use crate::ritmo::EstadoRitmo;
+use crate::seletor_instrumento::{self, EstadoSeletor};
 use crate::som::{EstadoSom, ServicoSom, abridor_cpal, carregador_arquivo, sf2_encontrado};
 use crate::tela_calibracao::{AcaoCalibracao, ContextoCalibracao};
 use crate::tela_gravacao;
+use crate::tela_inicio::{self, Resumo};
 use crate::tela_partitura::{self, EstadoPartitura};
 use crate::tela_timbres::{AcaoTimbres, EstadoTimbres};
 use crate::{TEMAS_JSON, TOKENS_JSON};
@@ -136,6 +139,10 @@ pub struct AppPianoTutor {
     relogio: Arc<dyn Relogio>,
     ultimo_quadro: Option<u64>,
     aviso_instalado: bool,
+    /// Seletor de instrumento do Ribbon (busca e família).
+    pub seletor: EstadoSeletor,
+    /// Tela de abertura (só no executável).
+    pub abertura: Abertura,
 }
 
 impl std::fmt::Debug for AppPianoTutor {
@@ -162,7 +169,9 @@ impl AppPianoTutor {
 
     /// App com MIDI, áudio e SF2 do sistema (o executável).
     pub fn do_sistema() -> Self {
-        Self::com_dispositivos(Dispositivos::do_sistema())
+        let mut app = Self::com_dispositivos(Dispositivos::do_sistema());
+        app.abertura = Abertura::ligada();
+        app
     }
 
     pub fn com_dispositivos(d: Dispositivos) -> Self {
@@ -202,6 +211,8 @@ impl AppPianoTutor {
             relogio: d.relogio,
             ultimo_quadro: None,
             aviso_instalado: false,
+            seletor: EstadoSeletor::default(),
+            abertura: Abertura::desligada(),
         }
     }
 
@@ -517,6 +528,39 @@ impl AppPianoTutor {
     }
 }
 
+impl AppPianoTutor {
+    /// Resumo para a página inicial.
+    pub fn resumo(&self) -> Resumo {
+        Resumo {
+            midi: self.monitor.texto_status().to_owned(),
+            midi_ok: matches!(self.monitor.estado(), EstadoConexao::Conectado { .. }),
+            som: self.som.texto_status().to_owned(),
+            som_ok: self.som.estado() == EstadoSom::Pronto,
+            instrumento: self
+                .som
+                .nome_do_timbre()
+                .map_or_else(|| "Sem instrumento".to_owned(), str::to_owned),
+        }
+    }
+
+    /// O que a abertura mostra e se algo ainda carrega.
+    fn texto_da_abertura(&self) -> (String, bool) {
+        if let Some(t) = self
+            .baixador_sf2
+            .as_ref()
+            .filter(|b| b.baixando())
+            .and_then(BaixadorSf2::texto)
+        {
+            return (t, true);
+        }
+        match self.som.estado() {
+            EstadoSom::Carregando => ("Carregando o SoundFont…".to_owned(), true),
+            EstadoSom::Pronto => ("Pronto para tocar".to_owned(), false),
+            _ => ("Preparando o som e o MIDI…".to_owned(), false),
+        }
+    }
+}
+
 /// Nota do teclado físico para o Espelho (origem `DispositivoFisico`). Controles e programa não
 /// mexem no Espelho.
 pub fn evento_tecla(ev: &EventoMidi) -> Option<EventoTecla> {
@@ -564,6 +608,7 @@ pub fn data_civil(dias: i64) -> String {
 pub fn config() -> ConfigCasca {
     let mut config = ConfigCasca::nova(TITULO, TOKENS_JSON, TEMAS_JSON);
     config.tema_inicial = TEMAS[0].id.to_owned();
+    config.icones = crate::icones::familia();
     config
 }
 
@@ -582,14 +627,14 @@ impl AppCasca for AppPianoTutor {
             vec![
                 ItemNavegacao::novo(ROTA_INICIO, "Início", "inicio"),
                 ItemNavegacao::novo(ROTA_MONITOR, "Monitor MIDI", "midi"),
-                ItemNavegacao::novo(ROTA_CALIBRACAO, "Calibrar teclado", "midi"),
-                ItemNavegacao::novo(ROTA_TECLADO, "Teclado de 61 teclas", "teclado"),
-                ItemNavegacao::novo(ROTA_EXERCICIOS, "Exercícios", "teclado"),
-                ItemNavegacao::novo(ROTA_ACORDES, "Acordes e escalas", "teclado"),
-                ItemNavegacao::novo(ROTA_RITMOS, "Ritmos", "som"),
-                ItemNavegacao::novo(ROTA_GRAVACAO, "Gravar e ouvir", "som"),
-                ItemNavegacao::novo(ROTA_PARTITURA, "Partitura", "teclado"),
-                ItemNavegacao::novo(ROTA_TIMBRES, "Sons e timbres", "som"),
+                ItemNavegacao::novo(ROTA_CALIBRACAO, "Calibrar teclado", "calibrar"),
+                ItemNavegacao::novo(ROTA_TECLADO, "Teclado", "teclado"),
+                ItemNavegacao::novo(ROTA_EXERCICIOS, "Exercícios", "exercicios"),
+                ItemNavegacao::novo(ROTA_ACORDES, "Acordes e escalas", "acordes"),
+                ItemNavegacao::novo(ROTA_RITMOS, "Ritmos", "ritmos"),
+                ItemNavegacao::novo(ROTA_GRAVACAO, "Gravar e ouvir", "gravar"),
+                ItemNavegacao::novo(ROTA_PARTITURA, "Partitura", "partitura"),
+                ItemNavegacao::novo(ROTA_TIMBRES, "Sons e timbres", "timbres"),
                 ItemNavegacao::novo(ROTA_SOBRE, "Sobre", "sobre"),
             ],
         )]
@@ -603,7 +648,7 @@ impl AppCasca for AppPianoTutor {
         let inicio = || Elo::link("Início", ROTA_INICIO);
         match rota.como_texto() {
             ROTA_SOBRE => vec![inicio(), Elo::texto("Sobre")],
-            ROTA_TECLADO => vec![inicio(), Elo::texto("Teclado de 61 teclas")],
+            ROTA_TECLADO => vec![inicio(), Elo::texto("Teclado")],
             ROTA_MONITOR => vec![inicio(), Elo::texto("Monitor MIDI")],
             ROTA_TIMBRES => vec![inicio(), Elo::texto("Sons e timbres")],
             ROTA_CALIBRACAO => vec![inicio(), Elo::texto("Calibrar teclado")],
@@ -701,16 +746,45 @@ impl AppCasca for AppPianoTutor {
                 link_item(ui, "Voltar ao início", ROTA_INICIO);
             }
             _ => {
-                ui.heading("Olá, Piano Tutor");
-                ui.add_space(8.0);
-                for paragrafo in BOAS_VINDAS {
-                    ui.label(paragrafo);
-                    ui.add_space(4.0);
-                }
+                let resumo = self.resumo();
+                tela_inicio::desenhar_tela(ui, &resumo);
             }
         }
         // Notas da simulação tocam já neste quadro (sem esperar o próximo).
         self.encaminhar_simulacao();
+        if self.abertura.visivel() {
+            let (status, carregando) = self.texto_da_abertura();
+            abertura::desenhar(ui.ctx(), &mut self.abertura, &status, carregando);
+        }
+    }
+
+    fn acesso_rapido(&self) -> Vec<String> {
+        vec![ids::PANICO.to_owned(), ids::TECLADO_61.to_owned()]
+    }
+
+    fn desenhar_controle_ribbon(&mut self, ui: &mut egui::Ui, id: &str, compacto: bool) {
+        if id != acoes::CONTROLE_INSTRUMENTO {
+            return;
+        }
+        if let Some((banco, programa)) =
+            seletor_instrumento::desenhar(ui, &self.som, &mut self.seletor, compacto)
+        {
+            self.executar_timbres(vec![AcaoTimbres::Timbre { banco, programa }]);
+        }
+        if !compacto {
+            let (novo, soltou) = ui
+                .horizontal(|ui| {
+                    ui.label(crate::icones::glifo("volume"));
+                    seletor_instrumento::volume(ui, self.som.volume(), 200.0)
+                })
+                .inner;
+            if let Some(v) = novo {
+                self.som.definir_volume(v);
+            }
+            if soltou {
+                self.salvar_preferencias();
+            }
+        }
     }
 
     fn status(&self) -> Vec<SegmentoStatus> {
@@ -749,6 +823,7 @@ impl AppCasca for AppPianoTutor {
         vec![
             SegmentoStatus::novo("versao", versao),
             SegmentoStatus::novo("midi", self.monitor.texto_status())
+                .icone("midi")
                 .tom(tom_midi)
                 .dica(dica_midi)
                 .clicavel(),
@@ -760,6 +835,7 @@ impl AppCasca for AppPianoTutor {
                     self.som.texto_status()
                 },
             )
+            .icone("volume")
             .tom(tom_audio)
             .dica(dica_audio)
             .clicavel(),
@@ -1254,16 +1330,17 @@ mod testes {
         let mut c = casca();
         let ctx = Context::default();
         quadro(&mut c, &ctx, Vec::new(), Modifiers::NONE);
-        assert_eq!(c.tema().tema.id, "noite");
+        assert_eq!(c.tema().tema.id, "grafite");
 
         apertar(&mut c, &ctx, Key::T, Modifiers::COMMAND);
-        assert_eq!(c.tema().tema.id, "claro");
-        assert_eq!(c.app.estado.tema_atual().id, "claro");
-        assert_eq!(c.app.estado.textos_de_status()[2], "Tema: Claro");
+        assert_eq!(c.tema().tema.id, "executivo");
+        assert_eq!(c.app.estado.tema_atual().id, "executivo");
+        assert_eq!(c.app.estado.textos_de_status()[2], "Tema: Executivo");
 
-        apertar(&mut c, &ctx, Key::T, Modifiers::COMMAND);
-        apertar(&mut c, &ctx, Key::T, Modifiers::COMMAND);
-        assert_eq!(c.tema().tema.id, "noite", "volta ao primeiro");
+        for _ in 0..4 {
+            apertar(&mut c, &ctx, Key::T, Modifiers::COMMAND);
+        }
+        assert_eq!(c.tema().tema.id, "grafite", "volta ao primeiro");
         assert!(c.estado.erros.is_empty(), "{:?}", c.estado.erros);
     }
 

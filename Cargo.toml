@@ -20,3 +20,7 @@ unsafe_code = "forbid"
 dbg_macro = "warn"
 todo = "warn"
 unwrap_used = "warn"
+
+# Desenvolvimento noturno: bancada-casca local com controles do app dentro do Ribbon.
+[patch."https://github.com/ChicoFigueiredo/bancada"]
+bancada-casca = { path = "../bancada-noite/crates/bancada-casca" }

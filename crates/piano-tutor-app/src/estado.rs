@@ -12,7 +12,15 @@ pub struct TemaApp {
 }
 
 /// Temas, na ordem em que "Alternar tema" os percorre. O primeiro é o inicial.
-pub const TEMAS: [TemaApp; 3] = [
+pub const TEMAS: [TemaApp; 5] = [
+    TemaApp {
+        id: "grafite",
+        nome: "Grafite",
+    },
+    TemaApp {
+        id: "executivo",
+        nome: "Executivo",
+    },
     TemaApp {
         id: "noite",
         nome: "Noite",
@@ -205,7 +213,7 @@ pub const BOAS_VINDAS: [&str; 5] = [
     "Monitor MIDI: escolha a porta do teclado, conecte e acompanhe os eventos e o log da sessão. Sem dispositivo, o teclado de 61 teclas funciona em simulação (mouse e teclado do PC).",
     "Timbres: SoundFont, piano ou segundo timbre, volume e Pânico (Ctrl+. corta todo o som).",
     "Ctrl+F1 recolhe ou expande o Ribbon. Ctrl+T alterna o tema. Ctrl+K abre a paleta de ações.",
-    "A aba Exibir tem os três temas (Noite, Claro e Ébano) e os modos do Ribbon.",
+    "A aba Exibir tem os cinco temas (Grafite, Executivo, Noite, Claro e Ébano) e os modos do Ribbon.",
 ];
 
 #[cfg(test)]
@@ -215,7 +223,7 @@ mod testes {
     #[test]
     fn comeca_no_primeiro_tema_com_ribbon_expandido() {
         let e = EstadoApp::novo();
-        assert_eq!(e.tema_atual().id, "noite");
+        assert_eq!(e.tema_atual().id, "grafite");
         assert!(!e.ribbon_recolhido());
     }
 
@@ -223,8 +231,11 @@ mod testes {
     fn alternar_tema_percorre_todos_e_volta_ao_primeiro() {
         let mut e = EstadoApp::novo();
         let vistos: Vec<&str> = (0..TEMAS.len()).map(|_| e.alternar_tema().id).collect();
-        assert_eq!(vistos, vec!["claro", "ebano", "noite"]);
-        assert_eq!(e.tema_atual().id, "noite");
+        assert_eq!(
+            vistos,
+            vec!["executivo", "noite", "claro", "ebano", "grafite"]
+        );
+        assert_eq!(e.tema_atual().id, "grafite");
     }
 
     #[test]
@@ -256,10 +267,10 @@ mod testes {
         assert_eq!(e.tema_atual().id, "ebano");
         assert_eq!(
             e.executar(ids::TEMA_ALTERNAR),
-            Some(Efeito::TrocarTema("noite"))
+            Some(Efeito::TrocarTema("grafite"))
         );
         assert_eq!(e.executar("piano.tema.inexistente"), None);
-        assert_eq!(e.tema_atual().id, "noite");
+        assert_eq!(e.tema_atual().id, "grafite");
     }
 
     #[test]
@@ -319,7 +330,7 @@ mod testes {
         assert_eq!(t[0], format!("Piano Tutor {}", env!("CARGO_PKG_VERSION")));
         assert!(t[0].contains(VERSAO));
         assert_eq!(t[1], "Ribbon: expandido");
-        assert_eq!(t[2], "Tema: Noite");
+        assert_eq!(t[2], "Tema: Grafite");
     }
 
     #[test]

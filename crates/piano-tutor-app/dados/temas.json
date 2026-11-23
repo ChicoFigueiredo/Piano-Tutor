@@ -1,7 +1,61 @@
 {
  "version": 1,
- "note": "Catálogo de temas do Piano Tutor. Noite e Claro são as bases de tokens.json; Ébano troca só as cores listadas.",
+ "note": "Catálogo de temas do Piano Tutor. Noite e Claro são as bases de tokens.json; Ébano troca só as cores listadas. Grafite e Executivo (estilo aplicativo de escritório) trocam só as cores listadas.",
  "themes": [
+  {
+   "id": "grafite",
+   "name": "Grafite",
+   "base": "dark",
+   "family": "Executivos",
+   "inspiration": "Cinza neutro de aplicativo de escritório, com azul de destaque.",
+   "colors": {
+    "surface-0": "#1b1b1d",
+    "surface-1": "#242427",
+    "surface-2": "#202023",
+    "surface-3": "#2d2d31",
+    "surface-4": "#3a3a3f",
+    "border": "#38383d",
+    "border-strong": "#8a8a93",
+    "ink": "#f3f3f5",
+    "ink-muted": "#a9a9b2",
+    "ink-disabled": "#6e6e76",
+    "accent": "#479ef5",
+    "accent-hover": "#62abf7",
+    "accent-pressed": "#2886de",
+    "on-accent": "#0b1220",
+    "accent-subtle": "#1d2b3d",
+    "accent-border": "#2e4f78",
+    "accent-ink": "#8cc2fa",
+    "focus-ring": "#f3f3f5"
+   }
+  },
+  {
+   "id": "executivo",
+   "name": "Executivo",
+   "base": "light",
+   "family": "Executivos",
+   "inspiration": "Claro de aplicativo de escritório: cinza muito claro, branco e azul.",
+   "colors": {
+    "surface-0": "#f3f3f3",
+    "surface-1": "#ffffff",
+    "surface-2": "#fafafa",
+    "surface-3": "#ebebeb",
+    "surface-4": "#e0e0e0",
+    "border": "#d6d6d6",
+    "border-strong": "#707070",
+    "ink": "#1b1b1b",
+    "ink-muted": "#5c5c5c",
+    "ink-disabled": "#a0a0a0",
+    "accent": "#0f6cbd",
+    "accent-hover": "#115ea3",
+    "accent-pressed": "#0c3b5e",
+    "on-accent": "#ffffff",
+    "accent-subtle": "#ebf3fc",
+    "accent-border": "#b4d6fa",
+    "accent-ink": "#0f548c",
+    "focus-ring": "#1b1b1b"
+   }
+  },
   {
    "id": "noite",
    "name": "Noite",

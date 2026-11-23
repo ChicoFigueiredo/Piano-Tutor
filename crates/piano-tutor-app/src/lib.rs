@@ -14,6 +14,7 @@
 //!
 //! Sem calibração real ainda: a faixa do Espelho é a padrão de teste até a F01 medir o REVAS.
 
+pub mod abertura;
 pub mod acoes;
 pub mod acordes;
 pub mod app;
@@ -23,11 +24,13 @@ pub mod espelho;
 pub mod estado;
 pub mod exercicios;
 pub mod gravacao;
+pub mod icones;
 pub mod monitor;
 pub mod partitura_visual;
 pub mod preferencias;
 pub mod ritmo;
 pub mod roda_bend;
+pub mod seletor_instrumento;
 pub mod som;
 pub mod teclado_visual;
 pub mod tela_acordes;
@@ -35,6 +38,7 @@ pub mod tela_calibracao;
 pub mod tela_espelho;
 pub mod tela_exercicios;
 pub mod tela_gravacao;
+pub mod tela_inicio;
 pub mod tela_monitor;
 pub mod tela_partitura;
 pub mod tela_ritmos;

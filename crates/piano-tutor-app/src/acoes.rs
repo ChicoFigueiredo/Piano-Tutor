@@ -4,6 +4,9 @@ use crate::estado::{EstadoApp, TEMAS, ids};
 use bancada_casca::egui::Key;
 use bancada_casca::{Aba, Acao, Atalho, Grupo, ids as ids_casca};
 
+/// Id do seletor de instrumento (com busca) desenhado pelo app no Ribbon.
+pub const CONTROLE_INSTRUMENTO: &str = "piano.seletor-instrumento";
+
 /// Atalho do Pânico: Ctrl+. (Esc já é da casca: fecha paleta, bastidores e KeyTips). Com Ctrl,
 /// dispara mesmo com um campo de texto em foco.
 pub const ATALHO_PANICO: Atalho = Atalho::ctrl(Key::Period);
@@ -12,29 +15,41 @@ pub const ATALHO_PANICO: Atalho = Atalho::ctrl(Key::Period);
 pub fn acoes(estado: &EstadoApp) -> Vec<Acao> {
     let mut lista = vec![
         Acao::nova(ids::MONITOR_MIDI, "Monitor MIDI")
+            .icone("midi")
             .dica("Escolhe a porta MIDI, conecta e mostra eventos, capacidades e o log da sessão"),
-        Acao::nova(ids::TECLADO_61, "Teclado de 61 teclas")
+        Acao::nova(ids::TECLADO_61, "Teclado")
+            .icone("teclado")
             .dica("Abre o espelho do teclado: notas do teclado físico ou, sem ele, da simulação"),
-        Acao::nova(ids::TIMBRES, "Timbres")
+        Acao::nova(ids::TIMBRES, "Sons e timbres")
+            .icone("timbres")
             .dica("SoundFont, piano ou segundo timbre, volume e diagnóstico da saída de áudio"),
-        Acao::nova(ids::CALIBRACAO, "Calibrar teclado")
+        Acao::nova(ids::CALIBRACAO, "Calibrar")
+            .icone("calibrar")
             .dica("Mede as 61 teclas, a força do toque e o pedal do teclado físico"),
         Acao::nova(ids::RITMOS, "Ritmos")
+            .icone("ritmos")
             .dica("Metrônomo, bateria com padrões prontos, pads e exercício de pulso"),
         Acao::nova(ids::ACORDES, "Acordes e escalas")
+            .icone("acordes")
             .dica("O que estou tocando, dicionário de acordes, escalas e desafio"),
         Acao::nova(ids::EXERCICIOS, "Exercícios")
+            .icone("exercicios")
             .dica("Dez exercícios progressivos com correção na hora e progresso salvo"),
         Acao::nova(ids::GRAVACAO, "Gravar e ouvir")
+            .icone("gravar")
             .dica("Grava o que você toca, toca de volta em outro timbre e salva .mid"),
         Acao::nova(ids::PARTITURA, "Partitura")
+            .icone("partitura")
             .dica("Abre um MusicXML em duas claves e toca com o cursor acompanhando"),
         Acao::nova(ids::PANICO, "Pânico")
+            .icone("panico")
             .dica("Corta todo o som agora (all-notes-off imediato) e limpa o Espelho")
             .atalho(ATALHO_PANICO),
         Acao::nova(ids::SOBRE, "Sobre o Piano Tutor")
+            .icone("sobre")
             .dica("Mostra a página \"Sobre\" no centro da janela"),
         Acao::nova(ids::TEMA_ALTERNAR, "Alternar tema")
+            .icone("tema")
             .dica("Passa ao próximo tema")
             .atalho(Atalho::ctrl(Key::T)),
     ];
@@ -42,6 +57,7 @@ pub fn acoes(estado: &EstadoApp) -> Vec<Acao> {
     for tema in TEMAS {
         lista.push(
             Acao::nova(ids::tema(tema.id), format!("Tema {}", tema.nome))
+                .icone("tema")
                 .alternancia(tema.id == atual),
         );
     }
@@ -56,23 +72,25 @@ pub fn abas() -> Vec<Aba> {
 
     vec![
         Aba::nova("inicio", "Início", "I")
+            .grupo(
+                Grupo::novo("instrumento", "Instrumento", &[]).com_controle(CONTROLE_INSTRUMENTO),
+            )
+            .grupo(Grupo::novo("som", "Som", &[ids::TIMBRES, ids::PANICO]))
             .grupo(Grupo::novo(
                 "teclado",
                 "Teclado",
-                &[ids::MONITOR_MIDI, ids::CALIBRACAO, ids::TECLADO_61],
+                &[ids::TECLADO_61, ids::MONITOR_MIDI, ids::CALIBRACAO],
             ))
             .grupo(Grupo::novo(
                 "praticar",
                 "Praticar",
-                &[
-                    ids::EXERCICIOS,
-                    ids::ACORDES,
-                    ids::RITMOS,
-                    ids::GRAVACAO,
-                    ids::PARTITURA,
-                ],
+                &[ids::EXERCICIOS, ids::ACORDES, ids::RITMOS],
             ))
-            .grupo(Grupo::novo("som", "Som", &[ids::TIMBRES, ids::PANICO]))
+            .grupo(Grupo::novo(
+                "musica",
+                "Música",
+                &[ids::PARTITURA, ids::GRAVACAO],
+            ))
             .grupo(Grupo::novo("ajuda", "Ajuda", &[ids::SOBRE])),
         Aba::nova("exibir", "Exibir", "E")
             .grupo(Grupo::novo("tema", "Tema", &grupo_tema))
@@ -126,10 +144,12 @@ mod testes {
             "piano.tema.noite",
             "piano.tema.claro",
             "piano.tema.ebano",
+            "piano.tema.grafite",
+            "piano.tema.executivo",
         ] {
             assert!(l.get(id).is_some(), "falta a ação {id}");
         }
-        assert_eq!(l.len(), 15);
+        assert_eq!(l.len(), 17);
         let ids: HashSet<&str> = l.iter().map(|a| a.id.as_str()).collect();
         assert_eq!(ids.len(), l.len());
         assert!(ids.iter().all(|i| i.starts_with("piano.")));
@@ -183,9 +203,9 @@ mod testes {
                 .collect()
         };
         let mut e = EstadoApp::novo();
-        assert_eq!(marcados(&e), vec!["piano.tema.noite"]);
+        assert_eq!(marcados(&e), vec!["piano.tema.grafite"]);
         e.alternar_tema();
-        assert_eq!(marcados(&e), vec!["piano.tema.claro"]);
+        assert_eq!(marcados(&e), vec!["piano.tema.executivo"]);
     }
 
     #[test]
