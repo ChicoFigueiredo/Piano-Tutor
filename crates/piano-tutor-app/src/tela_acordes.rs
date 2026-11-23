@@ -1,13 +1,16 @@
 //! Tela Acordes: "o que toquei?", dicionário de acordes, escalas, campo harmônico e desafio.
 
 use crate::acordes::{
-    Conjunto, EstadoAcordes, Modo, rotulo_da_tonalidade, tonalidades_disponiveis,
+    Conjunto, EstadoAcordes, FonteTreino, Modo, rotulo_da_tonalidade, tonalidades_disponiveis,
 };
 use crate::espelho::EstadoEspelho;
+use crate::ritmo::EstadoRitmo;
 use crate::som::ServicoSom;
 use crate::tela_espelho::{desenhar_teclado_embutido, texto_tela};
+use crate::treino_andamento::{Momento, Ordem};
 use bancada_casca::egui::{Button, Color32, ComboBox, RichText, ScrollArea, Slider, Ui, vec2};
 use piano_tutor_core::NotaMidi;
+use piano_tutor_core::ritmo::{BPM_MAX, BPM_MIN, Formula, Padrao};
 use piano_tutor_core::teclado::rotulo;
 use piano_tutor_core::teoria::{
     ClasseAltura, GRAUS_ROMANOS, Qualidade, TipoEscala, campo_harmonico_maior,
@@ -37,6 +40,7 @@ pub fn desenhar_tela(
     a: &mut EstadoAcordes,
     espelho: &mut EstadoEspelho,
     som: &mut ServicoSom,
+    ritmo: &mut EstadoRitmo,
 ) {
     ScrollArea::vertical()
         .id_salt("acordes-vertical")
@@ -54,7 +58,11 @@ pub fn desenhar_tela(
                     a.semear(som.agora_ns());
                     a.sortear(som.agora_ns());
                 }
+                ui.selectable_value(&mut a.modo, Modo::Treino, "Treino com andamento");
             });
+            if a.modo != Modo::Treino && a.treino.ativo() {
+                a.treino.parar(ritmo, som);
+            }
             ui.add_space(6.0);
             escolher_tonalidade(ui, a);
             ui.add_space(6.0);
@@ -72,6 +80,7 @@ pub fn desenhar_tela(
                 Modo::Dicionario => desenhar_dicionario(ui, a, som),
                 Modo::Escalas => desenhar_escalas(ui, a, som),
                 Modo::Desafio => desenhar_desafio(ui, a, som),
+                Modo::Treino => desenhar_treino(ui, a, som, ritmo),
             }
             ui.add_space(8.0);
             espelho.definir_guias(a.guias(), Vec::new());
@@ -338,6 +347,253 @@ fn desenhar_desafio(ui: &mut Ui, a: &mut EstadoAcordes, som: &mut ServicoSom) {
     );
 }
 
+/// Treino com andamento: sequência de acordes no tempo do metrônomo (ou de um ritmo).
+fn desenhar_treino(
+    ui: &mut Ui,
+    a: &mut EstadoAcordes,
+    som: &mut ServicoSom,
+    ritmo: &mut EstadoRitmo,
+) {
+    let ativo = a.treino.ativo();
+    ui.add_enabled_ui(!ativo, |ui| {
+        ui.horizontal_wrapped(|ui| {
+            ComboBox::from_id_salt("fonte-treino")
+                .selected_text(a.fonte_treino.texto())
+                .height(360.0)
+                .show_ui(ui, |ui| {
+                    for f in FonteTreino::todas() {
+                        ui.selectable_value(&mut a.fonte_treino, f, f.texto());
+                    }
+                });
+            if a.fonte_treino.usa_tonica() {
+                ComboBox::from_id_salt("tonica-treino")
+                    .selected_text(format!("Tônica: {}", a.nome_da_classe(a.fundamental)))
+                    .show_ui(ui, |ui| {
+                        for v in 0..12u8 {
+                            let c = ClasseAltura::nova(v);
+                            let texto = a.nome_da_classe(c);
+                            ui.selectable_value(&mut a.fundamental, c, texto);
+                        }
+                    });
+            }
+            let cfg = &mut a.treino.config;
+            ComboBox::from_id_salt("ordem-treino")
+                .selected_text(format!("Ordem: {}", cfg.ordem.texto()))
+                .show_ui(ui, |ui| {
+                    for o in [Ordem::Sequencial, Ordem::Aleatoria] {
+                        ui.selectable_value(&mut cfg.ordem, o, o.texto());
+                    }
+                });
+            ComboBox::from_id_salt("compassos-treino")
+                .selected_text(format!(
+                    "{} compasso{} por acorde",
+                    cfg.compassos_por_item,
+                    if cfg.compassos_por_item > 1 { "s" } else { "" }
+                ))
+                .show_ui(ui, |ui| {
+                    for c in 1..=4u8 {
+                        ui.selectable_value(&mut cfg.compassos_por_item, c, c.to_string());
+                    }
+                });
+            ComboBox::from_id_salt("voltas-treino")
+                .selected_text(match cfg.voltas {
+                    None => "Repetir sem fim".to_owned(),
+                    Some(v) => format!("{v} volta{}", if v > 1 { "s" } else { "" }),
+                })
+                .show_ui(ui, |ui| {
+                    ui.selectable_value(&mut cfg.voltas, None, "Repetir sem fim");
+                    for v in [1u32, 2, 4, 8] {
+                        ui.selectable_value(&mut cfg.voltas, Some(v), format!("{v}"));
+                    }
+                });
+            ComboBox::from_id_salt("contagem-treino")
+                .selected_text(format!("Contagem: {} compasso(s)", cfg.contagem))
+                .show_ui(ui, |ui| {
+                    for c in 0..=2u8 {
+                        ui.selectable_value(&mut cfg.contagem, c, c.to_string());
+                    }
+                });
+        });
+        escolher_oitava(ui, a);
+        ui.horizontal_wrapped(|ui| {
+            let cfg = &mut a.treino.config;
+            ui.checkbox(&mut cfg.app_toca, "O app toca o acorde");
+            ui.checkbox(&mut cfg.mostrar_teclas, "Mostrar as teclas no teclado");
+            ui.checkbox(&mut ritmo.config.metronomo, "Metrônomo");
+            escolher_acompanhamento(ui, ritmo);
+        });
+    });
+    ui.horizontal(|ui| {
+        ui.label("Andamento:");
+        let mut bpm = ritmo.bpm();
+        if ui
+            .add(Slider::new(&mut bpm, BPM_MIN..=BPM_MAX).suffix(" BPM"))
+            .changed()
+        {
+            ritmo.definir_bpm(bpm);
+        }
+        ui.add_space(12.0);
+        let (texto, cor) = if ativo {
+            ("Parar", Color32::from_rgb(220, 90, 80))
+        } else {
+            ("Tocar", VERDE)
+        };
+        if ui
+            .add(
+                Button::new(
+                    RichText::new(texto)
+                        .size(20.0)
+                        .strong()
+                        .color(Color32::BLACK),
+                )
+                .fill(cor)
+                .min_size(vec2(120.0, 36.0)),
+            )
+            .clicked()
+        {
+            if ativo {
+                a.treino.parar(ritmo, som);
+            } else {
+                let itens = a.itens_do_treino();
+                a.treino.definir_itens(itens);
+                a.treino.semear(som.agora_ns());
+                a.treino.tocar(ritmo, som);
+            }
+        }
+    });
+    ui.add_space(6.0);
+    let pulso_agora = ritmo.posicao(som.agora_ns()).map(|p| p.pulso);
+    let momento = a.treino.momento();
+    if momento == Momento::Parado {
+        let lista: Vec<String> = a
+            .itens_do_treino()
+            .iter()
+            .map(|i| i.rotulo.clone())
+            .collect();
+        ui.label(format!("Sequência: {}", lista.join("  ")));
+        ui.label(
+            RichText::new(
+                "Tocar liga o metrônomo (ou o ritmo escolhido) e troca de acorde no 1 de cada \
+                 compasso. Toque cada acorde no tempo: vale qualquer inversão.",
+            )
+            .weak(),
+        );
+    } else {
+        // Uma linha de altura fixa (pulso, situação, acorde, próximo) para o teclado não pular.
+        ui.horizontal(|ui| {
+            ui.set_min_height(56.0);
+            let total = ritmo.padrao.formula.pulsos();
+            for i in 0..total {
+                let cor = match pulso_agora {
+                    Some(p) if p == i && a.treino.ativo() => VERDE,
+                    _ => Color32::from_gray(90),
+                };
+                let (r, _) =
+                    ui.allocate_exact_size(vec2(26.0, 26.0), bancada_casca::egui::Sense::hover());
+                ui.painter()
+                    .circle_filled(r.center(), if i == 0 { 11.0 } else { 8.0 }, cor);
+            }
+            ui.add_space(8.0);
+            let situacao = match momento {
+                Momento::Contagem { pulso, pulsos } => format!("Prepare-se: {pulso} de {pulsos}"),
+                Momento::Item { vaga } => match a.treino.total_de_vagas() {
+                    Some(t) => format!("Acorde {} de {t}", vaga + 1),
+                    None => format!("Acorde {}", vaga + 1),
+                },
+                _ => "Fim do treino".to_owned(),
+            };
+            ui.add_sized(
+                vec2(190.0, 30.0),
+                bancada_casca::egui::Label::new(RichText::new(situacao).size(18.0).strong()),
+            );
+            if let Some(i) = a.treino.atual() {
+                ui.label(RichText::new(&i.rotulo).size(44.0).strong().color(VERDE));
+                ui.label(RichText::new(&i.detalhe).size(18.0));
+            }
+            if let Some(p) = a.treino.proximo() {
+                ui.add_space(24.0);
+                ui.label(
+                    RichText::new(format!("Depois: {}", p.rotulo))
+                        .size(20.0)
+                        .weak(),
+                );
+            }
+        });
+        let pl = a.treino.placar;
+        let ultimo = a
+            .treino
+            .texto_ultimo()
+            .map(|t| format!("   ·   {t}"))
+            .unwrap_or_default();
+        ui.label(format!(
+            "No tempo: {} · atrasados: {} · não vieram: {}{}{ultimo}",
+            pl.no_tempo,
+            pl.atrasados,
+            pl.errados,
+            pl.aproveitamento()
+                .map(|x| format!(" · aproveitamento {x}%"))
+                .unwrap_or_default()
+        ));
+    }
+}
+
+/// Só metrônomo (escolhe o compasso) ou um dos ritmos de fábrica (o compasso vem dele).
+fn escolher_acompanhamento(ui: &mut Ui, ritmo: &mut EstadoRitmo) {
+    let atual = if ritmo.config.bateria {
+        ritmo.padrao.nome.clone()
+    } else {
+        "Só metrônomo".to_owned()
+    };
+    let mut escolha: Option<Option<Padrao>> = None;
+    ComboBox::from_id_salt("acompanhamento-treino")
+        .selected_text(format!("Ritmo: {atual}"))
+        .height(360.0)
+        .show_ui(ui, |ui| {
+            if ui
+                .selectable_label(!ritmo.config.bateria, "Só metrônomo")
+                .clicked()
+            {
+                escolha = Some(None);
+            }
+            for p in &ritmo.fabrica {
+                if ui
+                    .selectable_label(
+                        ritmo.config.bateria && ritmo.padrao.nome == p.nome,
+                        format!("{} ({})", p.nome, p.formula.texto()),
+                    )
+                    .clicked()
+                {
+                    escolha = Some(Some(p.clone()));
+                }
+            }
+        });
+    let bpm = ritmo.bpm();
+    match escolha {
+        Some(Some(p)) => {
+            ritmo.escolher_padrao(p);
+            ritmo.definir_bpm(bpm);
+            ritmo.config.bateria = true;
+        }
+        Some(None) => {
+            ritmo.config.bateria = false;
+        }
+        None => {}
+    }
+    if !ritmo.config.bateria {
+        let mut f = ritmo.padrao.formula;
+        ComboBox::from_id_salt("compasso-treino")
+            .selected_text(format!("Compasso {}", f.texto()))
+            .show_ui(ui, |ui| {
+                for x in Formula::TODAS {
+                    ui.selectable_value(&mut f, x, x.texto());
+                }
+            });
+        if f != ritmo.padrao.formula {
+            ritmo.escolher_padrao(Padrao::vazio("Metrônomo", f, 1, bpm));
+        }
+    }
+}
+
 fn nomes(a: &EstadoAcordes, notas: &[NotaMidi]) -> String {
     if a.tonalidade.is_some() {
         return a.nomes_das_notas(notas);
@@ -377,8 +633,10 @@ mod testes {
             screen_rect: Some(Rect::from_min_size(pos2(0.0, 0.0), vec2(1280.0, 800.0))),
             ..Default::default()
         };
-        ctx.run_ui(entrada, |ui| desenhar_tela(ui, a, e, som))
-            .drop_without_applying_deltas();
+        ctx.run_ui(entrada, |ui| {
+            desenhar_tela(ui, a, e, som, &mut EstadoRitmo::novo(None))
+        })
+        .drop_without_applying_deltas();
     }
 
     #[test]
@@ -388,7 +646,7 @@ mod testes {
         let mut e = EstadoEspelho::novo();
         let mut inativo = ServicoSom::inativo(Arc::new(RelogioManual::novo()));
         let (mut pronto, _m) = servico_pronto(Arc::new(RelogioManual::novo()));
-        for modo in [Modo::Dicionario, Modo::Escalas, Modo::Desafio] {
+        for modo in [Modo::Dicionario, Modo::Escalas, Modo::Desafio, Modo::Treino] {
             a.modo = modo;
             for _ in 0..2 {
                 quadro(&ctx, &mut a, &mut e, &mut inativo);
@@ -459,7 +717,7 @@ mod testes {
                 .map(Some),
         ) {
             a.tonalidade = t;
-            for modo in [Modo::Dicionario, Modo::Escalas, Modo::Desafio] {
+            for modo in [Modo::Dicionario, Modo::Escalas, Modo::Desafio, Modo::Treino] {
                 a.modo = modo;
                 quadro(&ctx, &mut a, &mut e, &mut som);
             }

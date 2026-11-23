@@ -4,8 +4,10 @@
 //! embutidas no binário pelo `build.rs`; as do usuário ficam em `<pasta de dados>/licoes/` e
 //! substituem a de fábrica com o mesmo `id`. Formato: `docs/referencias/FORMATO-LICOES.md`.
 
-use crate::exercicios::{Exercicio, Passo, Tipo};
+use crate::exercicios::{Andamento, Exercicio, Passo, Tipo};
+use crate::treino_andamento::Ordem;
 use piano_tutor_core::NotaMidi;
+use piano_tutor_core::ritmo::{BPM_MAX, BPM_MIN, Formula, padroes_de_fabrica};
 use serde::Deserialize;
 use std::path::{Path, PathBuf};
 
@@ -109,6 +111,102 @@ struct ExercicioToml {
     /// Reservado (ADR-0009): ignorado com aviso.
     #[serde(default)]
     script: Option<String>,
+    /// Treino no tempo: BPM (liga o modo; as demais chaves só valem com ele).
+    #[serde(default)]
+    andamento: Option<i64>,
+    #[serde(default)]
+    compasso: Option<String>,
+    #[serde(default)]
+    compassos_por_passo: Option<i64>,
+    #[serde(default)]
+    contagem: Option<i64>,
+    #[serde(default)]
+    app_toca: Option<bool>,
+    #[serde(default)]
+    ordem: Option<String>,
+    #[serde(default)]
+    voltas: Option<i64>,
+    #[serde(default)]
+    ritmo: Option<String>,
+}
+
+/// Chaves do treino no tempo, só com `andamento`.
+fn ler_andamento(x: &ExercicioToml) -> Result<Option<Andamento>, String> {
+    let Some(bpm) = x.andamento else {
+        let solta = [
+            ("compasso", x.compasso.is_some()),
+            ("compassos_por_passo", x.compassos_por_passo.is_some()),
+            ("contagem", x.contagem.is_some()),
+            ("app_toca", x.app_toca.is_some()),
+            ("ordem", x.ordem.is_some()),
+            ("voltas", x.voltas.is_some()),
+            ("ritmo", x.ritmo.is_some()),
+        ];
+        return match solta.iter().find(|(_, tem)| *tem) {
+            Some((k, _)) => Err(format!("\"{k}\" só vale junto com \"andamento\"")),
+            None => Ok(None),
+        };
+    };
+    let faixa = |k: &str, v: i64, min: i64, max: i64| {
+        if (min..=max).contains(&v) {
+            Ok(v)
+        } else {
+            Err(format!("\"{k}\" = {v} fora da faixa ({min} a {max})"))
+        }
+    };
+    let bpm = faixa("andamento", bpm, i64::from(BPM_MIN), i64::from(BPM_MAX))?;
+    let compassos_por_passo = faixa(
+        "compassos_por_passo",
+        x.compassos_por_passo.unwrap_or(1),
+        1,
+        4,
+    )?;
+    let contagem = faixa("contagem", x.contagem.unwrap_or(1), 0, 4)?;
+    let voltas = faixa("voltas", x.voltas.unwrap_or(1), 1, i64::from(u32::MAX))?;
+    let ordem = match x.ordem.as_deref() {
+        None | Some("sequencial") => Ordem::Sequencial,
+        Some("aleatoria") => Ordem::Aleatoria,
+        Some(o) => {
+            return Err(format!(
+                "\"ordem\" desconhecida \"{o}\" (use \"sequencial\" ou \"aleatoria\")"
+            ));
+        }
+    };
+    let formula_pedida = match x.compasso.as_deref() {
+        None => None,
+        Some(c) => Some(Formula::de_texto(c).ok_or_else(|| {
+            format!("\"compasso\" desconhecido \"{c}\" (use 2/4, 3/4, 4/4, 6/8 ou 12/8)")
+        })?),
+    };
+    let (formula, ritmo) = match x.ritmo.as_deref() {
+        None => (formula_pedida.unwrap_or(Formula::QuatroQuatro), None),
+        Some(nome) => {
+            let Some(p) = padroes_de_fabrica().into_iter().find(|p| p.nome == nome) else {
+                let nomes: Vec<String> = padroes_de_fabrica().into_iter().map(|p| p.nome).collect();
+                return Err(format!(
+                    "\"ritmo\" desconhecido \"{nome}\" (padrões de fábrica: {})",
+                    nomes.join(", ")
+                ));
+            };
+            if formula_pedida.is_some_and(|f| f != p.formula) {
+                return Err(format!(
+                    "\"ritmo\" \"{nome}\" é em {}, mas \"compasso\" pede outro",
+                    p.formula.texto()
+                ));
+            }
+            (p.formula, Some(p.nome))
+        }
+    };
+    Ok(Some(Andamento {
+        bpm: u16::try_from(bpm).map_err(|e| e.to_string())?,
+        formula,
+        compassos_por_passo: u8::try_from(compassos_por_passo).map_err(|e| e.to_string())?,
+        contagem: u8::try_from(contagem).map_err(|e| e.to_string())?,
+        app_toca: x.app_toca.unwrap_or(false),
+        ordem,
+        voltas: u32::try_from(voltas).map_err(|e| e.to_string())?,
+        ritmo,
+    }))
 }
 
 fn id_valido(id: &str) -> bool {
@@ -323,6 +421,7 @@ pub fn ler_licao(texto: &str, origem: Origem, avisos: &mut Vec<String>) -> Resul
                 "{ctx}: \"script\" ainda não é suportado e foi ignorado (ADR-0009)"
             ));
         }
+        let andamento = ler_andamento(&x).map_err(|e| format!("{ctx}: {e}"))?;
         let prerequisito = match x.requer.as_deref() {
             Some("") => None,
             Some(r) if r.contains('/') => Some(r.to_owned()),
@@ -347,6 +446,7 @@ pub fn ler_licao(texto: &str, origem: Origem, avisos: &mut Vec<String>) -> Resul
             conclusao: x
                 .conclusao
                 .unwrap_or_else(|| "Exercício concluído.".to_owned()),
+            andamento,
         });
     }
     for r in &l.requer {
@@ -570,6 +670,81 @@ script = "return true"
             "isto não é toml = = =".to_owned(),
         ] {
             assert!(ler_licao(&ruim, Origem::Fabrica("t"), &mut av).is_err());
+        }
+    }
+
+    /// O exercício `b` da lição mínima com as linhas extras no fim.
+    fn com_chaves(extra: &str) -> String {
+        MINIMA.replace(
+            "script = \"return true\"",
+            &format!("script = \"return true\"\n{extra}"),
+        )
+    }
+
+    fn andamento_de(extra: &str) -> Result<Option<Andamento>, String> {
+        ler_licao(&com_chaves(extra), Origem::Fabrica("t"), &mut Vec::new())
+            .map(|mut l| l.exercicios.remove(1).andamento)
+    }
+
+    #[test]
+    fn chaves_de_andamento_validas_com_padroes_e_completas() {
+        assert_eq!(
+            andamento_de("").expect("ok"),
+            None,
+            "sem andamento = normal"
+        );
+        let a = andamento_de("andamento = 72")
+            .expect("ok")
+            .expect("andamento");
+        assert_eq!(a.bpm, 72);
+        assert_eq!(a.formula, Formula::QuatroQuatro);
+        assert_eq!((a.compassos_por_passo, a.contagem, a.voltas), (1, 1, 1));
+        assert!(!a.app_toca);
+        assert_eq!(a.ordem, Ordem::Sequencial);
+        assert_eq!(a.ritmo, None);
+        let a = andamento_de(
+            "andamento = 90\ncompasso = \"3/4\"\ncompassos_por_passo = 2\ncontagem = 0\n\
+             app_toca = true\nordem = \"aleatoria\"\nvoltas = 3",
+        )
+        .expect("ok")
+        .expect("andamento");
+        assert_eq!(a.formula, Formula::TresQuatro);
+        assert_eq!((a.compassos_por_passo, a.contagem, a.voltas), (2, 0, 3));
+        assert!(a.app_toca);
+        assert_eq!(a.ordem, Ordem::Aleatoria);
+        let c = a.config_treino();
+        assert_eq!(c.voltas, Some(3));
+        assert_eq!(c.compassos_por_item, 2);
+        // Ritmo de fábrica traz o compasso dele; compasso igual ao do ritmo é aceito.
+        let a = andamento_de("andamento = 90\nritmo = \"Valsa\"")
+            .expect("ok")
+            .expect("andamento");
+        assert_eq!(a.formula, Formula::TresQuatro);
+        assert_eq!(a.ritmo.as_deref(), Some("Valsa"));
+        assert!(andamento_de("andamento = 40\nritmo = \"Valsa\"\ncompasso = \"3/4\"").is_ok());
+        assert!(andamento_de("andamento = 220").is_ok());
+    }
+
+    #[test]
+    fn chaves_de_andamento_invalidas_sao_recusadas() {
+        for ruim in [
+            "andamento = 39",
+            "andamento = 221",
+            "andamento = 80\ncompasso = \"5/4\"",
+            "andamento = 80\ncompassos_por_passo = 0",
+            "andamento = 80\ncompassos_por_passo = 5",
+            "andamento = 80\ncontagem = 5",
+            "andamento = 80\ncontagem = -1",
+            "andamento = 80\nordem = \"embaralhada\"",
+            "andamento = 80\nvoltas = 0",
+            "andamento = 80\nritmo = \"Polca\"",
+            "andamento = 80\nritmo = \"Valsa\"\ncompasso = \"4/4\"",
+            "andamento = \"rápido\"",
+            "andamento = 80\napp_toca = \"sim\"",
+            "compasso = \"4/4\"",
+            "voltas = 2",
+        ] {
+            assert!(andamento_de(ruim).is_err(), "deveria recusar: {ruim}");
         }
     }
 

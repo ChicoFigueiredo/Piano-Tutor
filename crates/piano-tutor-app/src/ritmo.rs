@@ -255,6 +255,17 @@ impl EstadoRitmo {
         self.definir_bpm(bpm);
     }
 
+    /// Instante (relógio comum) do primeiro tique do compasso `c`, contado desde o início.
+    pub fn instante_do_compasso(&self, c: u64) -> Option<u64> {
+        let a = self.agendador.as_ref()?;
+        Some(a.instante(c * a.formula().pulsos() * piano_tutor_core::ritmo::TIQUES_POR_PULSO))
+    }
+
+    /// Duração de um pulso no andamento atual (só tocando).
+    pub fn pulso_ns(&self) -> Option<u64> {
+        self.agendador.as_ref().map(Agendador::pulso_ns)
+    }
+
     /// Posição atual (para o marcador de pulso e a coluna do sequenciador).
     pub fn posicao(&self, agora_ns: u64) -> Option<Posicao> {
         self.agendador.as_ref()?.posicao(agora_ns)

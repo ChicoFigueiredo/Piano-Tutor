@@ -59,6 +59,42 @@ Regras: nomes `C D E F G A B`, acidentes `#` ou `b` (um só), oitavas 2 a 7, fai
 - `acorde`: passos `{...}`.
 - `ouvir`: o app toca a frase e as teclas-guia ficam escondidas (a dica as mostra).
 
+## Andamento (treino no tempo)
+
+Exercícios do tipo `acorde` podem ser treinados com metrônomo: o app faz a contagem, troca de acorde a cada N compassos e confere o que o aluno toca no MIDI (qualquer inversão e dobra, como no `acorde` comum). Os passos continuam `{...}:legenda`. A presença de `andamento` liga o modo; as demais chaves são opcionais e ficam dentro do `[[exercicio]]`.
+
+| Chave | Valores | Padrão | Significado |
+|---|---|---|---|
+| `andamento` | 40 a 220 | (liga o modo) | batidas por minuto |
+| `compasso` | `"2/4"`, `"3/4"`, `"4/4"`, `"6/8"`, `"12/8"` | `"4/4"` (ou o do `ritmo`) | fórmula de compasso |
+| `compassos_por_passo` | 1 a 4 | 1 | quantos compassos dura cada acorde |
+| `contagem` | 0 a 4 | 1 | compassos de preparação antes do 1º acorde |
+| `app_toca` | `true` / `false` | `false` | `true`: o app toca o acorde no tempo; `false`: só mostra e o aluno toca |
+| `ordem` | `"sequencial"` / `"aleatoria"` | `"sequencial"` | `aleatoria` sorteia entre os passos |
+| `voltas` | inteiro, 1 ou mais | 1 | sequencial: repetições da lista; aleatória: total = `voltas` × nº de passos |
+| `ritmo` | nome de padrão de bateria de fábrica | (só metrônomo) | acompanha com bateria |
+
+Nomes válidos de `ritmo`: "Rock básico", "Pop balada", "Pop dançante", "Funk", "Reggae (one drop)", "Bossa nova", "Samba", "Baião", "Valsa", "Balada 6/8", "Blues shuffle". Com `ritmo`, o compasso vem do padrão (Valsa é 3/4, Balada 6/8 é 6/8, os demais 4/4); `compasso` deve ser omitido ou bater com ele.
+
+```toml
+[[exercicio]]
+id = "i-iv-v-i-do-60"
+titulo = "I-IV-V-I em Dó no tempo"
+tipo = "acorde"
+mao = "direita"
+passos = "{C4 E4 G4}:I_Dó {C4 F4 A4}:IV_Dó {B3 D4 G4}:V_Dó {C4 E4 G4}:I_Dó"
+andamento = 72
+compasso = "4/4"
+compassos_por_passo = 1
+contagem = 1
+app_toca = false
+ordem = "sequencial"
+voltas = 2
+# ritmo = "Pop balada"
+```
+
+A tela "Acordes e escalas" tem o mesmo treino no modo "Treino com andamento". Exemplo de Lição pronta: `assets/licoes/acordes/acordes-com-andamento.toml`.
+
 ## Direitos
 
 Só entram melodias em domínio público (folclóricas, compositores mortos há mais de 70 anos) e padrões técnicos genéricos (escalas, arpejos, cinco dedos, cadências). Nada de transcrever método com direito autoral (Faber, Alfred, Bastien etc.). Cite a fonte em `fontes`.

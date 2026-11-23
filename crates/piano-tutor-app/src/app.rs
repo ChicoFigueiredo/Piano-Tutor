@@ -439,12 +439,21 @@ impl AppPianoTutor {
 
     /// Desafio de acordes: confere as teclas seguradas (físicas ou simuladas).
     fn conferir_desafio(&mut self) {
+        if self.rota_atual != ROTA_EXERCICIOS && self.exercicios.treino.ativo() {
+            self.exercicios.parar_treino(&mut self.ritmo, &mut self.som);
+        }
         if self.rota_atual != ROTA_ACORDES {
+            if self.acordes.treino.ativo() {
+                self.acordes.treino.parar(&mut self.ritmo, &mut self.som);
+            }
             return;
         }
         let seguradas: Vec<_> = self.espelho.teclas().notas_ligadas().collect();
         let agora = self.som.agora_ns();
         self.acordes.conferir(&seguradas, agora);
+        self.acordes
+            .treino
+            .atualizar(&mut self.ritmo, &mut self.som, &seguradas);
     }
 
     /// Aplica as saídas do gerenciador MIDI, na ordem.
@@ -800,6 +809,7 @@ impl AppCasca for AppPianoTutor {
                 &mut self.exercicios,
                 &mut self.espelho,
                 &mut self.som,
+                &mut self.ritmo,
             ),
             ROTA_RITMOS => tela_ritmos::desenhar_tela(ui, &mut self.ritmo, &mut self.som),
             ROTA_ACORDES => {
@@ -808,6 +818,7 @@ impl AppCasca for AppPianoTutor {
                     &mut self.acordes,
                     &mut self.espelho,
                     &mut self.som,
+                    &mut self.ritmo,
                 );
             }
             ROTA_CALIBRACAO => {

@@ -23,8 +23,11 @@
 
 use crate::gravacao::{EventoGravado, Gravacao, Mensagem};
 use crate::licoes::{Licao, Origem, Situacao};
+use crate::ritmo::EstadoRitmo;
+use crate::som::ServicoSom;
+use crate::treino_andamento::{ConfigTreino, ItemTreino, Momento, Ordem, TreinoAndamento};
 use piano_tutor_core::NotaMidi;
-use piano_tutor_core::ritmo::{Agendador, BPM_MAX, BPM_MIN, Formula};
+use piano_tutor_core::ritmo::{Agendador, BPM_MAX, BPM_MIN, Formula, Padrao};
 use piano_tutor_core::teclado::{ConfigNomes, rotulo};
 use std::fmt::Write as _;
 use std::ops::Range;
@@ -49,6 +52,8 @@ const VELOCIDADE_REPLAY: u8 = 80;
 const MAX_REGISTRO: usize = 2000;
 /// Nome do arquivo de progresso dentro da pasta de dados.
 pub const ARQUIVO_PROGRESSO: &str = "progresso.txt";
+/// Aproveitamento mínimo (%) para um treino no tempo contar como exercício concluído.
+pub const APROVEITAMENTO_TREINO: u32 = 80;
 /// Nome do relatório exportado.
 pub const ARQUIVO_EXPORTADO: &str = "progresso-exportado.txt";
 
@@ -192,6 +197,40 @@ enum Avaliacao {
     Completo,
 }
 
+/// Treino no tempo de um exercício (chaves `andamento`, `compasso`, ... da Lição; ver
+/// `docs/referencias/FORMATO-LICOES.md`, seção "Andamento").
+#[derive(Clone, Debug, PartialEq)]
+pub struct Andamento {
+    /// Batidas por minuto (40 a 220).
+    pub bpm: u16,
+    pub formula: Formula,
+    /// Compassos que cada passo dura (1 a 4).
+    pub compassos_por_passo: u8,
+    /// Compassos de preparação antes do primeiro passo (0 a 4).
+    pub contagem: u8,
+    /// O app toca o passo no tempo (senão só mostra).
+    pub app_toca: bool,
+    pub ordem: Ordem,
+    /// Sequencial: repetições da lista; aleatória: total = `voltas` × nº de passos.
+    pub voltas: u32,
+    /// Nome de padrão de bateria de fábrica; `None` = só metrônomo.
+    pub ritmo: Option<String>,
+}
+
+impl Andamento {
+    /// Ajustes do motor de treino.
+    pub fn config_treino(&self) -> ConfigTreino {
+        ConfigTreino {
+            ordem: self.ordem,
+            app_toca: self.app_toca,
+            compassos_por_item: self.compassos_por_passo,
+            contagem: self.contagem,
+            voltas: Some(self.voltas.max(1)),
+            ..ConfigTreino::default()
+        }
+    }
+}
+
 /// Exercício: objetivo, instruções, gabarito, pré-requisito e feedback. Vem de uma Lição
 /// em arquivo (ADR-0009, módulo [`crate::licoes`]).
 #[derive(Clone, Debug, PartialEq)]
@@ -222,9 +261,27 @@ pub struct Exercicio {
     pub feedback_erro: String,
     /// Mensagem ao concluir.
     pub conclusao: String,
+    /// Treino no tempo (metrônomo, contagem e troca de passo no compasso); `None` = o
+    /// passo a passo normal.
+    pub andamento: Option<Andamento>,
 }
 
 impl Exercicio {
+    /// Passos como itens do treino no tempo: rótulo = legenda (ou as notas), detalhe = notas.
+    pub fn itens_treino(&self) -> Vec<ItemTreino> {
+        self.passos
+            .iter()
+            .map(|p| {
+                let notas = nomes(&p.notas);
+                if p.legenda.is_empty() {
+                    ItemTreino::novo(p.notas.clone(), notas, "")
+                } else {
+                    ItemTreino::novo(p.notas.clone(), p.legenda.clone(), notas)
+                }
+            })
+            .collect()
+    }
+
     /// Gabarito em texto.
     pub fn gabarito_texto(&self) -> String {
         self.passos
@@ -474,6 +531,12 @@ pub struct EstadoExercicios {
     pub pasta: Option<PathBuf>,
     /// A tela pede confirmação antes de apagar o progresso.
     pub confirmar_apagar: bool,
+    /// Treino no tempo do exercício atual (só vale com `andamento`).
+    pub treino: TreinoAndamento,
+    /// Exercício para o qual o treino foi iniciado.
+    treino_indice: usize,
+    /// O resultado do treino que terminou já foi registrado.
+    treino_registrado: bool,
     atual: usize,
     sujo: bool,
 }
@@ -542,6 +605,9 @@ impl EstadoExercicios {
             mensagem: None,
             pasta,
             confirmar_apagar: false,
+            treino: TreinoAndamento::default(),
+            treino_indice: 0,
+            treino_registrado: false,
             atual: 0,
             sujo: false,
         };
@@ -650,6 +716,9 @@ impl EstadoExercicios {
 
     /// Teclas a destacar agora (vazio nos exercícios de ouvido, salvo com a dica).
     pub fn guias(&self) -> Vec<NotaMidi> {
+        if self.treino.ativo() {
+            return self.treino.guias();
+        }
         let Some(ex) = self.exercicio() else {
             return Vec::new();
         };
@@ -667,7 +736,7 @@ impl EstadoExercicios {
         let Some(ex) = self.exercicio() else {
             return Vec::new();
         };
-        if self.guias().is_empty() {
+        if self.treino.ativo() || self.guias().is_empty() {
             return Vec::new();
         }
         crate::dedos::dedos_por_passo(&ex.dedilhado, &ex.passos)
@@ -751,7 +820,9 @@ impl EstadoExercicios {
 
     /// Como [`EstadoExercicios::nota`], devolvendo a classificação.
     pub fn classificar(&mut self, ligar: bool, nota: NotaMidi, t_ns: u64) -> Classificacao {
+        // No treino no tempo quem confere é o próprio treino, pelas teclas seguradas.
         if !ligar
+            || self.treino.ativo()
             || self.tentativa.fase == Fase::Concluido
             || self.tentativa.pausado_desde.is_some()
         {
@@ -970,6 +1041,113 @@ impl EstadoExercicios {
         })
     }
 
+    // ---------- treino no tempo ----------
+
+    /// O exercício atual tem treino no tempo.
+    pub fn tem_andamento(&self) -> bool {
+        self.exercicio().is_some_and(|e| e.andamento.is_some())
+    }
+
+    /// Liga o metrônomo (e a bateria, se o exercício pedir) no andamento do exercício atual
+    /// e começa o treino: contagem, troca de passo no compasso e conferência pelas teclas.
+    pub fn preparar_ritmo_e_tocar(&mut self, ritmo: &mut EstadoRitmo, som: &mut ServicoSom) {
+        let Some(ex) = self.exercicio() else {
+            return;
+        };
+        let Some(and) = ex.andamento.clone() else {
+            return;
+        };
+        let itens = ex.itens_treino();
+        self.parar_treino(ritmo, som);
+        if ritmo.tocando() {
+            ritmo.parar_e_silenciar(som);
+        }
+        let de_fabrica = and
+            .ritmo
+            .as_deref()
+            .and_then(|nome| ritmo.fabrica.iter().find(|p| p.nome == nome).cloned());
+        match de_fabrica {
+            Some(p) => {
+                ritmo.escolher_padrao(p);
+                ritmo.config.bateria = true;
+                ritmo.config.contagem = and.contagem;
+            }
+            None => {
+                ritmo.escolher_padrao(Padrao::vazio("Metrônomo", and.formula, 1, and.bpm));
+                ritmo.config.bateria = false;
+                ritmo.config.contagem = 0;
+            }
+        }
+        ritmo.config.metronomo = true;
+        ritmo.definir_bpm(and.bpm);
+        let mut treino = TreinoAndamento::novo(itens, and.config_treino());
+        treino.semear(som.agora_ns());
+        self.treino = treino;
+        self.treino.tocar(ritmo, som);
+        self.treino_indice = self.atual;
+        self.treino_registrado = false;
+        self.reiniciar();
+    }
+
+    /// Para o treino (e o ritmo, se foi ele que o ligou) e o descarta se trocou de exercício.
+    pub fn parar_treino(&mut self, ritmo: &mut EstadoRitmo, som: &mut ServicoSom) {
+        self.treino.parar(ritmo, som);
+        if self.treino_indice != self.atual {
+            self.treino = TreinoAndamento::default();
+        }
+    }
+
+    /// Chamar a cada quadro com as teclas seguradas. Avança o treino e, ao terminar, registra
+    /// o resultado: com 80% ou mais de aproveitamento o exercício conta como concluído.
+    pub fn atualizar_treino(
+        &mut self,
+        ritmo: &mut EstadoRitmo,
+        som: &mut ServicoSom,
+        seguradas: &[NotaMidi],
+    ) {
+        if self.treino.ativo() && self.treino_indice != self.atual {
+            // Trocou de exercício no meio do treino.
+            self.parar_treino(ritmo, som);
+            return;
+        }
+        self.treino.atualizar(ritmo, som, seguradas);
+        if self.treino.momento() != Momento::Terminou
+            || self.treino_registrado
+            || self.treino_indice != self.atual
+        {
+            return;
+        }
+        self.treino_registrado = true;
+        let placar = self.treino.placar;
+        let acertos = placar.no_tempo + placar.atrasados;
+        self.sessao.acertos = self.sessao.acertos.saturating_add(acertos);
+        self.sessao.erros = self.sessao.erros.saturating_add(placar.errados);
+        if let Some(p) = self.progresso.get_mut(self.atual) {
+            p.acertos = p.acertos.saturating_add(acertos);
+            p.erros = p.erros.saturating_add(placar.errados);
+        }
+        self.sujo = true;
+        if placar
+            .aproveitamento()
+            .is_some_and(|a| a >= APROVEITAMENTO_TREINO)
+        {
+            self.tentativa.acertos = acertos;
+            self.tentativa.erros = placar.errados;
+            self.concluir();
+        } else {
+            self.salvar();
+        }
+    }
+
+    /// Aproveitamento do treino que terminou, em %.
+    pub fn aproveitamento_treino(&self) -> Option<u32> {
+        if self.treino.momento() == Momento::Terminou && self.treino_indice == self.atual {
+            self.treino.placar.aproveitamento()
+        } else {
+            None
+        }
+    }
+
     // ---------- progressão ----------
 
     /// Vai para o exercício `indice` se estiver liberado.
@@ -980,6 +1158,10 @@ impl EstadoExercicios {
         if indice != self.atual {
             self.atual = indice;
             self.sujo = true;
+        }
+        if !self.treino.ativo() {
+            // Se estiver ativo, `atualizar_treino` o para (precisa do ritmo e do som).
+            self.treino = TreinoAndamento::default();
         }
         self.reiniciar();
         self.confirmar_apagar = false;
@@ -2105,5 +2287,162 @@ mod testes_dedos {
             com_dedos.len()
         );
         assert!(!com_dedos.is_empty());
+    }
+
+    #[test]
+    fn licao_de_acordes_com_andamento_carrega_e_vira_itens_de_treino() {
+        let e = EstadoExercicios::novo(None);
+        assert!(e.erros_carga.is_empty(), "{:#?}", e.erros_carga);
+        let com: Vec<&Exercicio> = e
+            .exercicios
+            .iter()
+            .filter(|x| x.id.starts_with("acordes-com-andamento/"))
+            .collect();
+        assert!(
+            !com.is_empty(),
+            "a Lição acordes-com-andamento não carregou"
+        );
+        for x in &com {
+            let a = x.andamento.as_ref().expect("andamento");
+            assert!((BPM_MIN..=BPM_MAX).contains(&a.bpm));
+            let itens = x.itens_treino();
+            assert_eq!(itens.len(), x.passos.len());
+            assert!(
+                itens
+                    .iter()
+                    .all(|i| !i.rotulo.is_empty() && !i.notas.is_empty())
+            );
+        }
+        let primeiro = com[0].itens_treino();
+        assert_eq!(primeiro[0].rotulo, "I Dó");
+        assert_eq!(primeiro[0].detalhe, "Dó4 Mi4 Sol4");
+        // Os exercícios normais não ganham andamento.
+        assert!(e.exercicios[0].andamento.is_none());
+    }
+
+    #[test]
+    fn treino_no_tempo_liga_o_ritmo_ignora_o_passo_a_passo_e_conclui_com_80_por_cento() {
+        use crate::som::apoio_testes::{BLOCO, servico_pronto};
+        use piano_tutor_audio::RelogioManual;
+        use piano_tutor_core::tempo::Relogio;
+        use std::sync::Arc;
+        use std::time::Duration;
+
+        let relogio = RelogioManual::novo();
+        let (mut som, motor) = servico_pronto(Arc::new(relogio.clone()) as Arc<dyn Relogio>);
+        relogio.avancar(Duration::from_secs(1));
+        motor.renderizar_no_relogio(BLOCO);
+        let mut ritmo = EstadoRitmo::novo(None);
+        let mut ex = crate::exercicios::exercicios_de_fabrica()[0].clone();
+        ex.id = "treino/a".to_owned();
+        ex.passos = vec![
+            Passo::acorde(&[60, 64, 67], "C"),
+            Passo::acorde(&[60, 65, 69], "F"),
+        ];
+        ex.andamento = Some(Andamento {
+            bpm: 120,
+            formula: Formula::QuatroQuatro,
+            compassos_por_passo: 1,
+            contagem: 1,
+            app_toca: false,
+            ordem: Ordem::Sequencial,
+            voltas: 1,
+            ritmo: None,
+        });
+        let mut e = EstadoExercicios::com_exercicios(vec![ex], None);
+        assert!(e.tem_andamento());
+        e.preparar_ritmo_e_tocar(&mut ritmo, &mut som);
+        assert!(ritmo.tocando());
+        assert_eq!(ritmo.bpm(), 120);
+        assert!(e.treino.ativo());
+        // Durante o treino o classificador normal não conta nada.
+        assert_eq!(e.classificar(true, nota_de(60), 0), Classificacao::Ignorada);
+        assert_eq!(e.tentativa.registro.len(), 0);
+        // Guias: as notas do item da vez (o primeiro, ainda na contagem).
+        assert_eq!(e.guias(), vec![nota_de(60), nota_de(64), nota_de(67)]);
+        assert!(e.dedos().is_empty());
+
+        // 120 BPM em 4/4 = 2 s por compasso; quadros de 20 ms por até 12 s. Toca o acorde
+        // certo de cada compasso logo no começo dele.
+        let c = [nota_de(60), nota_de(64), nota_de(67)];
+        let f = [nota_de(60), nota_de(65), nota_de(69)];
+        let inicio = som.agora_ns();
+        for _ in 0..600 {
+            relogio.avancar(Duration::from_millis(20));
+            motor.renderizar_no_relogio(BLOCO);
+            let seg: &[NotaMidi] = match e.treino.momento() {
+                Momento::Item { vaga: 0 } => &c,
+                Momento::Item { vaga: 1 } => &f,
+                _ => &[],
+            };
+            e.atualizar_treino(&mut ritmo, &mut som, seg);
+            ritmo.atualizar(&mut som);
+            if e.treino.momento() == Momento::Terminou {
+                break;
+            }
+        }
+        assert!(som.agora_ns() > inicio);
+        assert_eq!(e.treino.momento(), Momento::Terminou);
+        assert!(
+            !ritmo.tocando(),
+            "o treino ligou o ritmo e o desliga ao terminar"
+        );
+        assert!(e.aproveitamento_treino().is_some_and(|a| a >= 80));
+        assert!(e.concluido(0), "80% ou mais conclui o exercício");
+        assert_eq!(e.sessao_concluidos, 1);
+        // Segunda chamada depois do fim não registra de novo.
+        e.atualizar_treino(&mut ritmo, &mut som, &[]);
+        assert_eq!(e.sessao_concluidos, 1);
+    }
+
+    #[test]
+    fn treino_com_pouco_acerto_nao_conclui_e_parar_desliga_o_ritmo() {
+        use crate::som::apoio_testes::{BLOCO, servico_pronto};
+        use piano_tutor_audio::RelogioManual;
+        use piano_tutor_core::tempo::Relogio;
+        use std::sync::Arc;
+        use std::time::Duration;
+
+        let relogio = RelogioManual::novo();
+        let (mut som, motor) = servico_pronto(Arc::new(relogio.clone()) as Arc<dyn Relogio>);
+        relogio.avancar(Duration::from_secs(1));
+        motor.renderizar_no_relogio(BLOCO);
+        let mut ritmo = EstadoRitmo::novo(None);
+        let mut ex = crate::exercicios::exercicios_de_fabrica()[0].clone();
+        ex.passos = vec![Passo::acorde(&[60, 64, 67], "C")];
+        ex.andamento = Some(Andamento {
+            bpm: 240,
+            formula: Formula::DoisQuatro,
+            compassos_por_passo: 1,
+            contagem: 0,
+            app_toca: false,
+            ordem: Ordem::Sequencial,
+            voltas: 2,
+            ritmo: Some("Valsa".to_owned()),
+        });
+        let mut e = EstadoExercicios::com_exercicios(vec![ex], None);
+        e.preparar_ritmo_e_tocar(&mut ritmo, &mut som);
+        assert_eq!(ritmo.bpm(), 220, "o BPM é limitado a 220");
+        assert!(ritmo.config.bateria, "ritmo de fábrica liga a bateria");
+        assert_eq!(ritmo.padrao.nome, "Valsa");
+        // Ninguém toca: todos os acordes passam em branco.
+        for _ in 0..800 {
+            relogio.avancar(Duration::from_millis(20));
+            motor.renderizar_no_relogio(BLOCO);
+            e.atualizar_treino(&mut ritmo, &mut som, &[]);
+            if e.treino.momento() == Momento::Terminou {
+                break;
+            }
+        }
+        assert_eq!(e.treino.momento(), Momento::Terminou);
+        assert!(!e.concluido(0));
+        assert_eq!(e.sessao.erros, 2);
+        assert_eq!(e.aproveitamento_treino(), Some(0));
+        // Recomeça e para no meio: o ritmo desliga e as guias somem.
+        e.preparar_ritmo_e_tocar(&mut ritmo, &mut som);
+        assert!(ritmo.tocando() && e.treino.ativo());
+        e.parar_treino(&mut ritmo, &mut som);
+        assert!(!ritmo.tocando() && !e.treino.ativo());
+        assert!(e.guias().is_empty() || e.tentativa.fase != Fase::Concluido);
     }
 }

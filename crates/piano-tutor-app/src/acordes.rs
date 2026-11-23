@@ -1,10 +1,11 @@
 //! Acordes e escalas (F04 aplicado; base do exercício de F05): dicionário com teclas-guia,
 //! escalas, campo harmônico e o desafio "toque o acorde" (também de ouvido).
 
+use crate::treino_andamento::{ItemTreino, TreinoAndamento};
 use piano_tutor_core::NotaMidi;
 use piano_tutor_core::teoria::{
-    Acorde, ClasseAltura, DirecaoArpejo, Gesto, JanelasGesto, Modo as ModoTonal, NotaTocada,
-    Qualidade, TipoEscala, Tonalidade, campo_harmonico_maior, classificar_gesto,
+    Acorde, ClasseAltura, DirecaoArpejo, GRAUS_ROMANOS, Gesto, JanelasGesto, Modo as ModoTonal,
+    NotaTocada, Qualidade, TipoEscala, Tonalidade, campo_harmonico_maior, classificar_gesto,
     descrever_intervalo,
 };
 
@@ -29,6 +30,53 @@ pub enum Modo {
     Dicionario,
     Escalas,
     Desafio,
+    /// Sequência de acordes no tempo do metrônomo (Play).
+    Treino,
+}
+
+/// Progressões do treino com andamento, em graus do campo harmônico maior (0 = I).
+pub const PROGRESSOES: [(&str, &[usize]); 6] = [
+    ("I-IV-V-I", &[0, 3, 4, 0]),
+    ("I-V-vi-IV", &[0, 4, 5, 3]),
+    ("ii-V-I", &[1, 4, 0]),
+    ("I-vi-IV-V", &[0, 5, 3, 4]),
+    ("I-vi-ii-V", &[0, 5, 1, 4]),
+    ("Campo harmônico (I a vii°)", &[0, 1, 2, 3, 4, 5, 6]),
+];
+
+/// De onde vêm os acordes do treino com andamento.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum FonteTreino {
+    /// Índice em [`PROGRESSOES`], na tônica escolhida.
+    Progressao(usize),
+    /// Um conjunto do desafio (maiores e menores, sétimas...).
+    Conjunto(Conjunto),
+}
+
+impl FonteTreino {
+    pub fn todas() -> Vec<FonteTreino> {
+        (0..PROGRESSOES.len())
+            .map(FonteTreino::Progressao)
+            .chain(Conjunto::TODOS.into_iter().map(FonteTreino::Conjunto))
+            .collect()
+    }
+
+    pub fn texto(self) -> String {
+        match self {
+            FonteTreino::Progressao(i) => {
+                format!("Progressão {}", PROGRESSOES.get(i).map_or("?", |p| p.0))
+            }
+            FonteTreino::Conjunto(c) => format!("Acordes: {}", c.texto()),
+        }
+    }
+
+    /// Usa a tônica escolhida?
+    pub fn usa_tonica(self) -> bool {
+        matches!(
+            self,
+            FonteTreino::Progressao(_) | FonteTreino::Conjunto(Conjunto::CampoHarmonico)
+        )
+    }
 }
 
 /// Que acordes o desafio sorteia.
@@ -91,6 +139,9 @@ pub struct EstadoAcordes {
     pub aguardando_soltar: bool,
     /// Tonalidade declarada (grafia dos nomes e armadura). `None`: grafia padrão, sem armadura.
     pub tonalidade: Option<Tonalidade>,
+    /// Treino com andamento (Play).
+    pub treino: TreinoAndamento,
+    pub fonte_treino: FonteTreino,
     /// Ataques recentes, vistos quadro a quadro (ver [`EstadoAcordes::observar`]).
     recentes: Vec<Recente>,
     /// Teclas ligadas no quadro anterior.
@@ -117,6 +168,8 @@ impl Default for EstadoAcordes {
             ultimo: None,
             aguardando_soltar: false,
             tonalidade: None,
+            treino: TreinoAndamento::default(),
+            fonte_treino: FonteTreino::Progressao(0),
             recentes: Vec::new(),
             ligadas_antes: Vec::new(),
             semente: 0x9E37_79B9_7F4A_7C15,
@@ -229,7 +282,50 @@ impl EstadoAcordes {
                 Some(a) if self.mostrar_dica => a.notas(self.nota_base(), 0),
                 _ => Vec::new(),
             },
+            Modo::Treino => self.treino.guias(),
         }
+    }
+
+    /// Acordes do treino com andamento, na ordem, conforme a fonte escolhida.
+    pub fn acordes_do_treino(&self) -> Vec<Acorde> {
+        match self.fonte_treino {
+            FonteTreino::Progressao(i) => {
+                let campo = campo_harmonico_maior(self.fundamental);
+                PROGRESSOES
+                    .get(i)
+                    .map(|p| p.1.iter().map(|g| campo[*g]).collect())
+                    .unwrap_or_default()
+            }
+            FonteTreino::Conjunto(c) => self.candidatos_de(c),
+        }
+    }
+
+    /// Itens do treino: cada acorde na inversão mais próxima do anterior (mão quase parada).
+    pub fn itens_do_treino(&self) -> Vec<ItemTreino> {
+        let base = self.nota_base();
+        let mut anterior: Option<Vec<NotaMidi>> = None;
+        let campo = campo_harmonico_maior(self.fundamental);
+        self.acordes_do_treino()
+            .into_iter()
+            .map(|ac| {
+                let notas = voz_proxima(&ac, base, anterior.as_deref());
+                anterior = Some(notas.clone());
+                let grau = match self.fonte_treino {
+                    FonteTreino::Progressao(_)
+                    | FonteTreino::Conjunto(Conjunto::CampoHarmonico) => campo
+                        .iter()
+                        .position(|c| *c == ac)
+                        .map(|g| format!("{} · ", GRAUS_ROMANOS[g]))
+                        .unwrap_or_default(),
+                    _ => String::new(),
+                };
+                ItemTreino::novo(
+                    notas,
+                    self.cifra_do_acorde(&ac),
+                    format!("{grau}{}", self.nome_do_acorde(&ac)),
+                )
+            })
+            .collect()
     }
 
     fn aleatorio(&mut self) -> u64 {
@@ -248,6 +344,10 @@ impl EstadoAcordes {
     }
 
     fn candidatos(&self) -> Vec<Acorde> {
+        self.candidatos_de(self.conjunto)
+    }
+
+    fn candidatos_de(&self, conjunto: Conjunto) -> Vec<Acorde> {
         let todas = |qs: &[Qualidade]| -> Vec<Acorde> {
             (0..12u8)
                 .flat_map(|r| {
@@ -256,7 +356,7 @@ impl EstadoAcordes {
                 })
                 .collect()
         };
-        match self.conjunto {
+        match conjunto {
             Conjunto::MaioresEMenores => todas(&[Qualidade::Maior, Qualidade::Menor]),
             Conjunto::CampoHarmonico => campo_harmonico_maior(self.fundamental).to_vec(),
             Conjunto::ComSetima => todas(&[
@@ -496,6 +596,44 @@ impl EstadoAcordes {
             }
         }
     }
+}
+
+/// Inversão do acorde mais perto da voz anterior (menor soma de distâncias entre as notas,
+/// em ordem); sem anterior, estado fundamental a partir de `base`. Fica entre C3 e C6.
+pub fn voz_proxima(ac: &Acorde, base: NotaMidi, anterior: Option<&[NotaMidi]>) -> Vec<NotaMidi> {
+    let Some(ant) = anterior.filter(|a| !a.is_empty()) else {
+        return ac.notas(base, 0);
+    };
+    let n = ac.qualidade.intervalos().len();
+    let mut melhor: Option<(u32, Vec<NotaMidi>)> = None;
+    for desloc in [-12i16, 0, 12] {
+        let Some(b) = u8::try_from(i16::from(base.numero()) + desloc)
+            .ok()
+            .and_then(NotaMidi::nova)
+        else {
+            continue;
+        };
+        for inv in 0..n {
+            let v = ac.notas(b, inv);
+            if v.len() != n
+                || v.first().is_some_and(|x| x.numero() < 48)
+                || v.last().is_some_and(|x| x.numero() > 84)
+            {
+                continue;
+            }
+            let custo: u32 = (0..n.max(ant.len()))
+                .map(|i| {
+                    let a = ant[i.min(ant.len() - 1)].numero();
+                    let x = v[i.min(n - 1)].numero();
+                    u32::from(a.abs_diff(x))
+                })
+                .sum();
+            if melhor.as_ref().is_none_or(|(c, _)| custo < *c) {
+                melhor = Some((custo, v));
+            }
+        }
+    }
+    melhor.map_or_else(|| ac.notas(base, 0), |(_, v)| v)
 }
 
 #[cfg(test)]
@@ -876,5 +1014,36 @@ mod testes {
         assert_eq!(rotulos[14], "Dó# maior (7 sustenidos)");
         assert_eq!(rotulos[22], "Lá menor (sem acidentes)");
         assert_eq!(rotulos[16], "Mib menor (6 bemóis)");
+    }
+
+    #[test]
+    fn treino_i_iv_v_i_em_do_com_vozes_proximas() {
+        let a = EstadoAcordes::default();
+        let itens = a.itens_do_treino();
+        let rotulos: Vec<&str> = itens.iter().map(|i| i.rotulo.as_str()).collect();
+        assert_eq!(rotulos, ["C", "F", "G", "C"]);
+        assert!(itens[1].detalhe.starts_with("IV · "));
+        // Fá e Sol em inversão perto do Dó: a mão anda no máximo uma terça por nota.
+        for par in itens.windows(2) {
+            for (x, y) in par[0].notas.iter().zip(&par[1].notas) {
+                assert!(x.numero().abs_diff(y.numero()) <= 4, "{par:?}");
+            }
+        }
+    }
+
+    #[test]
+    fn treino_de_conjunto_lista_todos_os_candidatos() {
+        let a = EstadoAcordes {
+            fonte_treino: FonteTreino::Conjunto(Conjunto::MaioresEMenores),
+            ..Default::default()
+        };
+        assert_eq!(a.itens_do_treino().len(), 24);
+        for f in FonteTreino::todas() {
+            let a = EstadoAcordes {
+                fonte_treino: f,
+                ..Default::default()
+            };
+            assert!(!a.itens_do_treino().is_empty(), "{f:?}");
+        }
     }
 }
