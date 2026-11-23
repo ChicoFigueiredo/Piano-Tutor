@@ -18,6 +18,8 @@ pub mod mxl;
 
 pub mod comparador;
 
+pub mod pratica;
+
 pub mod ritmo;
 
 pub mod teoria;

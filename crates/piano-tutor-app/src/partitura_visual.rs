@@ -68,6 +68,10 @@ pub struct Paleta {
     pub suave: Color32,
     pub direita: Color32,
     pub esquerda: Color32,
+    /// Nota acertada na prática.
+    pub acerto: Color32,
+    /// Nota errada ou perdida na prática.
+    pub erro: Color32,
 }
 
 impl Paleta {
@@ -79,6 +83,8 @@ impl Paleta {
                 suave: Color32::from_rgb(0x8C, 0x8A, 0x84),
                 direita: Color32::from_rgb(0xE2, 0xA2, 0x4B),
                 esquerda: Color32::from_rgb(0x4F, 0xA3, 0xC7),
+                acerto: Color32::from_rgb(0x4C, 0xC3, 0x6B),
+                erro: Color32::from_rgb(0xE8, 0x5A, 0x50),
             }
         } else {
             Self {
@@ -87,6 +93,8 @@ impl Paleta {
                 suave: Color32::from_rgb(0x6B, 0x67, 0x5F),
                 direita: Color32::from_rgb(0xB5, 0x65, 0x1D),
                 esquerda: Color32::from_rgb(0x1F, 0x6F, 0x8B),
+                acerto: Color32::from_rgb(0x1B, 0x8A, 0x3C),
+                erro: Color32::from_rgb(0xC6, 0x28, 0x28),
             }
         }
     }
@@ -1017,11 +1025,16 @@ fn glifo_chave(x_dir: f32, y0: f32, y1: f32) -> Vec<Item> {
     let espessura = |i: usize| -> f32 {
         let t = i as f32 / (n - 1) as f32;
         let meia = if t < 0.5 { t * 2.0 } else { (1.0 - t) * 2.0 };
-        0.05 + 0.5 * (meia * std::f32::consts::PI).sin().powf(0.9)
+        // sin(π) em f32 dá um negativo minúsculo e `powf` de negativo é NaN: limita em zero.
+        0.05 + 0.5 * (meia * std::f32::consts::PI).sin().max(0.0).powf(0.9)
     };
     let mut itens = Vec::new();
     for i in 0..n - 1 {
         let (a, b) = (total[i], total[i + 1]);
+        // Pontos repetidos da curva dariam normal NaN (0/0) e quebrariam a tesselação.
+        if (b - a).length() < 1e-6 {
+            continue;
+        }
         let d = (b - a).normalized();
         let nrm = vec2(-d.y, d.x);
         let (wa, wb) = (espessura(i) / 2.0, espessura(i + 1) / 2.0);
@@ -2157,7 +2170,89 @@ pub struct Destaque {
     pub tempo: f64,
 }
 
+/// Resultado de uma nota na prática (verde ou vermelho na pauta).
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum ResultadoNota {
+    Acertou,
+    Errou,
+}
+
+fn chave_resultado(compasso: usize, inicio: f64, mao: Mao) -> (usize, i64, bool) {
+    (
+        compasso,
+        (inicio * 1000.0).round() as i64,
+        mao == Mao::Esquerda,
+    )
+}
+
+/// Resultados da prática por posição na partitura: (compasso, início dentro do compasso, mão).
+/// Notas de uma mesma mão que começam juntas (acorde) compartilham a marca: vermelha se alguma
+/// errou, verde só quando todas acertaram.
+#[derive(Clone, Debug, Default, PartialEq, Eq)]
+pub struct MapaResultados {
+    mapa: HashMap<(usize, i64, bool), (u32, u32, u32)>,
+}
+
+impl MapaResultados {
+    /// Registra o estado de uma nota: `None` = ainda pendente.
+    pub fn registrar(
+        &mut self,
+        compasso: usize,
+        inicio: f64,
+        mao: Mao,
+        resultado: Option<ResultadoNota>,
+    ) {
+        let e = self
+            .mapa
+            .entry(chave_resultado(compasso, inicio, mao))
+            .or_default();
+        e.0 += 1;
+        match resultado {
+            Some(ResultadoNota::Acertou) => e.1 += 1,
+            Some(ResultadoNota::Errou) => e.2 += 1,
+            None => {}
+        }
+    }
+
+    pub fn vazio(&self) -> bool {
+        self.mapa.is_empty()
+    }
+
+    /// Marca da primitiva `alvo`, se houver.
+    pub fn de(&self, alvo: &Alvo) -> Option<ResultadoNota> {
+        let (total, ok, erro) =
+            *self
+                .mapa
+                .get(&chave_resultado(alvo.compasso, alvo.inicio, alvo.mao))?;
+        if erro > 0 {
+            Some(ResultadoNota::Errou)
+        } else if ok == total && total > 0 {
+            Some(ResultadoNota::Acertou)
+        } else {
+            None
+        }
+    }
+}
+
+#[cfg(test)]
 fn cor_do_item(it: &Item, pal: &Paleta, destaque: Option<Destaque>) -> Color32 {
+    cor_do_item_com(it, pal, destaque, None)
+}
+
+fn cor_do_item_com(
+    it: &Item,
+    pal: &Paleta,
+    destaque: Option<Destaque>,
+    resultados: Option<&MapaResultados>,
+) -> Color32 {
+    if let (Some(a), Some(r)) = (it.alvo.as_ref(), resultados)
+        && let Some(res) = r.de(a)
+    {
+        return match res {
+            ResultadoNota::Acertou => pal.acerto,
+            ResultadoNota::Errou => pal.erro,
+        };
+    }
     if let (Some(a), Some(d)) = (it.alvo, destaque)
         && a.compasso == d.compasso
         && d.tempo + 1e-9 >= a.inicio
@@ -2168,6 +2263,25 @@ fn cor_do_item(it: &Item, pal: &Paleta, destaque: Option<Destaque>) -> Color32 {
     match it.cor {
         Cor::Tinta => pal.tinta,
         Cor::Suave => pal.suave,
+    }
+}
+
+fn forma_finita(f: &Forma) -> bool {
+    match f {
+        Forma::Linha { a, b, espessura } => a.is_finite() && b.is_finite() && espessura.is_finite(),
+        Forma::Preenchido { pontos } => pontos.iter().all(|p| p.is_finite()),
+        Forma::Caminho { pontos, espessura } => {
+            espessura.is_finite() && pontos.iter().all(|p| p.is_finite())
+        }
+        Forma::Cabeca {
+            centro,
+            rx,
+            ry,
+            rotacao,
+            ..
+        } => centro.is_finite() && rx.is_finite() && ry.is_finite() && rotacao.is_finite(),
+        Forma::Disco { centro, raio } => centro.is_finite() && raio.is_finite(),
+        Forma::Texto { pos, altura, .. } => pos.is_finite() && altura.is_finite(),
     }
 }
 
@@ -2182,7 +2296,7 @@ pub fn pintar_itens(
     esp: f32,
     itens: &[Item],
     pal: &Paleta,
-    destaque: Option<Destaque>,
+    marcas: Marcas<'_>,
     com_texto: bool,
 ) {
     let px = |p: Pos2| pos2(origem.x + p.x * esp, origem.y + p.y * esp);
@@ -2190,10 +2304,14 @@ pub fn pintar_itens(
     let corte = painter.clip_rect().expand(MARGEM_CORTE_SP * esp);
     for it in itens {
         let lim = it.forma.limites();
+        // Defesa final: forma com coordenada não finita nunca chega ao epaint.
+        if !(lim.min.is_finite() && lim.max.is_finite()) || !forma_finita(&it.forma) {
+            continue;
+        }
         if !corte.intersects(Rect::from_min_max(px(lim.min), px(lim.max))) {
             continue;
         }
-        let cor = cor_do_item(it, pal, destaque);
+        let cor = cor_do_item_com(it, pal, marcas.destaque, marcas.resultados);
         match &it.forma {
             Forma::Linha { a, b, espessura } => {
                 let (mut pa, mut pb) = (px(*a), px(*b));
@@ -2356,9 +2474,11 @@ pub struct RespostaPartitura {
 
 /// Compasso em seleção (ponto de partida) e destaque de execução.
 #[derive(Clone, Copy, Debug, Default)]
-pub struct Marcas {
+pub struct Marcas<'a> {
     pub destaque: Option<Destaque>,
     pub selecionado: Option<usize>,
+    /// Notas acertadas (verde) e erradas (vermelho) da prática.
+    pub resultados: Option<&'a MapaResultados>,
 }
 
 /// Desenha a partitura com rolagem própria. A largura do layout acompanha a do `ui`.
@@ -2367,7 +2487,7 @@ pub fn desenhar_partitura(
     p: &Partitura,
     estado: &mut EstadoVisual,
     opc: OpcoesVisuais,
-    marcas: Marcas,
+    marcas: Marcas<'_>,
 ) -> RespostaPartitura {
     let zoom = opc.zoom.clamp(ZOOM_MIN, ZOOM_MAX);
     let esp = ESP_BASE_PX * zoom;
@@ -2500,7 +2620,7 @@ pub fn desenhar_partitura(
                     ),
                 );
             }
-            pintar_itens(&painter, origem, esp, &s.itens, &pal, marcas.destaque, true);
+            pintar_itens(&painter, origem, esp, &s.itens, &pal, marcas, true);
         }
         if let Some(d) = marcas.destaque
             && opc.seguir
@@ -2789,6 +2909,7 @@ mod testes {
                 Marcas {
                     destaque,
                     selecionado: Some(1),
+                    ..Marcas::default()
                 },
             );
         });
@@ -2898,6 +3019,7 @@ mod testes {
                 Marcas {
                     destaque,
                     selecionado: Some(1),
+                    ..Marcas::default()
                 },
             );
         });
@@ -3104,6 +3226,7 @@ mod testes {
                                 tempo: 0.5,
                             }),
                             selecionado: None,
+                            ..Marcas::default()
                         },
                     );
                 });
@@ -3157,5 +3280,80 @@ mod testes {
                 .expect("gravar");
             }
         }
+    }
+
+    #[test]
+    fn layout_nunca_produz_coordenada_nao_finita() {
+        let fontes = [
+            arq(0),
+            arq(1),
+            arq(2),
+            include_str!("../../../assets/partituras/beethoven-ode-a-alegria-tema.musicxml"),
+            include_str!(
+                "../../../assets/partituras/tradicional-brilha-brilha-estrelinha.musicxml"
+            ),
+            MINIMA,
+        ];
+        for (i, f) in fontes.iter().enumerate() {
+            let p = Partitura::de_musicxml(f).expect("válida");
+            let mut layouts: Vec<Layout> = [0.0f32, 1.0, 10.0, 30.0, 60.0, 120.0, 400.0]
+                .iter()
+                .map(|w| calcular_layout(&p, *w))
+                .collect();
+            layouts.push(calcular_layout_fita(&p));
+            for (k, l) in layouts.iter().enumerate() {
+                for it in l.sistemas.iter().flat_map(|s| &s.itens) {
+                    assert!(
+                        forma_finita(&it.forma),
+                        "fonte {i} layout {k}: {:?}",
+                        it.forma
+                    );
+                }
+                assert!(
+                    l.largura.is_finite() && l.altura.is_finite(),
+                    "fonte {i} layout {k}"
+                );
+            }
+        }
+    }
+
+    #[test]
+    fn resultados_da_pratica_pintam_verde_e_vermelho_e_acorde_so_fica_verde_se_todas_acertam() {
+        let p = Partitura::de_musicxml(arq(0)).expect("válida");
+        let l = calcular_layout(&p, 100.0);
+        let pal = Paleta::para_tema(true);
+        let it = l.sistemas[0]
+            .itens
+            .iter()
+            .find(|i| matches!(i.forma, Forma::Cabeca { .. }) && i.alvo.is_some())
+            .expect("cabeça");
+        let a = it.alvo.expect("alvo");
+        let mut m = MapaResultados::default();
+        assert_eq!(cor_do_item_com(it, &pal, None, Some(&m)), pal.tinta);
+        m.registrar(a.compasso, a.inicio, a.mao, Some(ResultadoNota::Acertou));
+        assert_eq!(cor_do_item_com(it, &pal, None, Some(&m)), pal.acerto);
+        // Resultado vence o destaque do cursor; sem resultado, o destaque segue valendo.
+        let d = Destaque {
+            compasso: a.compasso,
+            tempo: a.inicio,
+        };
+        assert_eq!(cor_do_item_com(it, &pal, Some(d), Some(&m)), pal.acerto);
+        assert_eq!(cor_do_item_com(it, &pal, Some(d), None), pal.mao(a.mao));
+        // Segunda nota do mesmo acorde ainda pendente: sem marca; errada: vermelho.
+        m.registrar(a.compasso, a.inicio, a.mao, None);
+        assert_eq!(m.de(&a), None);
+        m.registrar(a.compasso, a.inicio, a.mao, Some(ResultadoNota::Errou));
+        assert_eq!(cor_do_item_com(it, &pal, None, Some(&m)), pal.erro);
+        assert_ne!(pal.acerto, pal.erro);
+        // Outra mão na mesma posição não é afetada.
+        let outra = Alvo {
+            mao: if a.mao == Mao::Direita {
+                Mao::Esquerda
+            } else {
+                Mao::Direita
+            },
+            ..a
+        };
+        assert_eq!(m.de(&outra), None);
     }
 }

@@ -7,16 +7,20 @@
 //! `agora + ANTECEDENCIA`) e [`EstadoPartitura::tocando`] para saber se há reprodução.
 
 use crate::partitura_visual::{
-    Destaque, EstadoVisual, Marcas, ModoRolagem, OpcoesVisuais, ZOOM_MAX, ZOOM_MIN,
-    desenhar_partitura,
+    Destaque, EstadoVisual, Mao, MapaResultados, Marcas, ModoRolagem, OpcoesVisuais, ResultadoNota,
+    ZOOM_MAX, ZOOM_MIN, desenhar_partitura,
 };
 use crate::preferencias::{ARQUIVO_PREFERENCIAS_PARTITURA, PreferenciasPartitura};
 use crate::som::{EstadoSom, ServicoSom};
 use bancada_casca::egui::{self, Button, ComboBox, Key, RichText, Slider, TextEdit, Ui};
 use piano_tutor_core::NotaMidi;
+use piano_tutor_core::comparador::EventoEsperado;
 use piano_tutor_core::mxl::{MXL_TAMANHO_MAXIMO_BYTES, extrair_musicxml};
 use piano_tutor_core::partitura::{
-    ErroPartitura, EventoReproducao, MapaAndamento, Partitura, TAMANHO_MAXIMO_BYTES,
+    ErroPartitura, EventoReproducao, MapaAndamento, Partitura, SinalClave, TAMANHO_MAXIMO_BYTES,
+};
+use piano_tutor_core::pratica::{
+    ConfigPratica, EstadoEvento, ModoPratica, Pratica, Resumo, Veredito,
 };
 use std::path::{Path, PathBuf};
 use std::time::Duration;
@@ -165,6 +169,82 @@ struct Reproducao {
     fim_ns: u64,
 }
 
+/// Contagem de entrada do modo Tempo, em semínimas (antes do primeiro compasso tocado).
+const BATIDAS_DE_ENTRADA: f64 = 2.0;
+/// Tolerância inicial do modo Tempo, em ms.
+pub const TOLERANCIA_PRATICA_PADRAO_MS: f32 = 150.0;
+pub const TOLERANCIA_PRATICA_MIN_MS: f32 = 30.0;
+pub const TOLERANCIA_PRATICA_MAX_MS: f32 = 500.0;
+
+/// Onde cada nota esperada está na partitura (para pintar e posicionar o cursor).
+#[derive(Clone, Copy, Debug)]
+struct PosicaoNota {
+    compasso: usize,
+    /// Início dentro do compasso, em semínimas.
+    tempo: f64,
+    mao: Mao,
+}
+
+/// Uma prática em andamento (ou terminada, com o resumo na tela até a próxima).
+struct SessaoPratica {
+    logica: Pratica,
+    posicoes: Vec<PosicaoNota>,
+    /// Instante do relógio comum que corresponde a `q0` com a contagem de entrada já descontada.
+    t0_ns: u64,
+    /// Relógio do modo Tempo, só para converter instante em posição (`notas` fica vazio).
+    relogio: Reproducao,
+    mapa: MapaResultados,
+    sujo: bool,
+    resumo_final: Option<Resumo>,
+}
+
+impl SessaoPratica {
+    fn segundos(&self, instante_ns: u64) -> f64 {
+        (instante_ns as f64 - self.t0_ns as f64) / 1e9
+    }
+
+    fn reconstruir_mapa(&mut self) {
+        let mut mapa = MapaResultados::default();
+        for (pos, est) in self.posicoes.iter().zip(self.logica.estados()) {
+            let r = match est {
+                EstadoEvento::Pendente => None,
+                EstadoEvento::Acertou => Some(ResultadoNota::Acertou),
+                EstadoEvento::Errou => Some(ResultadoNota::Errou),
+            };
+            mapa.registrar(pos.compasso, pos.tempo, pos.mao, r);
+        }
+        self.mapa = mapa;
+        self.sujo = false;
+    }
+
+    /// Fecha a sessão quando a lógica terminou.
+    fn conferir_fim(&mut self) {
+        if self.resumo_final.is_none() && self.logica.concluida() {
+            self.resumo_final = Some(self.logica.resumo());
+            self.sujo = true;
+        }
+    }
+}
+
+/// Mão (clave de fá = esquerda) de cada nota esperada, pela clave vigente na pauta.
+fn mao_pela_clave(p: &Partitura, parte: usize, pauta: u8, compasso: usize, tempo: f64) -> Mao {
+    let mut sinal = None;
+    if let Some(parte) = p.partes.get(parte) {
+        for (c, comp) in parte.compassos.iter().enumerate().take(compasso + 1) {
+            for m in comp.claves.iter().filter(|m| m.pauta == pauta) {
+                if c < compasso || m.posicao.como_f64() <= tempo + 1e-9 {
+                    sinal = Some(m.clave.sinal);
+                }
+            }
+        }
+    }
+    if sinal == Some(SinalClave::Fa) {
+        Mao::Esquerda
+    } else {
+        Mao::Direita
+    }
+}
+
 /// Estado da tela Partitura.
 pub struct EstadoPartitura {
     fontes: Vec<Fonte>,
@@ -192,6 +272,11 @@ pub struct EstadoPartitura {
     reproducao: Option<Reproducao>,
     campo_exportar: String,
     sobrescrever: bool,
+    /// Modo Praticar: como a prática avança.
+    pub modo_pratica: ModoPratica,
+    /// Janela de acerto do modo Tempo, em ms.
+    pub tolerancia_pratica_ms: f32,
+    pratica: Option<SessaoPratica>,
 }
 
 fn ler_arquivo(caminho: &Path) -> Result<String, String> {
@@ -304,6 +389,9 @@ impl EstadoPartitura {
             reproducao: None,
             campo_exportar: String::new(),
             sobrescrever: false,
+            modo_pratica: ModoPratica::Espera,
+            tolerancia_pratica_ms: TOLERANCIA_PRATICA_PADRAO_MS,
+            pratica: None,
         };
         e.escolher(0);
         e
@@ -334,6 +422,7 @@ impl EstadoPartitura {
         self.partitura = Some(p);
         self.musica = Some(m);
         self.compasso_inicial = None;
+        self.pratica = None;
         self.visual.invalidar();
         Ok(())
     }
@@ -419,6 +508,7 @@ impl EstadoPartitura {
             m.segundos(m.duracao_q, bpm) - m.segundos(q0, bpm) + 0.5,
         ));
         som.panico();
+        self.pratica = None;
         self.reproducao = Some(Reproducao {
             notas,
             proxima: 0,
@@ -501,9 +591,165 @@ impl EstadoPartitura {
 
     /// Cursor da execução (compasso e tempo dentro dele), se estiver tocando.
     pub fn destaque(&self, agora_ns: u64) -> Option<Destaque> {
+        if let Some(s) = self.pratica.as_ref() {
+            if s.resumo_final.is_some() {
+                return None;
+            }
+            return match s.logica.config().modo {
+                ModoPratica::Espera => {
+                    let pos = s.posicoes.get(s.logica.evento_do_passo_atual()?)?;
+                    Some(Destaque {
+                        compasso: pos.compasso,
+                        tempo: pos.tempo,
+                    })
+                }
+                ModoPratica::Tempo => {
+                    let q = q_em_ns(self.musica.as_ref()?, &s.relogio, agora_ns);
+                    let (compasso, tempo) = self.musica.as_ref()?.compasso_em(q)?;
+                    Some(Destaque { compasso, tempo })
+                }
+            };
+        }
         let q = self.posicao_q(agora_ns)?;
         let (compasso, tempo) = self.musica.as_ref()?.compasso_em(q)?;
         Some(Destaque { compasso, tempo })
+    }
+
+    /// Há prática em andamento (ainda não terminou).
+    pub fn praticando(&self) -> bool {
+        self.pratica
+            .as_ref()
+            .is_some_and(|s| s.resumo_final.is_none())
+    }
+
+    /// Resumo da última prática (terminada ou parcial), se houver.
+    pub fn resumo_pratica(&self) -> Option<Resumo> {
+        let s = self.pratica.as_ref()?;
+        Some(s.resumo_final.unwrap_or_else(|| s.logica.resumo()))
+    }
+
+    /// Começa a praticar a partir do compasso escolhido (ou do início), no modo e na tolerância
+    /// configurados. `agora_ns` é o relógio comum (`ServicoSom::agora_ns`). Para a reprodução.
+    /// No modo Tempo há uma contagem de entrada de duas semínimas antes do primeiro compasso.
+    pub fn iniciar_pratica(&mut self, agora_ns: u64) {
+        let (Some(m), Some(p)) = (self.musica.as_ref(), self.partitura.as_ref()) else {
+            return;
+        };
+        let q0 = self
+            .compasso_inicial
+            .and_then(|c| m.inicio_do_compasso(c))
+            .unwrap_or(0.0);
+        let bpm = f64::from(self.bpm);
+        let s0 = m.segundos(q0, bpm);
+        let mut esperados = Vec::new();
+        let mut posicoes = Vec::new();
+        for e in m
+            .eventos
+            .iter()
+            .filter(|e| e.inicio.como_f64() >= q0 - 1e-9)
+        {
+            let qi = e.inicio.como_f64();
+            let Some((compasso, tempo)) = m.compasso_em(qi) else {
+                continue;
+            };
+            let si = m.segundos(qi, bpm) - s0;
+            esperados.push(EventoEsperado {
+                midi: e.midi,
+                inicio_s: si,
+                duracao_s: m.segundos(qi + e.duracao.como_f64(), bpm) - s0 - si,
+                parte: e.parte,
+                pauta: e.pauta,
+                compasso: e.compasso,
+            });
+            posicoes.push(PosicaoNota {
+                compasso,
+                tempo,
+                mao: mao_pela_clave(p, e.parte, e.pauta, compasso, tempo),
+            });
+        }
+        let config = ConfigPratica {
+            modo: self.modo_pratica,
+            tolerancia_ms: f64::from(self.tolerancia_pratica_ms),
+        };
+        let entrada_s = match config.modo {
+            ModoPratica::Tempo => BATIDAS_DE_ENTRADA * 60.0 / bpm,
+            ModoPratica::Espera => 0.0,
+        };
+        let t0_ns = agora_ns.saturating_add(para_ns(entrada_s));
+        let mut s = SessaoPratica {
+            logica: Pratica::nova(&esperados, config),
+            posicoes,
+            t0_ns,
+            relogio: Reproducao {
+                notas: Vec::new(),
+                proxima: 0,
+                t0_ns,
+                q0,
+                bpm,
+                fim_ns: 0,
+            },
+            mapa: MapaResultados::default(),
+            sujo: true,
+            resumo_final: None,
+        };
+        s.conferir_fim();
+        self.reproducao = None;
+        self.aviso = None;
+        self.pratica = Some(s);
+    }
+
+    /// Encerra a prática: o que não foi tocado conta como falta e o resumo fica na tela.
+    pub fn parar_pratica(&mut self) {
+        if let Some(s) = self.pratica.as_mut()
+            && s.resumo_final.is_none()
+        {
+            s.logica.encerrar();
+            s.conferir_fim();
+            s.sujo = true;
+        }
+    }
+
+    /// Tira a prática e o resumo da tela.
+    pub fn limpar_pratica(&mut self) {
+        self.pratica = None;
+    }
+
+    /// Entrada de nota para o modo Praticar: `ligada` = note-on (note-off é ignorado),
+    /// `instante_ns` no relógio comum (`ServicoSom::agora_ns`). Sem prática em andamento não faz
+    /// nada. Serve ao teclado físico e à simulação.
+    pub fn nota_tocada(&mut self, ligada: bool, nota: NotaMidi, instante_ns: u64) {
+        if !ligada {
+            return;
+        }
+        let Some(s) = self.pratica.as_mut() else {
+            return;
+        };
+        if s.resumo_final.is_some() {
+            return;
+        }
+        let t = s.segundos(instante_ns);
+        if s.logica.nota_tocada(nota.numero(), t) != Veredito::Ignorada {
+            s.sujo = true;
+        }
+        s.conferir_fim();
+    }
+
+    /// Chamar a cada quadro: faz o relógio do modo Tempo andar (esperadas sem nota viram falta
+    /// ao fim da janela) e fecha a prática quando tudo foi resolvido.
+    pub fn atualizar_pratica(&mut self, agora_ns: u64) {
+        let Some(s) = self.pratica.as_mut() else {
+            return;
+        };
+        if s.resumo_final.is_none() {
+            let t = s.segundos(agora_ns);
+            if s.logica.avancar_tempo(t) {
+                s.sujo = true;
+            }
+            s.conferir_fim();
+        }
+        if s.sujo {
+            s.reconstruir_mapa();
+        }
     }
 
     /// Grava o MusicXML carregado, sem alterar nada, e confere relendo o arquivo.
@@ -593,7 +839,9 @@ fn q_em_ns(m: &Musica, r: &Reproducao, t_ns: u64) -> f64 {
 pub fn desenhar_tela(ui: &mut Ui, e: &mut EstadoPartitura, som: &mut ServicoSom) {
     ui.heading("Partitura");
     desenhar_origem(ui, e);
+    e.atualizar_pratica(som.agora_ns());
     desenhar_transporte(ui, e, som);
+    desenhar_pratica(ui, e, som);
     desenhar_exportacao(ui, e);
     if let Some(msg) = &e.erro {
         ui.label(RichText::new(msg).color(egui::Color32::from_rgb(232, 112, 106)));
@@ -639,6 +887,7 @@ pub fn desenhar_tela(ui: &mut Ui, e: &mut EstadoPartitura, som: &mut ServicoSom)
         Marcas {
             destaque,
             selecionado: e.compasso_inicial,
+            resultados: e.pratica.as_ref().map(|s| &s.mapa),
         },
     );
     e.partitura = Some(p);
@@ -649,8 +898,89 @@ pub fn desenhar_tela(ui: &mut Ui, e: &mut EstadoPartitura, som: &mut ServicoSom)
             Some(c)
         };
     }
-    if e.tocando() {
+    if e.tocando() || e.praticando() {
         ui.ctx().request_repaint();
+    }
+}
+
+/// Texto do resumo da prática.
+fn texto_do_resumo(r: &Resumo) -> String {
+    let mut t = format!(
+        "{} de {} notas certas ({:.0}%) · {} não tocadas · {} extras ou erradas",
+        r.acertos,
+        r.esperadas,
+        r.precisao_pct(),
+        r.faltas,
+        r.extras
+    );
+    if let (Some(m), Some(a)) = (r.desvio_medio_ms, r.desvio_absoluto_ms) {
+        t.push_str(&format!(
+            " · tempo: desvio médio {m:+.0} ms (média absoluta {a:.0} ms)"
+        ));
+    }
+    t
+}
+
+fn desenhar_pratica(ui: &mut Ui, e: &mut EstadoPartitura, som: &mut ServicoSom) {
+    if e.partitura.is_none() {
+        return;
+    }
+    ui.horizontal_wrapped(|ui| {
+        if e.praticando() {
+            if ui
+                .button("Parar prática")
+                .on_hover_text("Encerra e mostra o resumo")
+                .clicked()
+            {
+                e.parar_pratica();
+            }
+        } else if ui
+            .button("Praticar")
+            .on_hover_text(
+                "Toque no teclado (ou no teclado simulado) as notas da partitura; certas ficam \
+                 verdes e erradas, vermelhas. Começa pelo compasso escolhido.",
+            )
+            .clicked()
+        {
+            som.panico();
+            e.iniciar_pratica(som.agora_ns());
+        }
+        ui.add_enabled_ui(!e.praticando(), |ui| {
+            ComboBox::from_id_salt("modo-pratica")
+                .selected_text(e.modo_pratica.rotulo())
+                .show_ui(ui, |ui| {
+                    for m in ModoPratica::TODOS {
+                        ui.selectable_value(&mut e.modo_pratica, m, m.rotulo());
+                    }
+                })
+                .response
+                .on_hover_text(
+                    "Esperar a nota certa: o cursor para até você tocar a nota (ou o acorde).\n\
+                     Seguir o andamento: o cursor anda no andamento e cada nota vale se tocada \
+                     dentro da tolerância.",
+                );
+            if e.modo_pratica == ModoPratica::Tempo {
+                ui.add(
+                    Slider::new(
+                        &mut e.tolerancia_pratica_ms,
+                        TOLERANCIA_PRATICA_MIN_MS..=TOLERANCIA_PRATICA_MAX_MS,
+                    )
+                    .text("tolerância (ms)")
+                    .integer(),
+                );
+            }
+        });
+        if e.pratica.is_some() && !e.praticando() && ui.small_button("Limpar").clicked() {
+            e.limpar_pratica();
+        }
+    });
+    if let Some(r) = e.resumo_pratica() {
+        let rotulo = if e.praticando() {
+            "Prática"
+        } else {
+            "Resumo da prática"
+        };
+        ui.label(RichText::new(format!("{rotulo}: {}", texto_do_resumo(&r))).strong());
     }
 }
 
@@ -809,6 +1139,7 @@ fn desenhar_exportacao(ui: &mut Ui, e: &mut EstadoPartitura) {
 #[cfg(test)]
 mod testes {
     use super::*;
+    use crate::partitura_visual::Alvo;
     use crate::som::apoio_testes::servico_pronto;
     use bancada_casca::egui::{Context, RawInput, Rect, pos2, vec2};
     use piano_tutor_audio::RelogioManual;
@@ -1044,5 +1375,225 @@ mod testes {
         let e = EstadoPartitura::novo(Some(pasta.clone()));
         assert_eq!(e.fontes.len(), EMBUTIDAS.len() + 1);
         let _ = std::fs::remove_dir_all(&pasta);
+    }
+
+    /// Desenha a tela e tesselou as formas, como a janela real faz (o epaint só entra em pânico,
+    /// em depuração, na tesselação).
+    fn quadro_tesselado(
+        ctx: &Context,
+        e: &mut EstadoPartitura,
+        som: &mut ServicoSom,
+        tam: (f32, f32),
+    ) {
+        let entrada = RawInput {
+            screen_rect: Some(Rect::from_min_size(pos2(0.0, 0.0), vec2(tam.0, tam.1))),
+            ..Default::default()
+        };
+        let saida = ctx.run_ui(entrada, |ui| desenhar_tela(ui, e, som));
+        let _ = ctx.tessellate(saida.shapes.clone(), saida.pixels_per_point);
+        saida.drop_without_applying_deltas();
+    }
+
+    #[test]
+    fn desenha_e_tessela_em_tamanhos_minimos_e_largura_zero_sem_panico() {
+        let relogio = RelogioManual::novo();
+        let (mut som, _m) = servico_pronto(Arc::new(relogio) as Arc<dyn Relogio>);
+        let tamanhos = [
+            (0.0, 0.0),
+            (0.0, 800.0),
+            (1280.0, 0.0),
+            (1.0, 1.0),
+            (10.0, 10.0),
+            (50.0, 30.0),
+            (120.0, 80.0),
+            (320.0, 200.0),
+            (1280.0, 800.0),
+        ];
+        for modo in ModoRolagem::TODOS {
+            for i in 0..EMBUTIDAS.len() {
+                let mut e = EstadoPartitura::novo(None);
+                e.escolher(i);
+                e.modo_rolagem = modo;
+                let ctx = Context::default();
+                for zoom in [ZOOM_MIN, 1.5, ZOOM_MAX] {
+                    e.zoom = zoom;
+                    for t in tamanhos {
+                        quadro_tesselado(&ctx, &mut e, &mut som, t);
+                    }
+                }
+            }
+        }
+    }
+
+    fn ode() -> EstadoPartitura {
+        let mut e = EstadoPartitura::novo(None);
+        e.escolher(3);
+        assert_eq!(e.partitura().map(|p| p.compassos.len()), Some(16));
+        e
+    }
+
+    fn nota(n: u8) -> NotaMidi {
+        NotaMidi::nova(n).expect("nota válida")
+    }
+
+    /// Notas esperadas (instante em semínimas, altura) da partitura carregada.
+    fn eventos_de(e: &EstadoPartitura) -> Vec<(f64, u8)> {
+        let m = e.musica.as_ref().expect("música");
+        m.eventos
+            .iter()
+            .map(|x| (x.inicio.como_f64(), x.midi))
+            .collect()
+    }
+
+    #[test]
+    fn praticar_na_espera_cursor_para_ate_a_nota_certa_e_marca_verde_e_vermelho() {
+        let mut e = ode();
+        e.modo_pratica = ModoPratica::Espera;
+        assert!(!e.praticando());
+        e.nota_tocada(true, nota(60), 0); // sem prática: ignorada
+        e.iniciar_pratica(1_000);
+        assert!(e.praticando());
+        let ev = eventos_de(&e);
+        // Primeiro passo: Mi4 (64) na melodia e Dó3 (48) no baixo; cursor no compasso 0, tempo 0.
+        let d = e.destaque(5_000).expect("cursor");
+        assert_eq!((d.compasso, d.tempo), (0, 0.0));
+        // Nota errada: cursor fica, marca vermelha, extra contado.
+        e.nota_tocada(true, nota(61), 2_000);
+        e.atualizar_pratica(3_000);
+        let s = e.pratica.as_ref().expect("sessão");
+        assert!(!s.mapa.vazio());
+        let alvo = |mao| Alvo {
+            compasso: 0,
+            inicio: 0.0,
+            fim: 1.0,
+            mao,
+        };
+        assert_eq!(s.mapa.de(&alvo(Mao::Direita)), Some(ResultadoNota::Errou));
+        assert_eq!(s.mapa.de(&alvo(Mao::Esquerda)), Some(ResultadoNota::Errou));
+        assert_eq!(e.destaque(9_000).map(|d| d.tempo), Some(0.0));
+        // note-off é ignorado; as certas deixam verde e o cursor anda.
+        e.nota_tocada(false, nota(64), 3_000);
+        e.nota_tocada(true, nota(64), 3_000);
+        e.nota_tocada(true, nota(48), 3_100);
+        e.atualizar_pratica(4_000);
+        let s = e.pratica.as_ref().expect("sessão");
+        assert_eq!(s.mapa.de(&alvo(Mao::Direita)), Some(ResultadoNota::Acertou));
+        assert_eq!(
+            s.mapa.de(&alvo(Mao::Esquerda)),
+            Some(ResultadoNota::Acertou)
+        );
+        assert_eq!(e.destaque(9_000).map(|d| d.tempo), Some(1.0));
+        // Toca o resto na ordem, passo a passo: termina com resumo.
+        for (q, midi) in ev.iter().filter(|(q, _)| *q > 0.0) {
+            let _ = q;
+            e.nota_tocada(true, nota(*midi), 10_000);
+        }
+        e.atualizar_pratica(20_000);
+        assert!(!e.praticando());
+        let r = e.resumo_pratica().expect("resumo");
+        assert_eq!((r.esperadas, r.acertos, r.faltas, r.extras), (94, 94, 0, 1));
+        assert!(texto_do_resumo(&r).contains("94 de 94 notas certas (100%)"));
+        assert!(e.destaque(0).is_none());
+        // Depois do fim, notas são ignoradas; limpar remove o resumo.
+        e.nota_tocada(true, nota(60), 30_000);
+        assert_eq!(e.resumo_pratica().map(|r| r.extras), Some(1));
+        e.limpar_pratica();
+        assert!(e.resumo_pratica().is_none());
+    }
+
+    #[test]
+    fn praticar_no_tempo_segue_o_andamento_com_tolerancia_e_conta_faltas() {
+        let mut e = ode();
+        e.modo_pratica = ModoPratica::Tempo;
+        e.tolerancia_pratica_ms = 100.0;
+        e.definir_bpm(100.0);
+        let agora = 1_000_000_000u64;
+        e.iniciar_pratica(agora);
+        // Contagem de entrada de 2 semínimas a 100 bpm = 1,2 s.
+        let t0 = agora + 1_200_000_000;
+        assert_eq!(e.pratica.as_ref().map(|s| s.t0_ns), Some(t0));
+        let d = e.destaque(agora + 100).expect("cursor");
+        assert_eq!((d.compasso, d.tempo), (0, 0.0), "cursor espera na entrada");
+        // 2 s depois do início: 2 s = 3,33 semínimas, ainda no compasso 0.
+        let d = e.destaque(t0 + 2_000_000_000).expect("cursor");
+        assert_eq!(d.compasso, 0);
+        assert!((d.tempo - 3.333).abs() < 0.01, "{}", d.tempo);
+        // Toca tudo no tempo, menos o baixo do compasso 2 (índices pelo instante e altura).
+        let ev = eventos_de(&e);
+        let mut omitidas = 0;
+        // Uma nota fora da partitura logo no começo.
+        e.nota_tocada(true, nota(61), t0 + 3_000_000_000);
+        for (q, midi) in &ev {
+            if (4.0..8.0).contains(q) && *midi < 60 {
+                omitidas += 1;
+                continue;
+            }
+            // 20 ms atrasada.
+            let ns = t0 + (q * 0.6 * 1e9) as u64 + 20_000_000;
+            e.nota_tocada(true, nota(*midi), ns);
+        }
+        assert!(omitidas > 0);
+        e.atualizar_pratica(t0 + 60_000_000_000);
+        assert!(!e.praticando());
+        let r = e.resumo_pratica().expect("resumo");
+        assert_eq!(r.esperadas, 94);
+        assert_eq!(
+            (r.acertos, r.faltas, r.extras),
+            (94 - omitidas, omitidas, 1)
+        );
+        let med = r.desvio_medio_ms.expect("desvio");
+        assert!((med - 20.0).abs() < 0.5, "{med}");
+        assert!(texto_do_resumo(&r).contains("desvio médio +20 ms"));
+        // Vermelho nas omitidas (compasso 1 = tempos 4..8, mão esquerda).
+        let s = e.pratica.as_ref().expect("sessão");
+        let alvo = Alvo {
+            compasso: 1,
+            inicio: 0.0,
+            fim: 2.0,
+            mao: Mao::Esquerda,
+        };
+        assert_eq!(s.mapa.de(&alvo), Some(ResultadoNota::Errou));
+        let alvo = Alvo {
+            mao: Mao::Direita,
+            ..alvo
+        };
+        assert_eq!(s.mapa.de(&alvo), Some(ResultadoNota::Acertou));
+    }
+
+    #[test]
+    fn praticar_parar_encerra_com_faltas_e_tocar_cancela_a_pratica() {
+        let mut e = ode();
+        e.iniciar_pratica(0);
+        e.nota_tocada(true, nota(64), 10);
+        e.parar_pratica();
+        assert!(!e.praticando());
+        let r = e.resumo_pratica().expect("resumo");
+        assert_eq!((r.acertos, r.faltas), (1, 93));
+        // Começa no compasso escolhido (compasso 4): só as notas dali em diante.
+        e.compasso_inicial = Some(4);
+        e.iniciar_pratica(0);
+        assert_eq!(
+            e.pratica.as_ref().map(|s| s.logica.esperados().len()),
+            Some(eventos_de(&e).iter().filter(|(q, _)| *q >= 16.0).count())
+        );
+        let (mut som, _m) = servico_pronto(Arc::new(RelogioManual::novo()) as Arc<dyn Relogio>);
+        e.tocar(&mut som);
+        assert!(!e.praticando() && e.resumo_pratica().is_none() && e.tocando());
+        // Sem partitura de prática nada quebra.
+        e.nota_tocada(true, nota(60), 0);
+        e.atualizar_pratica(0);
+    }
+
+    #[test]
+    fn praticar_desenha_com_resultados_sem_panico() {
+        let mut e = ode();
+        let (mut som, _m) = servico_pronto(Arc::new(RelogioManual::novo()) as Arc<dyn Relogio>);
+        e.iniciar_pratica(som.agora_ns());
+        e.nota_tocada(true, nota(61), som.agora_ns());
+        e.nota_tocada(true, nota(64), som.agora_ns());
+        let ctx = Context::default();
+        quadro_tesselado(&ctx, &mut e, &mut som, (1280.0, 800.0));
+        e.parar_pratica();
+        quadro_tesselado(&ctx, &mut e, &mut som, (1280.0, 800.0));
     }
 }
