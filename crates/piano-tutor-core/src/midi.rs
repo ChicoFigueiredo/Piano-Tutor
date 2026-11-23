@@ -74,8 +74,15 @@ pub enum EventoMidi {
         programa: u8,
         timestamp_monotonico_ns: u64,
     },
-    /// Mensagem válida, mas fora do escopo atual (pitch bend, aftertouch,
-    /// sistema, tempo real). Ignorada pelo restante do pipeline.
+    /// Pitch bend (0xEn). `valor` centrado em zero: -8192..=8191, 0 = sem
+    /// curvatura (14 bits MIDI menos 8192).
+    PitchBend {
+        canal: CanalMidi,
+        valor: i16,
+        timestamp_monotonico_ns: u64,
+    },
+    /// Mensagem válida, mas fora do escopo atual (aftertouch, sistema, tempo
+    /// real). Ignorada pelo restante do pipeline.
     Desconhecido { timestamp_monotonico_ns: u64 },
 }
 
@@ -95,6 +102,10 @@ impl EventoMidi {
                 ..
             }
             | Self::ProgramaMudou {
+                timestamp_monotonico_ns,
+                ..
+            }
+            | Self::PitchBend {
                 timestamp_monotonico_ns,
                 ..
             }
@@ -259,7 +270,13 @@ impl Parser {
                 programa: d1,
                 timestamp_monotonico_ns,
             },
-            // Aftertouch (0xA0, 0xD0) e pitch bend (0xE0): fora do escopo.
+            // d1 = LSB, d2 = MSB; 14 bits com centro em 0x2000.
+            0xE0 => EventoMidi::PitchBend {
+                canal,
+                valor: ((i16::from(d2) << 7) | i16::from(d1)) - 8192,
+                timestamp_monotonico_ns,
+            },
+            // Aftertouch (0xA0, 0xD0): fora do escopo.
             _ => EventoMidi::Desconhecido {
                 timestamp_monotonico_ns,
             },
@@ -360,8 +377,7 @@ mod testes {
     #[test]
     fn mensagens_fora_do_escopo_sao_desconhecidas() {
         for msg in [
-            &[0xE0u8, 0, 64][..],
-            &[0xA0, 60, 10],
+            &[0xA0u8, 60, 10][..],
             &[0xD0, 10],
             &[0xF8],
             &[0xFE],
@@ -375,6 +391,61 @@ mod testes {
                 "{msg:02X?}"
             );
         }
+    }
+
+    #[test]
+    fn pitch_bend_e_decodificado_em_14_bits_centrado_em_zero() {
+        let pb = |bytes: &[u8]| interpretar(bytes, 5);
+        let ev = |c: u8, valor: i16| {
+            Ok(EventoMidi::PitchBend {
+                canal: canal(c),
+                valor,
+                timestamp_monotonico_ns: 5,
+            })
+        };
+        // Centro: lsb 0, msb 0x40.
+        assert_eq!(pb(&[0xE0, 0x00, 0x40]), ev(0, 0));
+        // Extremos.
+        assert_eq!(pb(&[0xE0, 0x00, 0x00]), ev(0, -8192));
+        assert_eq!(pb(&[0xE3, 0x7F, 0x7F]), ev(3, 8191));
+        // lsb entra nos 7 bits baixos, msb nos altos.
+        assert_eq!(pb(&[0xE1, 0x01, 0x40]), ev(1, 1));
+        assert_eq!(pb(&[0xE1, 0x00, 0x41]), ev(1, 128));
+        assert_eq!(pb(&[0xEF, 0x2A, 0x10]), ev(15, (0x10 << 7 | 0x2A) - 8192));
+        assert_eq!(
+            pb(&[0xE0, 0x00, 0x40])
+                .expect("válido")
+                .timestamp_monotonico_ns(),
+            5
+        );
+    }
+
+    #[test]
+    fn pitch_bend_incompleto_ou_invalido_e_erro_e_running_status_funciona() {
+        assert_eq!(
+            interpretar(&[0xE0, 0x00], 0),
+            Err(ErroMidi::Incompleta {
+                esperado: 2,
+                recebido: 1
+            })
+        );
+        assert_eq!(
+            interpretar(&[0xE0, 0x00, 0x80], 0),
+            Err(ErroMidi::DadoInvalido {
+                posicao: 2,
+                byte: 0x80
+            })
+        );
+        let mut p = Parser::novo();
+        assert!(p.interpretar(&[0xE2, 0x00, 0x40], 1).is_ok());
+        assert_eq!(
+            p.interpretar(&[0x7F, 0x7F], 2),
+            Ok(EventoMidi::PitchBend {
+                canal: canal(2),
+                valor: 8191,
+                timestamp_monotonico_ns: 2
+            })
+        );
     }
 
     #[test]

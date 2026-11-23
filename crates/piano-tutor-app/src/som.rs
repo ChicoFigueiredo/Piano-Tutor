@@ -12,6 +12,7 @@
 //! **Erros recuperáveis.** SF2 ausente ou inválido e saída de áudio indisponível viram texto
 //! para a UI; o app continua (Espelho, Monitor MIDI) sem som. Nada aqui entra em pânico.
 
+use piano_tutor_audio::comando::{PITCH_BEND_MAX, PITCH_BEND_MIN};
 use piano_tutor_audio::rusty::carregar_soundfont;
 use piano_tutor_audio::{
     Acao, ComandoAudio, ConfigRusty, ConfigSaida, ControleAudio, ErroAudio, PresetSf2, Quando,
@@ -78,6 +79,9 @@ pub const CANAL_ESQUERDA: u8 = 1;
 pub const CANAL_CAMADA: u8 = 2;
 /// Canal das demonstrações do app (ouvir acorde, escala, exercício).
 pub const CANAL_DEMONSTRACAO: u8 = 3;
+/// Canais em que o teclado toca (principal, esquerda e camada): recebem pedal, controles e
+/// pitch bend. O canal de demonstração e a percussão ficam de fora.
+pub const CANAIS_DO_TECLADO: [u8; 3] = [CANAL_PRINCIPAL, CANAL_ESQUERDA, CANAL_CAMADA];
 /// Controles MIDI de efeito (GM): reverberação e coro.
 pub const CC_REVERB: u8 = 91;
 pub const CC_CORO: u8 = 93;
@@ -239,6 +243,8 @@ pub struct ServicoSom {
     timbre: Timbre,
     config: ConfigTeclado,
     rotas: [Option<Rota>; 128],
+    /// Último bend da roda do mouse entregue ao motor (o do teclado físico não entra aqui).
+    bend_roda: i16,
     volume: f32,
     comandos_perdidos: u64,
     panicos: u64,
@@ -278,6 +284,7 @@ impl ServicoSom {
             timbre: Timbre::PIANO,
             config: ConfigTeclado::default(),
             rotas: [None; 128],
+            bend_roda: 0,
             volume: VOLUME_PADRAO,
             comandos_perdidos: 0,
             panicos: 0,
@@ -411,6 +418,8 @@ impl ServicoSom {
                 self.descricao_saida = Some(saida.descricao());
                 self.saida = Some(saida);
                 self.erro_saida = None;
+                // Sintetizador novo: afinação no centro.
+                self.bend_roda = 0;
                 self.aplicar_timbre();
                 self.aplicar_volume();
             }
@@ -428,6 +437,7 @@ impl ServicoSom {
         if let Some(mut s) = self.saida.take() {
             s.controle().panico();
         }
+        self.bend_roda = 0;
         self.descricao_saida = None;
     }
 
@@ -509,11 +519,24 @@ impl ServicoSom {
         let quando = Quando::Instante(evento.timestamp_monotonico_ns());
         match *evento {
             EventoMidi::ProgramaMudou { .. } | EventoMidi::Desconhecido { .. } => {}
+            EventoMidi::PitchBend { valor, .. } => {
+                // Roda do teclado físico: vale para os canais em que o teclado toca (a divisão
+                // e a camada usam canais diferentes do que o dispositivo enviou).
+                for c in CANAIS_DO_TECLADO {
+                    self.enviar(ComandoAudio::novo(
+                        quando,
+                        Acao::PitchBend {
+                            canal: canal(c),
+                            valor,
+                        },
+                    ));
+                }
+            }
             EventoMidi::ControleMudou { controle, .. } if controle == 0 || controle == 32 => {}
             EventoMidi::ControleMudou {
                 controle, valor, ..
             } => {
-                for c in [CANAL_PRINCIPAL, CANAL_ESQUERDA, CANAL_CAMADA] {
+                for c in CANAIS_DO_TECLADO {
                     self.enviar(ComandoAudio::novo(
                         quando,
                         Acao::Controle {
@@ -529,6 +552,34 @@ impl ServicoSom {
             } => self.tocar_tecla(quando, nota, Some(velocidade)),
             EventoMidi::NotaDesligada { nota, .. } => self.tocar_tecla(quando, nota, None),
         }
+    }
+
+    /// Bend da roda do mouse (`-8192..=8191`, 0 = centro) em todos os canais do teclado, no
+    /// próximo bloco de áudio. Só envia quando o valor muda; se a fila estiver cheia tenta de
+    /// novo no próximo quadro (o centro nunca fica perdido). Sem saída de áudio não faz nada.
+    pub fn definir_pitch_bend(&mut self, valor: i16) {
+        let valor = valor.clamp(PITCH_BEND_MIN, PITCH_BEND_MAX);
+        if valor == self.bend_roda || self.saida.is_none() {
+            return;
+        }
+        let mut todos = true;
+        for c in CANAIS_DO_TECLADO {
+            todos &= self.enviar(ComandoAudio::novo(
+                Quando::Imediato,
+                Acao::PitchBend {
+                    canal: canal(c),
+                    valor,
+                },
+            ));
+        }
+        if todos {
+            self.bend_roda = valor;
+        }
+    }
+
+    /// Último bend da roda do mouse entregue ao motor.
+    pub fn pitch_bend_roda(&self) -> i16 {
+        self.bend_roda
     }
 
     /// Nota da simulação (mouse e teclado do PC): velocidade constante, no próximo bloco de
@@ -721,6 +772,18 @@ impl ServicoSom {
         self.rotas = [None; 128];
         self.aplicar_timbre();
         self.aplicar_volume();
+        // O pânico reseta os controladores do sintetizador; o bend volta ao centro de forma
+        // explícita também (o app zera a roda virtual junto).
+        self.bend_roda = 0;
+        for c in CANAIS_DO_TECLADO {
+            self.enviar(ComandoAudio::novo(
+                Quando::Imediato,
+                Acao::PitchBend {
+                    canal: canal(c),
+                    valor: 0,
+                },
+            ));
+        }
         true
     }
 
@@ -1235,6 +1298,91 @@ mod testes {
         assert!(depois.iter().all(|(_, p)| *p == PROGRAMA_SENOIDE));
         assert_eq!(s.panicos(), 1);
         assert_eq!(s.volume(), 0.5);
+    }
+
+    fn bends(r: &[RegistroFalso]) -> Vec<(u8, i16)> {
+        r.iter()
+            .filter_map(|e| match *e {
+                RegistroFalso::PitchBend { canal, valor, .. } => Some((canal, valor)),
+                _ => None,
+            })
+            .collect()
+    }
+
+    #[test]
+    fn bend_da_roda_vai_para_os_tres_canais_do_teclado_so_quando_muda() {
+        let (mut s, motor) = servico_pronto(relogio());
+        motor.renderizar(BLOCO, 0);
+        let antes = bends(&motor.registro()).len();
+        s.definir_pitch_bend(2000);
+        s.definir_pitch_bend(2000); // repetido: não reenvia
+        motor.renderizar(BLOCO, 0);
+        let novos = bends(&motor.registro())[antes..].to_vec();
+        assert_eq!(
+            novos,
+            vec![
+                (CANAL_PRINCIPAL, 2000),
+                (CANAL_ESQUERDA, 2000),
+                (CANAL_CAMADA, 2000)
+            ]
+        );
+        assert_eq!(s.pitch_bend_roda(), 2000);
+        // Fora da faixa é limitado.
+        s.definir_pitch_bend(i16::MAX);
+        assert_eq!(s.pitch_bend_roda(), 8191);
+        s.definir_pitch_bend(i16::MIN);
+        assert_eq!(s.pitch_bend_roda(), -8192);
+    }
+
+    #[test]
+    fn panico_centra_o_bend_nos_tres_canais() {
+        let (mut s, motor) = servico_pronto(relogio());
+        s.definir_pitch_bend(-3000);
+        motor.renderizar(BLOCO, 0);
+        s.panico();
+        motor.renderizar(BLOCO, 0);
+        assert_eq!(s.pitch_bend_roda(), 0);
+        let r = motor.registro();
+        let pos = r
+            .iter()
+            .rposition(|e| matches!(e, RegistroFalso::Silenciar { .. }))
+            .expect("pânico chegou");
+        assert_eq!(
+            bends(&r[pos..]),
+            vec![(CANAL_PRINCIPAL, 0), (CANAL_ESQUERDA, 0), (CANAL_CAMADA, 0)]
+        );
+        // Depois do pânico o mesmo valor volta a ser enviado.
+        s.definir_pitch_bend(-3000);
+        assert_eq!(s.pitch_bend_roda(), -3000);
+    }
+
+    #[test]
+    fn bend_do_teclado_fisico_vai_para_os_canais_do_teclado() {
+        let (mut s, motor) = servico_pronto(relogio());
+        motor.renderizar(BLOCO, 0);
+        let antes = bends(&motor.registro()).len();
+        s.evento_midi(&EventoMidi::PitchBend {
+            canal: canal(5),
+            valor: -1234,
+            timestamp_monotonico_ns: 0,
+        });
+        motor.renderizar_no_relogio(BLOCO);
+        let novos = bends(&motor.registro())[antes..].to_vec();
+        assert_eq!(
+            novos,
+            vec![
+                (CANAL_PRINCIPAL, -1234),
+                (CANAL_ESQUERDA, -1234),
+                (CANAL_CAMADA, -1234)
+            ]
+        );
+    }
+
+    #[test]
+    fn sem_saida_o_bend_e_ignorado_sem_panico() {
+        let mut s = ServicoSom::inativo(relogio());
+        s.definir_pitch_bend(500);
+        assert_eq!(s.pitch_bend_roda(), 0);
     }
 
     #[test]

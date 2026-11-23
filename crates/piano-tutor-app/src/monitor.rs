@@ -88,6 +88,13 @@ impl LinhaEvento {
                 dado: format!("programa {programa}"),
                 valor: String::new(),
             },
+            EventoMidi::PitchBend { canal, valor, .. } => Self {
+                ts_ns,
+                tipo: "Pitch bend",
+                canal: Some(canal.exibicao()),
+                dado: "roda de afinação".to_owned(),
+                valor: format!("{valor:+}"),
+            },
             EventoMidi::Desconhecido { .. } => Self {
                 ts_ns,
                 tipo: "Outro",

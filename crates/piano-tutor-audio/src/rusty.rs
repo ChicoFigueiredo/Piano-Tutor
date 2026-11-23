@@ -22,6 +22,7 @@ use rustysynth::{Synthesizer, SynthesizerSettings};
 /// depender diretamente da crate.
 pub use rustysynth::SoundFont;
 
+use crate::comando::pitch_bend_para_bytes;
 use crate::erro::ErroAudio;
 use crate::relogio::TaxaAmostragem;
 use crate::sintetizador::Sintetizador;
@@ -196,6 +197,16 @@ impl Sintetizador for SintetizadorRusty {
         );
     }
 
+    fn pitch_bend(&mut self, canal: CanalMidi, valor: i16) {
+        let (lsb, msb) = pitch_bend_para_bytes(valor);
+        self.sint.process_midi_message(
+            i32::from(canal.interno()),
+            0xE0,
+            i32::from(lsb),
+            i32::from(msb),
+        );
+    }
+
     fn todas_notas_desligadas(&mut self) {
         self.sint.note_off_all(false);
     }
@@ -208,5 +219,77 @@ impl Sintetizador for SintetizadorRusty {
     fn renderizar(&mut self, esq: &mut [f32], dir: &mut [f32]) {
         let n = esq.len().min(dir.len());
         self.sint.render(&mut esq[..n], &mut dir[..n]);
+    }
+}
+
+#[cfg(test)]
+mod testes {
+    use super::*;
+    use crate::sf2_sintetico;
+
+    fn sintetizador() -> SintetizadorRusty {
+        let bytes = sf2_sintetico::gerar();
+        let sf = ler_soundfont(&mut bytes.as_slice()).expect("SF2 sintético");
+        let taxa = TaxaAmostragem::nova(48_000).expect("taxa");
+        SintetizadorRusty::novo(
+            &sf,
+            taxa,
+            ConfigRusty {
+                reverb_e_chorus: false,
+                ..ConfigRusty::default()
+            },
+        )
+        .expect("sintetizador")
+    }
+
+    fn canal0() -> CanalMidi {
+        CanalMidi::novo(0).expect("canal")
+    }
+
+    /// Toca a nota 69 (senoide) com o bend dado e conta os cruzamentos
+    /// ascendentes por zero em ~0,5 s de render offline (proporcional à
+    /// frequência).
+    fn cruzamentos(bend: Option<i16>) -> usize {
+        let mut s = sintetizador();
+        s.programa(canal0(), sf2_sintetico::PROGRAMA_SENOIDE);
+        if let Some(v) = bend {
+            s.pitch_bend(canal0(), v);
+        }
+        s.nota_ligada(canal0(), NotaMidi::nova(69).expect("nota"), 100);
+        let mut esq = vec![0.0_f32; 24_000];
+        let mut dir = vec![0.0_f32; 24_000];
+        s.renderizar(&mut esq, &mut dir);
+        // Ignora o ataque inicial.
+        esq[2_000..]
+            .windows(2)
+            .filter(|w| w[0] <= 0.0 && w[1] > 0.0)
+            .count()
+    }
+
+    #[test]
+    fn pitch_bend_nao_entra_em_panico_com_valores_extremos() {
+        let mut s = sintetizador();
+        for v in [i16::MIN, -8192, -1, 0, 1, 8191, i16::MAX] {
+            s.pitch_bend(canal0(), v);
+        }
+        let mut esq = vec![0.0_f32; 256];
+        let mut dir = vec![0.0_f32; 256];
+        s.renderizar(&mut esq, &mut dir);
+        assert!(esq.iter().chain(dir.iter()).all(|x| x.is_finite()));
+    }
+
+    #[test]
+    fn pitch_bend_muda_a_frequencia_no_render_offline() {
+        let centro = cruzamentos(None);
+        let centro_explicito = cruzamentos(Some(0));
+        let acima = cruzamentos(Some(8191));
+        let abaixo = cruzamentos(Some(-8192));
+        assert!(centro > 100, "esperava um tom audível, veio {centro}");
+        assert_eq!(centro, centro_explicito);
+        // ±2 semitons: razão 1,122 para cima e 0,891 para baixo (tolerância de 3 %).
+        let r_acima = acima as f64 / centro as f64;
+        let r_abaixo = abaixo as f64 / centro as f64;
+        assert!((r_acima - 1.1225).abs() < 0.03, "razão acima {r_acima}");
+        assert!((r_abaixo - 0.8909).abs() < 0.03, "razão abaixo {r_abaixo}");
     }
 }

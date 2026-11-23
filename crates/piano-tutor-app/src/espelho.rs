@@ -7,6 +7,7 @@
 //! Ponto de entrada do gerenciador MIDI: [`EstadoEspelho::aplicar_evento`]. Os eventos da
 //! simulação saem por [`EstadoEspelho::drenar_simulados`] para também soarem.
 
+use crate::roda_bend::RodaBend;
 use bancada_casca::egui::{Key, Rect};
 use piano_tutor_core::NotaMidi;
 use piano_tutor_core::teclado::{
@@ -226,6 +227,8 @@ pub struct EstadoEspelho {
     pub guias: Vec<NotaMidi>,
     /// Ponto de divisão do som (mão esquerda em azul abaixo dele), copiado do serviço de som.
     pub divisao: Option<u8>,
+    /// Roda de pitch bend virtual (roda do mouse sobre o teclado). O app a leva ao som.
+    pub roda_bend: RodaBend,
 }
 
 impl Default for EstadoEspelho {
@@ -263,6 +266,7 @@ impl EstadoEspelho {
             ultimo_desenho: None,
             guias: Vec::new(),
             divisao: None,
+            roda_bend: RodaBend::nova(),
         }
     }
 
@@ -463,6 +467,8 @@ impl EstadoEspelho {
     /// Solta tudo o que a simulação (mouse e teclado do PC) segura: perda de foco da janela ou
     /// saída da tela. Notas de outras fontes ficam como estão.
     pub fn liberar_simulacao(&mut self) {
+        // Perda de foco ou saída da tela: o bend volta ao centro na hora.
+        self.roda_bend.zerar();
         if let Some(n) = self.nota_do_mouse.take() {
             self.soltar_simulado(n);
         }

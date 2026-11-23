@@ -530,7 +530,7 @@ fn pintar_branca(
     let centro_x = r.center().x;
     if m.ligada {
         // Marca de forma: círculo perto da base (cheio na direita, vazado na esquerda).
-        let centro = Pos2::new(centro_x, r.bottom() - 1.1 * w);
+        let centro = Pos2::new(centro_x, r.bottom() - 0.75 * w);
         let (fundo, traco) = if m.esquerda {
             (
                 Color32::from_rgb(246, 242, 231),
@@ -558,7 +558,7 @@ fn pintar_branca(
         );
     }
     if m.guia {
-        pintar_ponto_guia(p, Pos2::new(centro_x, r.bottom() - 2.4 * w), w, m.mao);
+        pintar_ponto_guia(p, centro_ponto_guia_branca(r, w), w, m.mao);
     }
     if w < LARGURA_MIN_ROTULO_PX {
         return;
@@ -731,6 +731,13 @@ fn pintar_preta(
             Color32::from_rgb(190, 190, 205),
         );
     }
+}
+
+/// Centro do ponto de dedilhado/guia numa tecla **branca** de retângulo `r`: na parte visível
+/// da branca, abaixo das pretas (que descem até `ALTURA_PRETA`), no quarto inferior da tecla e
+/// acima do rótulo da nota. O ponto da preta fica onde estava (dentro da própria preta).
+pub fn centro_ponto_guia_branca(r: Rect, largura_branca: f32) -> Pos2 {
+    Pos2::new(r.center().x, r.bottom() - 1.45 * largura_branca)
 }
 
 /// Ponto da tecla-guia: miolo na cor da mão com anel escuro (forma própria, não só cor).
@@ -942,6 +949,36 @@ mod testes {
                     CorTecla::Preta => r.center(),
                 };
                 assert_eq!(tecla_no_ponto(&geo, area, w, ponto), Some(g.indice));
+            }
+        }
+    }
+
+    #[test]
+    fn ponto_de_guia_da_branca_fica_abaixo_das_pretas_e_dentro_da_tecla() {
+        use crate::espelho::ALTURA_PRETA;
+        let e = EstadoEspelho::novo();
+        let geo = geometria(e.teclado());
+        for z in [ZOOM_MIN, 1.0, ZOOM_MAX] {
+            let w = LARGURA_BRANCA_BASE_PX * z;
+            let area = area_das_teclas(
+                Rect::from_min_size(pos2(7.0, 3.0), tamanho_do_teclado(&e, w)),
+                w,
+            );
+            for g in geo.iter().filter(|g| g.cor == CorTecla::Branca) {
+                let r = retangulo_da_tecla(area, w, g);
+                let c = centro_ponto_guia_branca(r, w);
+                let raio = 0.26 * w + 1.0;
+                let fim_da_preta = r.top() + ALTURA_PRETA * w;
+                assert!(
+                    c.y - raio > fim_da_preta,
+                    "ponto invade a região das pretas"
+                );
+                assert!(c.y + raio < r.bottom(), "ponto sai da tecla");
+                assert!(
+                    (r.bottom() - c.y) / r.height() < 0.35,
+                    "ponto fora do terço inferior"
+                );
+                assert_eq!(c.x, r.center().x);
             }
         }
     }

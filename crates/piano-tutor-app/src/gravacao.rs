@@ -110,7 +110,8 @@ impl Mensagem {
                 canal: canal.interno(),
                 programa,
             },
-            EventoMidi::Desconhecido { .. } => return None,
+            // Pitch bend não é gravado (a gravação cobre notas, controles e programa).
+            EventoMidi::PitchBend { .. } | EventoMidi::Desconhecido { .. } => return None,
         })
     }
 }

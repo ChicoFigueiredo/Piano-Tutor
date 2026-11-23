@@ -15,6 +15,7 @@
 //! | `nota_ligada`, `nota_desligada` | `canal`, `nota`, `velocidade` |
 //! | `controle` | `canal`, `controle`, `valor` |
 //! | `programa` | `canal`, `programa` |
+//! | `pitch_bend` | `canal`, `valor` (14 bits, 0–16383, centro 8192) |
 //! | `desconhecido` | `status` (ou ausente) |
 //! | `erro_midi` | `erro`, `tamanho` |
 //! | `conectado` | `porta`, `reconexao` |
@@ -146,6 +147,13 @@ impl<W: Write> RegistroNdjson<W> {
                 let mut l = Linha::nova(ts, "programa");
                 l.numero("canal", u64::from(canal.exibicao()));
                 l.numero("programa", u64::from(programa));
+                l
+            }
+            EventoMidi::PitchBend { canal, valor, .. } => {
+                let mut l = Linha::nova(ts, "pitch_bend");
+                l.numero("canal", u64::from(canal.exibicao()));
+                // Registra o valor de 14 bits (0..=16383), sem sinal.
+                l.numero("valor", u64::try_from(i32::from(valor) + 8192).unwrap_or(0));
                 l
             }
             EventoMidi::Desconhecido { .. } => {

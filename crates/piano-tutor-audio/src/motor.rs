@@ -375,6 +375,7 @@ impl<S: Sintetizador> MotorAudio<S> {
                 valor,
             } => self.sintetizador.controle(canal, controle, valor),
             Acao::Programa { canal, programa } => self.sintetizador.programa(canal, programa),
+            Acao::PitchBend { canal, valor } => self.sintetizador.pitch_bend(canal, valor),
             Acao::TodasNotasDesligadas => self.sintetizador.todas_notas_desligadas(),
             Acao::Volume(v) => self.ganho_alvo = limitar_volume(v),
         }
@@ -560,6 +561,32 @@ mod testes {
             })
             .collect();
         assert_eq!(frames, vec![100, 100, 200, 300]);
+    }
+
+    #[test]
+    fn pitch_bend_chega_ao_sintetizador_no_frame_agendado() {
+        let (mut m, mut c) = motor();
+        c.enviar(ComandoAudio::novo(
+            Quando::Frame(100),
+            Acao::PitchBend {
+                canal: c0(),
+                valor: -4096,
+            },
+        ))
+        .expect("fila");
+        c.pitch_bend(c0(), 8191).expect("fila");
+        bloco(&mut m, 256);
+        let bends: Vec<(u64, i16)> = m
+            .sintetizador()
+            .registro()
+            .iter()
+            .filter_map(|r| match r {
+                RegistroFalso::PitchBend { frame, valor, .. } => Some((*frame, *valor)),
+                _ => None,
+            })
+            .collect();
+        // O imediato soa no início do bloco; o agendado, no frame 100.
+        assert_eq!(bends, vec![(0, 8191), (100, -4096)]);
     }
 
     #[test]

@@ -27,6 +27,7 @@ pub mod monitor;
 pub mod partitura_visual;
 pub mod preferencias;
 pub mod ritmo;
+pub mod roda_bend;
 pub mod som;
 pub mod teclado_visual;
 pub mod tela_acordes;

@@ -80,6 +80,7 @@ impl Capacidades {
                 self.ultimo_programa = Some(programa);
                 Some(canal)
             }
+            EventoMidi::PitchBend { canal, .. } => Some(canal),
             EventoMidi::Desconhecido { .. } => None,
         };
         if let Some(c) = canal {

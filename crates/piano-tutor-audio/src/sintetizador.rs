@@ -14,6 +14,9 @@ pub trait Sintetizador: Send {
     fn nota_desligada(&mut self, canal: CanalMidi, nota: NotaMidi);
     fn controle(&mut self, canal: CanalMidi, controle: u8, valor: u8);
     fn programa(&mut self, canal: CanalMidi, programa: u8);
+    /// Pitch bend centrado em zero (-8192..=8191; 0 = sem curvatura). Faixa
+    /// padrão do GM (±2 semitons).
+    fn pitch_bend(&mut self, canal: CanalMidi, valor: i16);
     /// All-notes-off com release normal.
     fn todas_notas_desligadas(&mut self);
     /// Pânico: corte imediato de todas as vozes e reset de controladores.
@@ -45,6 +48,11 @@ pub enum RegistroFalso {
         frame: u64,
         canal: u8,
         programa: u8,
+    },
+    PitchBend {
+        frame: u64,
+        canal: u8,
+        valor: i16,
     },
     TodasDesligadas {
         frame: u64,
@@ -132,6 +140,14 @@ impl Sintetizador for SintetizadorFalso {
             frame: self.frame,
             canal: canal.interno(),
             programa,
+        });
+    }
+
+    fn pitch_bend(&mut self, canal: CanalMidi, valor: i16) {
+        self.registro.push(RegistroFalso::PitchBend {
+            frame: self.frame,
+            canal: canal.interno(),
+            valor,
         });
     }
 

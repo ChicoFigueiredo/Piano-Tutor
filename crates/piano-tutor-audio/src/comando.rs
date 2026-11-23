@@ -22,6 +22,25 @@ use piano_tutor_core::midi::{CanalMidi, EventoMidi};
 use crate::erro::ErroAudio;
 use crate::motor::EstadoMotor;
 
+/// Menor valor de pitch bend (curvatura máxima para baixo).
+pub const PITCH_BEND_MIN: i16 = -8192;
+/// Maior valor de pitch bend (curvatura máxima para cima).
+pub const PITCH_BEND_MAX: i16 = 8191;
+
+/// Converte o pitch bend centrado em zero (`-8192..=8191`, limitado) nos dois bytes
+/// de dados MIDI `(lsb, msb)` do status `0xEn` (14 bits, centro 0x2000 = 8192).
+pub const fn pitch_bend_para_bytes(valor: i16) -> (u8, u8) {
+    let v = if valor < PITCH_BEND_MIN {
+        PITCH_BEND_MIN
+    } else if valor > PITCH_BEND_MAX {
+        PITCH_BEND_MAX
+    } else {
+        valor
+    };
+    let bruto = (v as i32 + 8192) as u16;
+    ((bruto & 0x7F) as u8, ((bruto >> 7) & 0x7F) as u8)
+}
+
 /// Quando o comando deve soar.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum Quando {
@@ -56,6 +75,14 @@ pub enum Acao {
     Programa {
         canal: CanalMidi,
         programa: u8,
+    },
+    /// Pitch bend (roda de afinação). `valor` está centrado em zero: 0 = sem
+    /// curvatura, de [`PITCH_BEND_MIN`] (-8192) a [`PITCH_BEND_MAX`] (+8191).
+    /// Na fiação MIDI vira 14 bits (`valor + 8192`), ver [`pitch_bend_para_bytes`].
+    /// A faixa de curvatura é a padrão do GM/SF2 (±2 semitons, RPN 0 não é alterado).
+    PitchBend {
+        canal: CanalMidi,
+        valor: i16,
     },
     /// Libera todas as notas com o *release* normal (all-notes-off).
     TodasNotasDesligadas,
@@ -109,6 +136,7 @@ impl ComandoAudio {
             EventoMidi::ProgramaMudou {
                 canal, programa, ..
             } => Acao::Programa { canal, programa },
+            EventoMidi::PitchBend { canal, valor, .. } => Acao::PitchBend { canal, valor },
             EventoMidi::Desconhecido { .. } => return None,
         };
         Some(Self::novo(quando, acao))
@@ -147,6 +175,14 @@ impl ControleAudio {
     /// Ganho mestre (0,0–1,0) no próximo bloco.
     pub fn volume(&mut self, volume: f32) -> Result<(), ErroAudio> {
         self.enviar(ComandoAudio::novo(Quando::Imediato, Acao::Volume(volume)))
+    }
+
+    /// Pitch bend (-8192..=8191, 0 = centro) no próximo bloco.
+    pub fn pitch_bend(&mut self, canal: CanalMidi, valor: i16) -> Result<(), ErroAudio> {
+        self.enviar(ComandoAudio::novo(
+            Quando::Imediato,
+            Acao::PitchBend { canal, valor },
+        ))
     }
 
     /// All-notes-off (com release) no próximo bloco.
@@ -242,6 +278,44 @@ mod testes {
             timestamp_monotonico_ns: 4,
         };
         assert!(ComandoAudio::de_evento_midi(&desconhecido).is_none());
+    }
+
+    #[test]
+    fn pitch_bend_codifica_lsb_msb_em_14_bits_com_centro_2000h() {
+        assert_eq!(pitch_bend_para_bytes(0), (0x00, 0x40));
+        assert_eq!(pitch_bend_para_bytes(PITCH_BEND_MIN), (0x00, 0x00));
+        assert_eq!(pitch_bend_para_bytes(PITCH_BEND_MAX), (0x7F, 0x7F));
+        // 8192 + 1 = 0x2001: lsb 1, msb 0x40.
+        assert_eq!(pitch_bend_para_bytes(1), (0x01, 0x40));
+        // 8192 + 128 = 0x2080: lsb 0, msb 0x41.
+        assert_eq!(pitch_bend_para_bytes(128), (0x00, 0x41));
+        // Fora da faixa é limitado, nunca estoura o bit 7.
+        assert_eq!(pitch_bend_para_bytes(i16::MIN), (0x00, 0x00));
+        assert_eq!(pitch_bend_para_bytes(i16::MAX), (0x7F, 0x7F));
+        for v in (PITCH_BEND_MIN..=PITCH_BEND_MAX).step_by(7) {
+            let (l, m) = pitch_bend_para_bytes(v);
+            assert!(l < 128 && m < 128);
+            let volta = (i32::from(m) << 7 | i32::from(l)) - 8192;
+            assert_eq!(volta, i32::from(v));
+        }
+    }
+
+    #[test]
+    fn evento_pitch_bend_vira_comando() {
+        let ev = EventoMidi::PitchBend {
+            canal: canal(2),
+            valor: -300,
+            timestamp_monotonico_ns: 55,
+        };
+        let c = ComandoAudio::de_evento_midi(&ev).expect("pitch bend é suportado");
+        assert_eq!(c.quando, Quando::Instante(55));
+        assert_eq!(
+            c.acao,
+            Acao::PitchBend {
+                canal: canal(2),
+                valor: -300
+            }
+        );
     }
 
     #[test]

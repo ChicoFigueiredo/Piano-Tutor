@@ -315,6 +315,7 @@ impl AppPianoTutor {
             self.aviso_instalado = true;
         }
         self.tick();
+        self.atualizar_roda_bend(ctx);
         let mut proximo = self.monitor.proxima_varredura_em();
         if self.som.carregando().is_some()
             || self
@@ -323,6 +324,10 @@ impl AppPianoTutor {
                 .is_some_and(BaixadorSf2::baixando)
         {
             proximo = proximo.min(Duration::from_millis(250));
+        }
+        if !self.espelho.roda_bend.centrada() || self.som.pitch_bend_roda() != 0 {
+            // Mola da roda de bend: ~60 quadros por segundo até voltar ao centro.
+            proximo = proximo.min(Duration::from_millis(16));
         }
         if self.ritmo.tocando()
             || self.gravacao.tocando()
@@ -333,6 +338,17 @@ impl AppPianoTutor {
             proximo = proximo.min(Duration::from_millis(16));
         }
         ctx.request_repaint_after(proximo.max(Duration::from_millis(1)));
+    }
+
+    /// Roda de pitch bend virtual: sem foco ela volta ao centro na hora; senão avança a mola e
+    /// entrega o valor ao som (todos os canais do teclado).
+    fn atualizar_roda_bend(&mut self, ctx: &egui::Context) {
+        if !ctx.input(|i| i.focused) {
+            self.espelho.roda_bend.zerar();
+        }
+        let agora = ctx.input(|i| i.time);
+        let valor = self.espelho.roda_bend.atualizar(agora);
+        self.som.definir_pitch_bend(valor);
     }
 
     /// Um passo do pipeline, sem janela: MIDI → Espelho + som, simulação → som, som.
@@ -426,6 +442,7 @@ impl AppPianoTutor {
                     self.som.evento_midi(&ev);
                 }
                 SaidaMidi::LimparNotas => {
+                    self.espelho.roda_bend.zerar();
                     self.espelho.limpar_tudo();
                     self.som.limpar_notas();
                 }
@@ -454,6 +471,7 @@ impl AppPianoTutor {
     /// Pânico: all-notes-off imediato no motor e Espelho limpo (simulação inclusive).
     pub fn panico(&mut self) {
         self.ritmo.parar();
+        // Também centra a roda de bend (liberar_simulacao).
         self.espelho.liberar_simulacao();
         // As liberações da simulação perdem o sentido: o pânico corta tudo.
         let _ = self.espelho.drenar_simulados();
@@ -1002,6 +1020,63 @@ mod testes {
         assert_eq!(b.motor.notas_ativas(), 0);
         assert_eq!(b.app.espelho.teclas().quantidade(), 0);
         assert_eq!(b.app.som.panicos(), 1);
+    }
+
+    fn bends(r: &[piano_tutor_audio::sintetizador::RegistroFalso]) -> Vec<(u8, i16)> {
+        r.iter()
+            .filter_map(|e| match *e {
+                piano_tutor_audio::sintetizador::RegistroFalso::PitchBend {
+                    canal, valor, ..
+                } => Some((canal, valor)),
+                _ => None,
+            })
+            .collect()
+    }
+
+    #[test]
+    fn roda_virtual_envia_bend_ao_motor_e_panico_centra() {
+        let mut b = bancada();
+        let ctx = egui::Context::default();
+        // Um quadro vazio para o contexto ter foco e relógio.
+        ctx.run_ui(egui::RawInput::default(), |_| {})
+            .drop_without_applying_deltas();
+        b.app.tick();
+        b.motor.renderizar(BLOCO, 0);
+        let antes = bends(&b.motor.registro()).len();
+        b.app.espelho.roda_bend.girar(3.0, 0.0);
+        b.app.atualizar_roda_bend(&ctx);
+        b.motor.renderizar(BLOCO, 0);
+        let novos = bends(&b.motor.registro())[antes..].to_vec();
+        assert_eq!(novos.len(), 3, "um por canal do teclado");
+        assert!(
+            novos.iter().all(|(_, v)| (*v - 4096).abs() <= 1),
+            "{novos:?}"
+        );
+        assert!((b.app.som.pitch_bend_roda() - 4096).abs() <= 1);
+        b.app.panico();
+        b.motor.renderizar(BLOCO, 0);
+        assert!(b.app.espelho.roda_bend.centrada());
+        assert_eq!(b.app.som.pitch_bend_roda(), 0);
+        let r = b.motor.registro();
+        assert!(bends(&r).iter().rev().take(3).all(|(_, v)| *v == 0));
+    }
+
+    #[test]
+    fn pitch_bend_do_teclado_fisico_chega_ao_motor() {
+        let mut b = bancada();
+        b.app.tick();
+        b.app
+            .monitor
+            .executar(crate::monitor::AcaoMonitor::Conectar);
+        b.app.tick();
+        b.motor.renderizar(BLOCO, 0);
+        let antes = bends(&b.motor.registro()).len();
+        assert!(b.fonte.injetar(&[0xE0, 0x00, 0x60]));
+        b.app.tick();
+        b.motor.renderizar(BLOCO * 8, 0);
+        let novos = bends(&b.motor.registro())[antes..].to_vec();
+        // 0x60 << 7 = 12288 - 8192 = 4096 em cada canal do teclado.
+        assert_eq!(novos, vec![(0, 4096), (1, 4096), (2, 4096)]);
     }
 
     #[test]

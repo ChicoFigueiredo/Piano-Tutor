@@ -8,6 +8,7 @@
 use crate::espelho::{
     EstadoEspelho, ResumoDesenho, ZOOM_MAX, ZOOM_MIN, geometria, texto_frequencia,
 };
+use crate::roda_bend::{PONTOS_POR_ENTALHE, texto_bend};
 use crate::teclado_visual::{
     EstiloTeclado, Rotulos, area_das_teclas, fase_do_pulso, largura_branca_ajustada,
     pintar_teclado, tamanho_do_teclado, tecla_no_ponto,
@@ -238,6 +239,7 @@ fn desenhar_teclado(ui: &mut Ui, e: &mut EstadoEspelho, aviso_simulacao_visivel:
         .show(ui, |ui| {
             let (rect, resposta) = ui.allocate_exact_size(tamanho, Sense::click_and_drag());
             let area = area_das_teclas(rect, w);
+            girar_roda_bend(ui, e, rect);
 
             // Mouse: só vale se o botão foi apertado sobre o teclado e segue apertado.
             let alvo = if resposta.is_pointer_button_down_on() {
@@ -260,6 +262,65 @@ fn desenhar_teclado(ui: &mut Ui, e: &mut EstadoEspelho, aviso_simulacao_visivel:
                 aviso_simulacao_visivel,
             });
         });
+    desenhar_indicador_bend(ui, e);
+}
+
+/// Roda do mouse sobre o teclado = roda de pitch bend (para cima sobe a afinação). A rolagem
+/// vertical é consumida aqui, então nem a rolagem horizontal do teclado nem a da página a
+/// recebem; Shift + roda (rolagem horizontal) continua movendo o teclado ampliado.
+fn girar_roda_bend(ui: &Ui, e: &mut EstadoEspelho, rect: egui::Rect) {
+    if !ui.rect_contains_pointer(rect) {
+        return;
+    }
+    let dy = ui.input(|i| i.smooth_scroll_delta.y);
+    if dy == 0.0 {
+        return;
+    }
+    let agora = ui.input(|i| i.time);
+    e.roda_bend.girar(dy / PONTOS_POR_ENTALHE, agora);
+    ui.input_mut(|i| i.smooth_scroll_delta.y = 0.0);
+    ui.ctx().request_repaint();
+}
+
+/// Indicador discreto do bend: texto pequeno e uma barra fina com o marcador do centro.
+fn desenhar_indicador_bend(ui: &mut Ui, e: &EstadoEspelho) {
+    let r = &e.roda_bend;
+    let ativo = !r.centrada();
+    ui.horizontal(|ui| {
+        let texto = RichText::new(texto_bend(r.semitons())).small();
+        let texto = if ativo { texto.strong() } else { texto.weak() };
+        let resposta = ui.label(texto);
+        let (barra, _) = ui.allocate_exact_size(egui::vec2(96.0, 8.0), Sense::hover());
+        let cor = ui.visuals().widgets.noninteractive.fg_stroke.color;
+        let p = ui.painter();
+        let meio = barra.center();
+        p.rect_filled(
+            barra.shrink2(egui::vec2(0.0, 3.0)),
+            2.0,
+            cor.gamma_multiply(0.18),
+        );
+        let ponta = meio.x + r.fracao() * barra.width() * 0.5;
+        let cheio = egui::Rect::from_two_pos(
+            egui::pos2(meio.x, barra.top() + 2.0),
+            egui::pos2(ponta, barra.bottom() - 2.0),
+        );
+        p.rect_filled(cheio, 1.0, AMBAR);
+        p.line_segment(
+            [
+                egui::pos2(meio.x, barra.top()),
+                egui::pos2(meio.x, barra.bottom()),
+            ],
+            Stroke::new(1.0, cor.gamma_multiply(0.7)),
+        );
+        resposta.on_hover_text(
+            "Role a roda do mouse sobre o teclado para curvar a afinação (±2 semitons), \
+             como a roda de pitch bend. Ela volta ao centro sozinha. Shift + roda move o \
+             teclado quando ele está ampliado.",
+        );
+    });
+    if ativo {
+        ui.ctx().request_repaint_after(Duration::from_millis(16));
+    }
 }
 
 /// O egui embutido não tem os glifos ♯ e ♭ (aparecem como quadrado): na tela vão como `#` e
@@ -434,6 +495,44 @@ mod testes {
             quadro(&ctx, &mut e, Vec::new());
         }
         (ctx, e)
+    }
+
+    fn roda(dy: f32) -> Event {
+        Event::MouseWheel {
+            unit: egui::MouseWheelUnit::Line,
+            delta: vec2(0.0, dy),
+            phase: egui::TouchPhase::Move,
+            modifiers: Modifiers::NONE,
+        }
+    }
+
+    /// Roda sobre o teclado vários quadros; devolve o bend acumulado.
+    fn rolar_sobre(ctx: &Context, e: &mut EstadoEspelho, pos: Pos2, dy: f32) -> i16 {
+        quadro(ctx, e, vec![Event::PointerMoved(pos), roda(dy)]);
+        for _ in 0..30 {
+            quadro(ctx, e, Vec::new());
+        }
+        e.roda_bend.valor_atual()
+    }
+
+    #[test]
+    fn roda_do_mouse_sobre_o_teclado_curva_para_cima_e_para_baixo_sem_tocar_nota() {
+        let (ctx, mut e) = preparar();
+        let pos = centro(&e, 20);
+        let cima = rolar_sobre(&ctx, &mut e, pos, 1.0);
+        assert!(cima > 1000, "roda para cima sobe a afinação: {cima}");
+        assert_eq!(e.teclas().quantidade(), 0, "rolar não toca tecla");
+        e.roda_bend.zerar();
+        let baixo = rolar_sobre(&ctx, &mut e, pos, -1.0);
+        assert!(baixo < -1000, "roda para baixo desce: {baixo}");
+    }
+
+    #[test]
+    fn roda_fora_do_teclado_nao_curva() {
+        let (ctx, mut e) = preparar();
+        // Canto da janela, fora do teclado.
+        let v = rolar_sobre(&ctx, &mut e, Pos2::new(2.0, 790.0), 1.0);
+        assert_eq!(v, 0);
     }
 
     #[test]
