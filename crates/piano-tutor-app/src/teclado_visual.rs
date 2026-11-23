@@ -348,6 +348,11 @@ pub fn pintar_teclado(
     let w = largura_branca;
     let geo = geometria(e.teclado());
     let ligadas: Vec<usize> = e.teclas().indices_ligados().collect();
+    let dedos = e.dedos_das_guias(estilo.divisao);
+    let dedo_de = |nota| {
+        let (_, d) = dedos.iter().find(|(n, _)| *n == nota)?;
+        e.nomenclatura.rotulo(*d)
+    };
     let marca_de = |g: &GeometriaTecla| Marca {
         ligada: ligadas.contains(&g.indice),
         guia: e.guias.contains(&g.nota),
@@ -355,7 +360,7 @@ pub fn pintar_teclado(
         esquerda: estilo.eh_mao_esquerda(g.nota),
         mao: estilo.cor_da_mao(g.nota),
         tom: opacidade_do_tom(estilo.velocidade_de(g.nota)),
-        dedo: e.rotulo_do_dedo(g.nota),
+        dedo: dedo_de(g.nota),
     };
 
     pintar_caixa(p, area, w, estilo);

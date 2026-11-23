@@ -200,8 +200,7 @@ pub fn desenhar_tela(
             desenhar_feedback(ui, e);
             desenhar_erros(ui, e);
             ui.add_space(6.0);
-            espelho.guias = e.guias();
-            espelho.dedos = e.dedos();
+            espelho.definir_guias(e.guias(), e.dedos());
             desenhar_teclado_embutido(ui, espelho);
             ui.label(
                 RichText::new(

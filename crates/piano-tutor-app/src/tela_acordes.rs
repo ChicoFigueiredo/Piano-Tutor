@@ -74,8 +74,7 @@ pub fn desenhar_tela(
                 Modo::Desafio => desenhar_desafio(ui, a, som),
             }
             ui.add_space(8.0);
-            espelho.guias = a.guias();
-            espelho.dedos.clear();
+            espelho.definir_guias(a.guias(), Vec::new());
             desenhar_teclado_embutido(ui, espelho);
             ui.label(
                 RichText::new("Bolinha verde = tecla a tocar. Azul = tecla que você está tocando.")

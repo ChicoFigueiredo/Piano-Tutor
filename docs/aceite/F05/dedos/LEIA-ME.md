@@ -19,3 +19,19 @@ Regra do dedo por nota: o texto `dedilhado` da Lição precisa cobrir todas as n
 (acorde do grave ao agudo) ou ser um padrão puro que se repete um número inteiro de vezes.
 Nas Lições embutidas, 143 de 145 exercícios com dedilhado ganham dedo; os 2 restantes têm texto
 explicativo e ficam sem dedo (melhor que dedo errado). Não testado com o teclado físico.
+
+## O dedo é do componente de teclado (todas as telas)
+
+O teclado (`EstadoEspelho::dedos_das_guias`, pintado em `teclado_visual`) resolve o dedo de
+qualquer tecla-guia sozinho; as telas só passam as guias (`definir_guias`). Regras
+(`dedos::inferir`):
+
+- Acorde de 2 a 5 notas numa oitava: tríade pela inversão (direita 1-3-5 / 1-2-5 na 1ª;
+  esquerda 5-3-1 / 5-2-1 na 2ª), tétrade 1-2-3-5 / 5-3-2-1, 5 notas 1-2-3-4-5.
+- Escala de uma oitava: maior e menor (natural/harmônica) pela tabela tradicional das 12
+  tônicas; cromática com 3 nas pretas. Pentatônicas e blues ficam sem dedo (não há padrão).
+- Mão esquerda quando todas as guias estão abaixo do ponto de divisão do som; senão direita.
+- Lição com dedilhado que cobre o gabarito sobrepõe o resolvido.
+
+Capturas: `acordes-do-maior.png` (Dicionário, C: 1-3-5) e `escala-fa-maior-letras.png`
+(Fá maior em letras: P I M A P I M A).

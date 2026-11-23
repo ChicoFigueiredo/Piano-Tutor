@@ -776,8 +776,7 @@ impl AppCasca for AppPianoTutor {
         rota.como_texto().clone_into(&mut self.rota_atual);
         let com_teclado = [ROTA_TECLADO, ROTA_ACORDES, ROTA_EXERCICIOS];
         if rota.como_texto() != ROTA_ACORDES && rota.como_texto() != ROTA_EXERCICIOS {
-            self.espelho.guias.clear();
-            self.espelho.dedos.clear();
+            self.espelho.limpar_guias();
         }
         if !com_teclado.contains(&rota.como_texto()) {
             // Fora da tela Espelho ninguém recebe o "solta": não deixa nota presa.

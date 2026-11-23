@@ -245,3 +245,173 @@ mod testes {
         assert!(dedos_por_passo("", &passos).is_empty());
     }
 }
+
+// ---------------------------------------------------------------------------------------------
+// Provedor de dedilhado do componente de teclado
+// ---------------------------------------------------------------------------------------------
+
+/// Dedilhados de escala de uma oitava (8 notas, da tônica à oitava), mão direita e esquerda,
+/// por classe de altura da tônica (0 = Dó). Tabela tradicional (métodos de escalas, como os do
+/// ABRSM); a esquerda é lida subindo, do grave ao agudo.
+const ESCALA_MAIOR: [([u8; 8], [u8; 8]); 12] = [
+    ([1, 2, 3, 1, 2, 3, 4, 5], [5, 4, 3, 2, 1, 3, 2, 1]), // Dó
+    ([2, 3, 1, 2, 3, 4, 1, 2], [3, 2, 1, 4, 3, 2, 1, 3]), // Réb
+    ([1, 2, 3, 1, 2, 3, 4, 5], [5, 4, 3, 2, 1, 3, 2, 1]), // Ré
+    ([3, 1, 2, 3, 4, 1, 2, 3], [3, 2, 1, 4, 3, 2, 1, 3]), // Mib
+    ([1, 2, 3, 1, 2, 3, 4, 5], [5, 4, 3, 2, 1, 3, 2, 1]), // Mi
+    ([1, 2, 3, 4, 1, 2, 3, 4], [5, 4, 3, 2, 1, 3, 2, 1]), // Fá
+    ([2, 3, 4, 1, 2, 3, 1, 2], [4, 3, 2, 1, 3, 2, 1, 4]), // Fá#/Solb
+    ([1, 2, 3, 1, 2, 3, 4, 5], [5, 4, 3, 2, 1, 3, 2, 1]), // Sol
+    ([3, 4, 1, 2, 3, 1, 2, 3], [3, 2, 1, 4, 3, 2, 1, 3]), // Láb
+    ([1, 2, 3, 1, 2, 3, 4, 5], [5, 4, 3, 2, 1, 3, 2, 1]), // Lá
+    ([4, 1, 2, 3, 1, 2, 3, 4], [3, 2, 1, 4, 3, 2, 1, 3]), // Sib
+    ([1, 2, 3, 1, 2, 3, 4, 5], [4, 3, 2, 1, 4, 3, 2, 1]), // Si
+];
+
+/// Menores (natural e harmônica usam o mesmo dedilhado de uma oitava).
+const ESCALA_MENOR: [([u8; 8], [u8; 8]); 12] = [
+    ([1, 2, 3, 1, 2, 3, 4, 5], [5, 4, 3, 2, 1, 3, 2, 1]), // Dó
+    ([3, 4, 1, 2, 3, 1, 2, 3], [3, 2, 1, 4, 3, 2, 1, 3]), // Dó#
+    ([1, 2, 3, 1, 2, 3, 4, 5], [5, 4, 3, 2, 1, 3, 2, 1]), // Ré
+    ([3, 1, 2, 3, 4, 1, 2, 3], [2, 1, 4, 3, 2, 1, 3, 2]), // Mib
+    ([1, 2, 3, 1, 2, 3, 4, 5], [5, 4, 3, 2, 1, 3, 2, 1]), // Mi
+    ([1, 2, 3, 4, 1, 2, 3, 4], [5, 4, 3, 2, 1, 3, 2, 1]), // Fá
+    ([3, 4, 1, 2, 3, 1, 2, 3], [4, 3, 2, 1, 3, 2, 1, 4]), // Fá#
+    ([1, 2, 3, 1, 2, 3, 4, 5], [5, 4, 3, 2, 1, 3, 2, 1]), // Sol
+    ([3, 4, 1, 2, 3, 1, 2, 3], [3, 2, 1, 3, 2, 1, 4, 3]), // Sol#
+    ([1, 2, 3, 1, 2, 3, 4, 5], [5, 4, 3, 2, 1, 3, 2, 1]), // Lá
+    ([2, 1, 2, 3, 1, 2, 3, 4], [2, 1, 3, 2, 1, 4, 3, 2]), // Sib
+    ([1, 2, 3, 1, 2, 3, 4, 5], [4, 3, 2, 1, 4, 3, 2, 1]), // Si
+];
+
+/// Semitons entre notas vizinhas.
+fn saltos(notas: &[NotaMidi]) -> Vec<u8> {
+    notas
+        .windows(2)
+        .map(|w| w[1].numero().saturating_sub(w[0].numero()))
+        .collect()
+}
+
+/// Escala de uma oitava reconhecida pelos saltos: maior, menor (natural ou harmônica) ou
+/// cromática. Pentatônicas e blues não têm dedilhado padrão: ficam sem dedo.
+fn dedos_de_escala(notas: &[NotaMidi], esquerda: bool) -> Option<Vec<u8>> {
+    let s = saltos(notas);
+    let tonica = usize::from(notas.first()?.numero() % 12);
+    let tabela = match s.as_slice() {
+        [2, 2, 1, 2, 2, 2, 1] => &ESCALA_MAIOR,
+        [2, 1, 2, 2, 1, 2, 2] | [2, 1, 2, 2, 1, 3, 1] => &ESCALA_MENOR,
+        _ if s.len() == 12 && s.iter().all(|x| *x == 1) => {
+            // Cromática: 3 nas pretas, 1 nas brancas; 2 no Fá e no Dó (direita) ou no Mi e no
+            // Si (esquerda), onde duas brancas se encostam.
+            // A primeira nota (branca) é sempre o polegar.
+            let dedo = |(i, n): (usize, &NotaMidi)| match (n.numero() % 12, esquerda) {
+                (1 | 3 | 6 | 8 | 10, _) => 3,
+                (5 | 0, false) | (4 | 11, true) if i > 0 => 2,
+                _ => 1,
+            };
+            return Some(notas.iter().enumerate().map(dedo).collect());
+        }
+        _ => return None,
+    };
+    let (direita, esq) = tabela[tonica];
+    Some(if esquerda { esq } else { direita }.to_vec())
+}
+
+/// Acorde de 2 a 5 notas dentro de uma oitava (do grave ao agudo). Tríades seguem a inversão:
+/// direita 1-3-5 (fundamental e 2ª inversão) e 1-2-5 (1ª); esquerda 5-3-1 e 5-2-1 (2ª).
+fn dedos_de_acorde(notas: &[NotaMidi], esquerda: bool) -> Option<Vec<u8>> {
+    let s = saltos(notas);
+    let v: &[u8] = match (notas.len(), esquerda) {
+        (2, false) => &[1, 5],
+        (2, true) => &[5, 1],
+        (3, false) if s[1] == 5 && s[0] != 2 => &[1, 2, 5],
+        (3, false) => &[1, 3, 5],
+        (3, true) if s[0] == 5 && s[1] != 2 => &[5, 2, 1],
+        (3, true) => &[5, 3, 1],
+        (4, false) => &[1, 2, 3, 5],
+        (4, true) => &[5, 3, 2, 1],
+        (5, false) => &[1, 2, 3, 4, 5],
+        (5, true) => &[5, 4, 3, 2, 1],
+        _ => return None,
+    };
+    Some(v.to_vec())
+}
+
+/// Dedo de cada tecla-guia, resolvido pelo próprio teclado quando a tela não informa: escala de
+/// uma oitava (8 notas, ou 13 na cromática) pela tabela tradicional, ou acorde de até 5 notas
+/// numa oitava pela inversão. Nota sozinha ou desenho desconhecido fica sem dedo.
+pub fn inferir(guias: &[NotaMidi], esquerda: bool) -> Vec<(NotaMidi, u8)> {
+    let mut notas = guias.to_vec();
+    notas.sort_by_key(|n| n.numero());
+    notas.dedup();
+    let (Some(a), Some(b)) = (notas.first(), notas.last()) else {
+        return Vec::new();
+    };
+    let span = b.numero() - a.numero();
+    let dedos = match notas.len() {
+        8 | 13 if span == 12 => dedos_de_escala(&notas, esquerda),
+        2..=5 if span <= 12 => dedos_de_acorde(&notas, esquerda),
+        _ => None,
+    };
+    dedos.map_or_else(Vec::new, |d| notas.into_iter().zip(d).collect())
+}
+
+#[cfg(test)]
+mod testes_provedor {
+    use super::*;
+
+    fn ns(v: &[u8]) -> Vec<NotaMidi> {
+        v.iter()
+            .map(|x| NotaMidi::nova(*x).expect("nota"))
+            .collect()
+    }
+
+    fn so_dedos(v: &[u8], esquerda: bool) -> Vec<u8> {
+        inferir(&ns(v), esquerda)
+            .into_iter()
+            .map(|(_, d)| d)
+            .collect()
+    }
+
+    #[test]
+    fn triade_pela_inversao_nas_duas_maos() {
+        assert_eq!(so_dedos(&[60, 64, 67], false), vec![1, 3, 5]);
+        assert_eq!(so_dedos(&[64, 67, 72], false), vec![1, 2, 5]);
+        assert_eq!(so_dedos(&[67, 72, 76], false), vec![1, 3, 5]);
+        assert_eq!(so_dedos(&[48, 52, 55], true), vec![5, 3, 1]);
+        assert_eq!(so_dedos(&[52, 55, 60], true), vec![5, 3, 1]);
+        assert_eq!(so_dedos(&[55, 60, 64], true), vec![5, 2, 1]);
+        assert_eq!(so_dedos(&[60, 64, 67, 70], false), vec![1, 2, 3, 5]);
+    }
+
+    #[test]
+    fn escalas_pela_tabela() {
+        assert_eq!(
+            so_dedos(&[60, 62, 64, 65, 67, 69, 71, 72], false),
+            vec![1, 2, 3, 1, 2, 3, 4, 5]
+        );
+        assert_eq!(
+            so_dedos(&[60, 62, 64, 65, 67, 69, 71, 72], true),
+            vec![5, 4, 3, 2, 1, 3, 2, 1]
+        );
+        // Fá maior: polegar não cai no Sib.
+        assert_eq!(
+            so_dedos(&[65, 67, 69, 70, 72, 74, 76, 77], false),
+            vec![1, 2, 3, 4, 1, 2, 3, 4]
+        );
+        // Lá menor harmônica.
+        assert_eq!(
+            so_dedos(&[57, 59, 60, 62, 64, 65, 68, 69], false),
+            vec![1, 2, 3, 1, 2, 3, 4, 5]
+        );
+        let cromatica: Vec<u8> = (60..=72).collect();
+        assert_eq!(so_dedos(&cromatica, false)[..6], [1, 3, 1, 3, 1, 2]);
+    }
+
+    #[test]
+    fn nota_sozinha_e_pentatonica_ficam_sem_dedo() {
+        assert!(inferir(&ns(&[60]), false).is_empty());
+        assert!(inferir(&ns(&[60, 62, 64, 67, 69, 72]), false).is_empty());
+        assert!(inferir(&ns(&[48, 72]), false).is_empty());
+    }
+}

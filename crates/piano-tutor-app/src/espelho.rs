@@ -226,8 +226,9 @@ pub struct EstadoEspelho {
     pub ultimo_desenho: Option<ResumoDesenho>,
     /// Teclas-guia (acorde, escala ou exercício a tocar), marcadas em verde.
     pub guias: Vec<NotaMidi>,
-    /// Dedo sugerido (1 polegar … 5 mínimo) de cada tecla-guia, quando a Lição informa.
-    pub dedos: Vec<(NotaMidi, u8)>,
+    /// Dedo de cada tecla-guia informado pela tela (o dedilhado de uma Lição). Vazio: o
+    /// próprio teclado resolve o dedo pelas guias ([`crate::dedos::inferir`]).
+    dedos: Vec<(NotaMidi, u8)>,
     /// Como o dedo aparece dentro da bolinha (números ou letras); vem das preferências.
     pub nomenclatura: NomenclaturaDedos,
     /// Ponto de divisão do som (mão esquerda em azul abaixo dele), copiado do serviço de som.
@@ -277,10 +278,28 @@ impl EstadoEspelho {
         }
     }
 
-    /// Rótulo do dedo sugerido para `nota` na nomenclatura escolhida.
-    pub fn rotulo_do_dedo(&self, nota: NotaMidi) -> Option<&'static str> {
-        let (_, d) = self.dedos.iter().find(|(n, _)| *n == nota)?;
-        self.nomenclatura.rotulo(*d)
+    /// Teclas-guia a destacar. O dedo de cada uma o teclado resolve sozinho (acorde, escala),
+    /// salvo quando a tela informa o dedilhado (Lição): então vale o informado.
+    pub fn definir_guias(&mut self, guias: Vec<NotaMidi>, dedos_informados: Vec<(NotaMidi, u8)>) {
+        self.guias = guias;
+        self.dedos = dedos_informados;
+    }
+
+    /// Tira as guias e o dedilhado.
+    pub fn limpar_guias(&mut self) {
+        self.guias.clear();
+        self.dedos.clear();
+    }
+
+    /// Dedo de cada tecla-guia: o informado pela tela ou o resolvido pelo teclado. A mão é a
+    /// esquerda quando todas as guias ficam abaixo do ponto de divisão; senão, a direita.
+    pub fn dedos_das_guias(&self, divisao: Option<u8>) -> Vec<(NotaMidi, u8)> {
+        if !self.dedos.is_empty() {
+            return self.dedos.clone();
+        }
+        let esquerda = divisao
+            .is_some_and(|d| !self.guias.is_empty() && self.guias.iter().all(|n| n.numero() < d));
+        crate::dedos::inferir(&self.guias, esquerda)
     }
 
     pub fn teclado(&self) -> Teclado61 {
@@ -541,6 +560,20 @@ mod testes {
 
     fn n(x: u8) -> NotaMidi {
         NotaMidi::nova(x).expect("nota válida")
+    }
+
+    #[test]
+    fn o_teclado_resolve_o_dedo_das_guias_e_respeita_o_informado() {
+        let mut e = EstadoEspelho::novo();
+        e.definir_guias(vec![n(64), n(67), n(72)], Vec::new());
+        let d: Vec<u8> = e.dedos_das_guias(None).iter().map(|x| x.1).collect();
+        assert_eq!(d, vec![1, 2, 5], "1ª inversão, mão direita");
+        let d: Vec<u8> = e.dedos_das_guias(Some(80)).iter().map(|x| x.1).collect();
+        assert_eq!(d, vec![5, 3, 1], "abaixo da divisão: mão esquerda");
+        e.definir_guias(vec![n(60)], vec![(n(60), 2)]);
+        assert_eq!(e.dedos_das_guias(None), vec![(n(60), 2)]);
+        e.limpar_guias();
+        assert!(e.dedos_das_guias(None).is_empty());
     }
 
     fn padrao() -> Teclado61 {
