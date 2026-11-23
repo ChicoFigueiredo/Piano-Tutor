@@ -169,7 +169,15 @@ impl AppPianoTutor {
 
     /// App com MIDI, áudio e SF2 do sistema (o executável).
     pub fn do_sistema() -> Self {
-        let mut app = Self::com_dispositivos(Dispositivos::do_sistema());
+        let d = Dispositivos::do_sistema();
+        // Versão da pasta de dados: backup e migrações antes de ler perfil e preferências (F14).
+        if let Some(pasta) = d.pasta_sessoes.as_ref().and_then(|p| p.parent())
+            && pasta.is_dir()
+            && let Err(e) = crate::dados_usuario::preparar(pasta)
+        {
+            eprintln!("Piano Tutor: dados do usuário: {e}");
+        }
+        let mut app = Self::com_dispositivos(d);
         app.abertura = Abertura::ligada();
         app
     }

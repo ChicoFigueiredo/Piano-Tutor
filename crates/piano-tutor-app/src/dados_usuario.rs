@@ -22,6 +22,9 @@ use std::time::{SystemTime, UNIX_EPOCH};
 pub const ARQUIVO_VERSAO: &str = "versao-dados.txt";
 /// Subpasta dos backups (nunca é copiada para dentro de um backup).
 pub const PASTA_BACKUPS: &str = "backups";
+/// SoundFonts baixados (~150 MB cada): ficam fora dos backups e o rollback não os apaga,
+/// porque dá para baixar de novo.
+pub const PASTA_SOUNDFONTS: &str = "soundfonts";
 /// Versão de dados que esta versão do app entende.
 pub const VERSAO_ATUAL: u32 = 1;
 /// Quantos backups ficam guardados.
@@ -258,7 +261,7 @@ fn fazer_backup(pasta: &Path, versao: u32, agora: u64) -> Result<PathBuf, String
     }
     let tmp = raiz.join(format!(".tmp-{nome}"));
     let _ = fs::remove_dir_all(&tmp);
-    if let Err(e) = copiar_pasta(pasta, &tmp, &[PASTA_BACKUPS]) {
+    if let Err(e) = copiar_pasta(pasta, &tmp, &[PASTA_BACKUPS, PASTA_SOUNDFONTS]) {
         let _ = fs::remove_dir_all(&tmp);
         return Err(format!("backup não concluído, nada foi migrado: {e}"));
     }
@@ -330,7 +333,7 @@ fn restaurar_de(pasta: &Path, origem: Option<&Path>) -> Result<(), String> {
     let it = fs::read_dir(pasta).map_err(|e| erro_io("não consegui listar", pasta, &e))?;
     for e in it {
         let e = e.map_err(|e| erro_io("não consegui listar", pasta, &e))?;
-        if e.file_name() == PASTA_BACKUPS {
+        if e.file_name() == PASTA_BACKUPS || e.file_name() == PASTA_SOUNDFONTS {
             continue;
         }
         let p = e.path();
@@ -551,8 +554,11 @@ mod testes {
             pasta.join("backups").join("0-20231114-221320"),
             "backups/<versao>-<data>"
         );
-        // Backup idêntico ao original (sem arquivo de versão, que não existia).
-        assert_eq!(foto(&b), antes);
+        // Backup idêntico ao original (sem arquivo de versão, que não existia), menos os
+        // SoundFonts, que ficam fora dos backups.
+        let mut sem_sf2 = antes.clone();
+        sem_sf2.retain(|k, _| !k.starts_with(PASTA_SOUNDFONTS));
+        assert_eq!(foto(&b), sem_sf2);
         // Dados originais preservados; só o arquivo de versão é novo.
         let mut depois = foto(&pasta);
         assert_eq!(depois.remove(ARQUIVO_VERSAO), Some(Some(b"1\n".to_vec())));
@@ -826,5 +832,21 @@ mod testes {
                 .is_some_and(|b| b.starts_with(pasta.join(PASTA_BACKUPS)))
         );
         assert!(r.resumo().contains("migrados"));
+    }
+
+    #[test]
+    fn soundfonts_ficam_fora_do_backup_e_sobrevivem_ao_rollback() {
+        let d = std::env::temp_dir().join(format!("pt-sf-{}", std::process::id()));
+        let _ = fs::remove_dir_all(&d);
+        fs::create_dir_all(d.join(PASTA_SOUNDFONTS)).expect("pasta");
+        fs::write(d.join(PASTA_SOUNDFONTS).join("x.sf2"), b"sf2").expect("sf2");
+        fs::write(d.join("preferencias.txt"), b"a").expect("prefs");
+        let r = preparar(&d).expect("preparar");
+        let b = r.backup.expect("houve backup");
+        assert!(b.join("preferencias.txt").is_file());
+        assert!(!b.join(PASTA_SOUNDFONTS).exists(), "SF2 não entra no backup");
+        restaurar_de(&d, Some(&b)).expect("restaurar");
+        assert!(d.join(PASTA_SOUNDFONTS).join("x.sf2").is_file(), "SF2 continua");
+        let _ = fs::remove_dir_all(&d);
     }
 }
