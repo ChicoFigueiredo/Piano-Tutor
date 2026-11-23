@@ -665,6 +665,38 @@ pub enum Julgamento {
     Atrasado,
 }
 
+/// Cor semântica do feedback (a interface a traduz para a paleta; aqui só a lógica).
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum CorFeedback {
+    Verde,
+    Ambar,
+    Vermelho,
+}
+
+impl Julgamento {
+    /// Texto mostrado ao aluno.
+    pub const fn texto(self) -> &'static str {
+        match self {
+            Julgamento::NoTempo => "no tempo",
+            Julgamento::Adiantado => "adiantado",
+            Julgamento::Atrasado => "atrasado",
+        }
+    }
+
+    /// Cor do feedback visual: verde certo, âmbar adiantado, vermelho atrasado.
+    pub const fn cor(self) -> CorFeedback {
+        match self {
+            Julgamento::NoTempo => CorFeedback::Verde,
+            Julgamento::Adiantado => CorFeedback::Ambar,
+            Julgamento::Atrasado => CorFeedback::Vermelho,
+        }
+    }
+}
+
+/// Faixa da tolerância configurável do exercício de pulso, em ms (±).
+pub const TOLERANCIA_MIN_MS: u32 = 10;
+pub const TOLERANCIA_MAX_MS: u32 = 150;
+
 /// Classifica um desvio com tolerância simétrica.
 pub fn julgar(desvio_ns: i64, tolerancia_ns: u64) -> Julgamento {
     if desvio_ns.unsigned_abs() <= tolerancia_ns {
@@ -955,5 +987,246 @@ mod testes {
         assert_eq!((pos.compasso, pos.pulso), (1, 1));
         assert_eq!(pos.passo(&p, 0), Some(4));
         assert_eq!(pos.passo(&p, 2), None);
+    }
+
+    // --- F08-3: tolerância configurável e feedback ------------------------------------------
+
+    #[test]
+    fn feedback_de_cada_julgamento_tem_texto_e_cor_proprios() {
+        let todos = [
+            Julgamento::Adiantado,
+            Julgamento::NoTempo,
+            Julgamento::Atrasado,
+        ];
+        assert_eq!(
+            todos.map(Julgamento::texto),
+            ["adiantado", "no tempo", "atrasado"]
+        );
+        assert_eq!(
+            todos.map(Julgamento::cor),
+            [
+                CorFeedback::Ambar,
+                CorFeedback::Verde,
+                CorFeedback::Vermelho
+            ]
+        );
+    }
+
+    #[test]
+    fn a_tolerancia_configurada_muda_o_julgamento_do_mesmo_toque() {
+        // Três exercícios: toques deliberadamente adiantados, certos e atrasados.
+        let ms = 1_000_000i64;
+        let adiantados = [-120 * ms, -80 * ms, -45 * ms];
+        let certos = [-5 * ms, 0, 8 * ms];
+        let atrasados = [45 * ms, 80 * ms, 120 * ms];
+        let conta = |desvios: &[i64], tol_ms: u32| -> [usize; 3] {
+            let mut c = [0; 3];
+            for d in desvios {
+                let tol = u64::from(tol_ms) * 1_000_000;
+                c[match julgar(*d, tol) {
+                    Julgamento::Adiantado => 0,
+                    Julgamento::NoTempo => 1,
+                    Julgamento::Atrasado => 2,
+                }] += 1;
+            }
+            c
+        };
+        // Tolerância mínima (10 ms): os certos continuam certos e os outros, fora.
+        assert_eq!(conta(&adiantados, TOLERANCIA_MIN_MS), [3, 0, 0]);
+        assert_eq!(conta(&certos, TOLERANCIA_MIN_MS), [0, 3, 0]);
+        assert_eq!(conta(&atrasados, TOLERANCIA_MIN_MS), [0, 0, 3]);
+        // 50 ms: o desvio de 45 ms passa a valer como certo, nos dois sentidos.
+        assert_eq!(conta(&adiantados, 50), [2, 1, 0]);
+        assert_eq!(conta(&atrasados, 50), [0, 1, 2]);
+        // 100 ms: só os de 120 ms ficam fora.
+        assert_eq!(conta(&adiantados, 100), [1, 2, 0]);
+        assert_eq!(conta(&atrasados, 100), [0, 2, 1]);
+        // Máxima (150 ms): tudo é "no tempo".
+        assert_eq!(conta(&adiantados, TOLERANCIA_MAX_MS), [0, 3, 0]);
+        assert_eq!(conta(&atrasados, TOLERANCIA_MAX_MS), [0, 3, 0]);
+        // Na borda exata da tolerância ainda é "no tempo".
+        assert_eq!(julgar(50 * ms, 50_000_000), Julgamento::NoTempo);
+        assert_eq!(julgar(50 * ms + 1, 50_000_000), Julgamento::Atrasado);
+        assert_eq!(julgar(-50 * ms - 1, 50_000_000), Julgamento::Adiantado);
+    }
+
+    // --- F09: pads, grade e fábrica ---------------------------------------------------------
+
+    /// Nomes GM (nível 1, canal 10) das notas usadas, conferidos peça a peça.
+    const NOMES_GM: [(u8, &str); 12] = [
+        (36, "Bass Drum 1"),
+        (38, "Acoustic Snare"),
+        (42, "Closed Hi-Hat"),
+        (46, "Open Hi-Hat"),
+        (39, "Hand Clap"),
+        (37, "Side Stick"),
+        (49, "Crash Cymbal 1"),
+        (45, "Low Tom"),
+        (54, "Tambourine"),
+        (70, "Maracas"),
+        (81, "Open Triangle"),
+        (56, "Cowbell"),
+    ];
+
+    #[test]
+    fn os_oito_pads_sao_oito_sons_gm_distintos_e_auditados() {
+        let pads = &INSTRUMENTOS[..8];
+        let mut notas: Vec<u8> = pads.iter().map(|i| i.nota_gm).collect();
+        notas.sort_unstable();
+        notas.dedup();
+        assert_eq!(notas.len(), 8, "8 pads, 8 notas GM distintas");
+        // Todas as 12 peças: notas únicas, dentro da faixa GM de percussão (35 a 81), com o
+        // nome GM esperado, e sem colidir com os cliques do metrônomo (76 e 77).
+        let mut todas: Vec<u8> = INSTRUMENTOS.iter().map(|i| i.nota_gm).collect();
+        todas.sort_unstable();
+        todas.dedup();
+        assert_eq!(todas.len(), INSTRUMENTOS.len());
+        for (i, (nota, nome_gm)) in INSTRUMENTOS.iter().zip(NOMES_GM) {
+            assert_eq!(i.nota_gm, nota, "{}: deveria ser GM {nome_gm}", i.nome);
+            assert!((35..=81).contains(&i.nota_gm), "{}", i.nome);
+            assert!(
+                ![CLIQUE_FORTE, CLIQUE_FRACO].contains(&i.nota_gm),
+                "{}",
+                i.nome
+            );
+        }
+        // Os cliques também são notas GM de percussão: 76 Hi Wood Block e 77 Low Wood Block.
+        assert_eq!((CLIQUE_FORTE, CLIQUE_FRACO), (76, 77));
+        // O pad 1 é o bumbo e o pad 3 o chimbal fechado, o que dá sentido às teclas 1 a 8.
+        assert_eq!(pads[0].nome, "Bumbo");
+        assert_eq!(pads[2].nota_gm, CHIMBAL_FECHADO);
+    }
+
+    #[test]
+    fn grade_do_sequenciador_por_formula() {
+        // (fórmula, passos por compasso, passos por pulso, tiques por passo)
+        for (f, compasso, pulso, tiques) in [
+            (Formula::DoisQuatro, 8, 4, 3),
+            (Formula::TresQuatro, 12, 4, 3),
+            (Formula::QuatroQuatro, 16, 4, 3),
+            (Formula::SeisOito, 12, 6, 2),
+            (Formula::DozeOito, 24, 6, 2),
+        ] {
+            assert_eq!(f.passos_por_compasso(), compasso, "{}", f.texto());
+            assert_eq!(f.passos_por_pulso(), pulso, "{}", f.texto());
+            assert_eq!(f.tiques_por_passo(), tiques, "{}", f.texto());
+            // O passo cabe exatamente no pulso: nenhum arredondamento na grade.
+            assert_eq!(
+                f.tiques_por_passo() * f.passos_por_pulso(),
+                TIQUES_POR_PULSO
+            );
+        }
+        // Padrão vazio com 1 a 4 compassos tem a grade da fórmula, em qualquer fórmula.
+        for f in Formula::TODAS {
+            for c in 1..=4u8 {
+                let p = Padrao::vazio("t", f, c, 100);
+                assert_eq!(p.passos() as u64, f.passos_por_compasso() * u64::from(c));
+                assert!(p.linhas.iter().all(|l| l.len() == p.passos()));
+            }
+        }
+    }
+
+    /// Instante (ns) de cada passo com batida de `instrumento`, em `p`, tocando `compassos`
+    /// compassos a partir de 0 e a `bpm`.
+    fn instantes_do_instrumento(p: &Padrao, instrumento: usize, bpm: u16) -> Vec<u64> {
+        let mut a = Agendador::novo(0, bpm, p.formula);
+        let cfg = ConfigRitmo {
+            metronomo: false,
+            bateria: true,
+            ..ConfigRitmo::default()
+        };
+        let mut v = Vec::new();
+        let duracao = p.formula.pulsos() * u64::from(p.compassos) * 60_000_000_000 / u64::from(bpm);
+        a.emitir_ate(duracao, cfg, Some(p), &mut v);
+        v.iter()
+            .filter_map(|(t, e)| match e {
+                EventoRitmo::Batida { instrumento: i, .. } if *i == instrumento => Some(*t),
+                _ => None,
+            })
+            .collect()
+    }
+
+    #[test]
+    fn grade_de_tres_por_quatro_tem_doze_passos_e_um_acento_de_tres() {
+        let valsa = padroes_de_fabrica()
+            .into_iter()
+            .find(|p| p.nome == "Valsa")
+            .expect("valsa");
+        assert_eq!(valsa.formula, Formula::TresQuatro);
+        assert_eq!(valsa.passos(), 12);
+        // A 60 bpm o pulso é 1 s e o passo, 250 ms. Bumbo só no passo 0; chimbal nos pulsos 2 e 3
+        // (passos 4 e 8), ou seja, o acento do 1 de 3.
+        assert_eq!(instantes_do_instrumento(&valsa, 0, 60), vec![0]);
+        assert_eq!(
+            instantes_do_instrumento(&valsa, 2, 60),
+            vec![1_000_000_000, 2_000_000_000]
+        );
+        // O metrônomo no mesmo compasso acentua 1 de 3.
+        let mut a = Agendador::novo(0, 60, Formula::TresQuatro);
+        let mut v = Vec::new();
+        a.emitir_ate(3_000_000_000, ConfigRitmo::default(), None, &mut v);
+        let fortes = cliques(&v)
+            .iter()
+            .filter(|(_, c)| *c == Clique::Forte)
+            .count();
+        assert_eq!(fortes, 1);
+    }
+
+    #[test]
+    fn grade_de_seis_por_oito_tem_doze_passos_em_dois_pulsos_de_tres_colcheias() {
+        let balada = padroes_de_fabrica()
+            .into_iter()
+            .find(|p| p.nome == "Balada 6/8")
+            .expect("balada 6/8");
+        assert_eq!(balada.formula, Formula::SeisOito);
+        assert_eq!(balada.passos(), 12);
+        // A 60 bpm (pulso composto = 1 s): bumbo no passo 0, caixa no passo 6 (2º pulso
+        // composto), chimbal nos passos 0, 2, 4, 6, 8 e 10 (as seis colcheias, 166,667 ms).
+        assert_eq!(instantes_do_instrumento(&balada, 0, 60), vec![0]);
+        assert_eq!(
+            instantes_do_instrumento(&balada, 1, 60),
+            vec![1_000_000_000]
+        );
+        let chimbal = instantes_do_instrumento(&balada, 2, 60);
+        assert_eq!(chimbal.len(), 6);
+        for (n, t) in chimbal.iter().enumerate() {
+            assert_eq!(*t, n as u64 * 1_000_000_000 / 3, "colcheia {n}");
+        }
+        // 6/8 não é seis semínimas: o compasso dura 2 pulsos e a explicação diz isso.
+        assert_eq!(Formula::SeisOito.pulsos(), 2);
+        let e = Formula::SeisOito.explicacao();
+        assert!(
+            e.contains("2 pulsos compostos") && e.contains("3 colcheias"),
+            "{e}"
+        );
+        assert!(e.contains("1-2-3 4-5-6"), "{e}");
+        // Cada fórmula tem explicação não vazia e própria.
+        let mut textos: Vec<&str> = Formula::TODAS.iter().map(|f| f.explicacao()).collect();
+        assert!(textos.iter().all(|t| !t.is_empty()));
+        textos.sort_unstable();
+        textos.dedup();
+        assert_eq!(textos.len(), Formula::TODAS.len());
+    }
+
+    #[test]
+    fn a_fabrica_tem_os_onze_padroes_documentados() {
+        // A lista é a mesma de docs/aceite/F09/padroes-de-fabrica.md: mudar uma exige mudar a outra.
+        let nomes: Vec<String> = padroes_de_fabrica().into_iter().map(|p| p.nome).collect();
+        assert_eq!(
+            nomes,
+            [
+                "Rock básico",
+                "Pop balada",
+                "Pop dançante",
+                "Funk",
+                "Reggae (one drop)",
+                "Bossa nova",
+                "Samba",
+                "Baião",
+                "Valsa",
+                "Balada 6/8",
+                "Blues shuffle",
+            ]
+        );
     }
 }
