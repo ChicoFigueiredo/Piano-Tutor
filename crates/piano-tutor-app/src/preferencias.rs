@@ -1,6 +1,7 @@
 //! Preferências de som salvas entre aberturas (timbre, volume, divisão, camada,
 //! transposição, efeitos) em `~/.local/share/piano-tutor/preferencias.txt`.
 
+use crate::partitura_visual::{ModoRolagem, ZOOM_MAX, ZOOM_MIN};
 use crate::som::{ConfigTeclado, Timbre};
 use std::fmt::Write as _;
 use std::path::Path;
@@ -99,6 +100,83 @@ impl PreferenciasSom {
     }
 }
 
+/// Nome do arquivo das preferências da tela Partitura (na pasta de dados, ao lado das de som;
+/// arquivo separado para que a gravação das preferências de som não o sobrescreva).
+pub const ARQUIVO_PREFERENCIAS_PARTITURA: &str = "preferencias-partitura.txt";
+
+/// Preferências de exibição da tela Partitura.
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub struct PreferenciasPartitura {
+    pub modo: ModoRolagem,
+    pub papel_branco: bool,
+    pub seguir: bool,
+    pub zoom: f32,
+}
+
+impl Default for PreferenciasPartitura {
+    fn default() -> Self {
+        Self {
+            modo: ModoRolagem::Sistemas,
+            papel_branco: false,
+            seguir: true,
+            zoom: 1.0,
+        }
+    }
+}
+
+impl PreferenciasPartitura {
+    pub fn para_texto(&self) -> String {
+        let mut s = String::from("# Piano Tutor: preferências da partitura v1\n");
+        let _ = writeln!(s, "rolagem={}", self.modo.chave());
+        let _ = writeln!(s, "papel_branco={}", u8::from(self.papel_branco));
+        let _ = writeln!(s, "seguir={}", u8::from(self.seguir));
+        let _ = writeln!(s, "zoom={:.3}", self.zoom);
+        s
+    }
+
+    /// Lê o texto; chaves desconhecidas ou valores inválidos ficam no padrão.
+    pub fn de_texto(t: &str) -> Self {
+        let mut p = Self::default();
+        let booleano = |v: &str, atual: bool| match v {
+            "1" | "true" => true,
+            "0" | "false" => false,
+            _ => atual,
+        };
+        for l in t.lines() {
+            let Some((k, v)) = l.trim().split_once('=') else {
+                continue;
+            };
+            let v = v.trim();
+            match k.trim() {
+                "rolagem" => p.modo = ModoRolagem::de_chave(v).unwrap_or(p.modo),
+                "papel_branco" => p.papel_branco = booleano(v, p.papel_branco),
+                "seguir" => p.seguir = booleano(v, p.seguir),
+                "zoom" => {
+                    p.zoom = v
+                        .parse::<f32>()
+                        .ok()
+                        .filter(|x| x.is_finite())
+                        .map_or(p.zoom, |x| x.clamp(ZOOM_MIN, ZOOM_MAX));
+                }
+                _ => {}
+            }
+        }
+        p
+    }
+
+    pub fn ler(caminho: &Path) -> Option<Self> {
+        let t = std::fs::read_to_string(caminho).ok()?;
+        (t.len() <= 16 * 1024).then(|| Self::de_texto(&t))
+    }
+
+    pub fn gravar(&self, caminho: &Path) -> std::io::Result<()> {
+        if let Some(p) = caminho.parent() {
+            std::fs::create_dir_all(p)?;
+        }
+        std::fs::write(caminho, self.para_texto())
+    }
+}
+
 #[cfg(test)]
 mod testes {
     use super::*;
@@ -131,5 +209,29 @@ mod testes {
         let p = PreferenciasSom::de_texto("timbre=x\nvolume=NaN\ntransposicao=99\nreverb=abc");
         assert_eq!(p.timbre, Timbre::PIANO);
         assert_eq!(p.teclado.transposicao, 0);
+    }
+
+    #[test]
+    fn partitura_ida_e_volta_padrao_e_lixo() {
+        let p = PreferenciasPartitura {
+            modo: ModoRolagem::Fita,
+            papel_branco: true,
+            seguir: false,
+            zoom: 1.5,
+        };
+        assert_eq!(PreferenciasPartitura::de_texto(&p.para_texto()), p);
+        // Arquivo antigo ou vazio: padrões; chaves desconhecidas e valores inválidos ignorados.
+        assert_eq!(
+            PreferenciasPartitura::de_texto(""),
+            PreferenciasPartitura::default()
+        );
+        let q = PreferenciasPartitura::de_texto(
+            "futuro=1\nrolagem=xyz\npapel_branco=talvez\nseguir=0\nzoom=NaN",
+        );
+        assert_eq!(q.modo, ModoRolagem::Sistemas);
+        assert!(!q.papel_branco);
+        assert!(!q.seguir);
+        assert_eq!(q.zoom, 1.0);
+        assert_eq!(PreferenciasPartitura::de_texto("zoom=99").zoom, ZOOM_MAX);
     }
 }

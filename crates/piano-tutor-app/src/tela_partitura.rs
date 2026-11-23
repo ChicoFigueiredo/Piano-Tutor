@@ -7,8 +7,10 @@
 //! `agora + ANTECEDENCIA`) e [`EstadoPartitura::tocando`] para saber se há reprodução.
 
 use crate::partitura_visual::{
-    Destaque, EstadoVisual, Marcas, OpcoesVisuais, ZOOM_MAX, ZOOM_MIN, desenhar_partitura,
+    Destaque, EstadoVisual, Marcas, ModoRolagem, OpcoesVisuais, ZOOM_MAX, ZOOM_MIN,
+    desenhar_partitura,
 };
+use crate::preferencias::{ARQUIVO_PREFERENCIAS_PARTITURA, PreferenciasPartitura};
 use crate::som::{EstadoSom, ServicoSom};
 use bancada_casca::egui::{self, Button, ComboBox, Key, RichText, Slider, TextEdit, Ui};
 use piano_tutor_core::NotaMidi;
@@ -169,6 +171,13 @@ pub struct EstadoPartitura {
     pub zoom: f32,
     pub bpm: f32,
     pub seguir: bool,
+    /// Como a vista acompanha a execução (sistema a sistema ou fita contínua).
+    pub modo_rolagem: ModoRolagem,
+    /// Papel branco com tinta escura mesmo no tema Noite.
+    pub papel_branco: bool,
+    /// Arquivo onde as preferências de exibição são gravadas (sem pasta de dados, não grava).
+    arquivo_preferencias: Option<PathBuf>,
+    preferencias_gravadas: PreferenciasPartitura,
     visual: EstadoVisual,
     compasso_inicial: Option<usize>,
     reproducao: Option<Reproducao>,
@@ -217,6 +226,13 @@ impl EstadoPartitura {
                 indice_embutida: i,
             })
             .collect();
+        let arquivo_preferencias = pasta_assets
+            .as_ref()
+            .map(|p| p.join(ARQUIVO_PREFERENCIAS_PARTITURA));
+        let prefs = arquivo_preferencias
+            .as_deref()
+            .and_then(PreferenciasPartitura::ler)
+            .unwrap_or_default();
         if let Some(pasta) = pasta_assets {
             let alvo = if pasta.join("partituras").is_dir() {
                 pasta.join("partituras")
@@ -263,9 +279,13 @@ impl EstadoPartitura {
             nome: String::new(),
             erro: None,
             aviso: None,
-            zoom: 1.0,
+            zoom: prefs.zoom,
             bpm: BPM_PADRAO,
-            seguir: true,
+            seguir: prefs.seguir,
+            modo_rolagem: prefs.modo,
+            papel_branco: prefs.papel_branco,
+            arquivo_preferencias,
+            preferencias_gravadas: prefs,
             visual: EstadoVisual::default(),
             compasso_inicial: None,
             reproducao: None,
@@ -303,6 +323,27 @@ impl EstadoPartitura {
         self.compasso_inicial = None;
         self.visual.invalidar();
         Ok(())
+    }
+
+    fn preferencias_visuais(&self) -> PreferenciasPartitura {
+        PreferenciasPartitura {
+            modo: self.modo_rolagem,
+            papel_branco: self.papel_branco,
+            seguir: self.seguir,
+            zoom: self.zoom,
+        }
+    }
+
+    /// Grava as preferências de exibição quando mudam (sem pasta de dados, não grava).
+    fn salvar_preferencias(&mut self) {
+        let atual = self.preferencias_visuais();
+        if atual == self.preferencias_gravadas {
+            return;
+        }
+        if let Some(c) = &self.arquivo_preferencias {
+            let _ = atual.gravar(c);
+        }
+        self.preferencias_gravadas = atual;
     }
 
     /// Escolhe uma fonte da lista (para a reprodução, se houver).
@@ -579,6 +620,8 @@ pub fn desenhar_tela(ui: &mut Ui, e: &mut EstadoPartitura, som: &mut ServicoSom)
         OpcoesVisuais {
             zoom: e.zoom,
             seguir: e.seguir,
+            modo: e.modo_rolagem,
+            papel_branco: e.papel_branco,
         },
         Marcas {
             destaque,
@@ -705,7 +748,27 @@ fn desenhar_transporte(ui: &mut Ui, e: &mut EstadoPartitura, som: &mut ServicoSo
             e.zoom = 1.5;
         }
         ui.checkbox(&mut e.seguir, "Seguir a execução");
+        ui.separator();
+        ComboBox::from_id_salt("modo-rolagem")
+            .selected_text(format!("Rolagem: {}", e.modo_rolagem.rotulo()))
+            .show_ui(ui, |ui| {
+                for m in ModoRolagem::TODOS {
+                    ui.selectable_value(&mut e.modo_rolagem, m, m.rotulo());
+                }
+            })
+            .response
+            .on_hover_text(
+                "Sistema a sistema: a vista salta para o sistema atual (no topo, com o seguinte \
+                 logo abaixo).\nFita contínua: a peça vira uma linha só, que rola na horizontal \
+                 com o cursor parado a 1/3 da largura.",
+            );
+        ui.checkbox(&mut e.papel_branco, "Papel branco")
+            .on_hover_text("Partitura sempre em papel branco, mesmo com o tema Noite");
     });
+    // Não grava a cada quadro enquanto o slider de zoom é arrastado.
+    if !ui.input(|i| i.pointer.any_down()) {
+        e.salvar_preferencias();
+    }
 }
 
 fn desenhar_exportacao(ui: &mut Ui, e: &mut EstadoPartitura) {

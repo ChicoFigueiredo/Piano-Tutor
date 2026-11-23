@@ -53,6 +53,10 @@ const SEMINIMA_LARGURA: f32 = 4.8;
 const POR_DOBRO: f32 = 1.5;
 const ESTICAR_MAX: f32 = 1.9;
 const ESTICAR_ULTIMO: f32 = 1.25;
+/// Folga (sp) ao redor da região visível antes de descartar uma primitiva (textos largos).
+const MARGEM_CORTE_SP: f32 = 8.0;
+/// Fração da largura visível onde fica o cursor na fita contínua.
+pub const FRACAO_CURSOR_FITA: f32 = 1.0 / 3.0;
 
 // --- Paleta --------------------------------------------------------------------------------
 
@@ -1654,8 +1658,19 @@ struct SistemaTrabalho {
     esticar: f32,
 }
 
-/// Diagrama a partitura para uma largura disponível, em sp.
+/// Diagrama a partitura para uma largura disponível, em sp, quebrando em sistemas.
 pub fn calcular_layout(p: &Partitura, largura_sp: f32) -> Layout {
+    calcular_layout_com(p, largura_sp, false)
+}
+
+/// Diagrama a partitura como **fita contínua**: um único sistema sem quebras de linha, na
+/// largura natural dos compassos (sem esticar). Clave e armadura só aparecem no início e onde
+/// mudam. `Layout::largura` é a largura total da fita, em sp.
+pub fn calcular_layout_fita(p: &Partitura) -> Layout {
+    calcular_layout_com(p, LARGURA_MINIMA, true)
+}
+
+fn calcular_layout_com(p: &Partitura, largura_sp: f32, fita: bool) -> Layout {
     let largura = largura_sp.max(LARGURA_MINIMA);
     let n_comp = p.compassos.len();
     let pautas: Vec<PautaGlobal> = p
@@ -1719,7 +1734,11 @@ pub fn calcular_layout(p: &Partitura, largura_sp: f32) -> Layout {
     };
 
     // Quebra de sistemas.
-    let disponivel = largura - MARGEM_ESQUERDA - MARGEM_DIREITA;
+    let disponivel = if fita {
+        f32::INFINITY
+    } else {
+        largura - MARGEM_ESQUERDA - MARGEM_DIREITA
+    };
     let mut trabalho: Vec<SistemaTrabalho> = Vec::new();
     let mut i = 0;
     while i < n_comp {
@@ -1750,7 +1769,7 @@ pub fn calcular_layout(p: &Partitura, largura_sp: f32) -> Layout {
         } else {
             1.0
         };
-        r = r.clamp(0.6, ESTICAR_MAX);
+        r = if fita { 1.0 } else { r.clamp(0.6, ESTICAR_MAX) };
         trabalho.push(SistemaTrabalho {
             primeiro: i,
             fim: j,
@@ -1759,7 +1778,9 @@ pub fn calcular_layout(p: &Partitura, largura_sp: f32) -> Layout {
         i = j;
     }
     let ultimo = trabalho.len().saturating_sub(1);
-    if let Some(u) = trabalho.get_mut(ultimo) {
+    if let Some(u) = trabalho.get_mut(ultimo)
+        && !fita
+    {
         u.esticar = u.esticar.min(ESTICAR_ULTIMO);
     }
 
@@ -2061,6 +2082,11 @@ pub fn calcular_layout(p: &Partitura, largura_sp: f32) -> Layout {
         })
         .collect();
     let altura = sistemas.last().map_or(10.0, |s| s.y_base + 4.0);
+    let largura = if fita {
+        sistemas.last().map_or(largura, |s| s.x1 + MARGEM_DIREITA)
+    } else {
+        largura
+    };
     Layout {
         largura,
         altura,
@@ -2160,7 +2186,13 @@ pub fn pintar_itens(
     com_texto: bool,
 ) {
     let px = |p: Pos2| pos2(origem.x + p.x * esp, origem.y + p.y * esp);
+    // Só pinta o que cruza a região visível (a fita contínua tem milhares de primitivas).
+    let corte = painter.clip_rect().expand(MARGEM_CORTE_SP * esp);
     for it in itens {
+        let lim = it.forma.limites();
+        if !corte.intersects(Rect::from_min_max(px(lim.min), px(lim.max))) {
+            continue;
+        }
         let cor = cor_do_item(it, pal, destaque);
         match &it.forma {
             Forma::Linha { a, b, espessura } => {
@@ -2238,10 +2270,12 @@ pub fn pintar_itens(
     }
 }
 
+type ChaveLayout = (u32, u32, ModoRolagem);
+
 /// Estado persistente do componente (cache do layout e rolagem).
 #[derive(Default)]
 pub struct EstadoVisual {
-    cache: Option<(u32, u32, u64, Arc<Layout>)>,
+    cache: Option<(ChaveLayout, u64, Arc<Layout>)>,
     versao: u64,
     ultimo_sistema: Option<usize>,
     /// Último layout calculado (para testes e consultas).
@@ -2258,11 +2292,48 @@ impl EstadoVisual {
     }
 }
 
+/// Como a partitura acompanha a execução.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Hash)]
+pub enum ModoRolagem {
+    /// Sistemas empilhados; ao chegar ao seguinte a vista salta para ele (atual no topo).
+    #[default]
+    Sistemas,
+    /// Um único sistema comprido, rolado na horizontal com o cursor parado a 1/3 da largura.
+    Fita,
+}
+
+impl ModoRolagem {
+    pub const TODOS: [ModoRolagem; 2] = [ModoRolagem::Sistemas, ModoRolagem::Fita];
+
+    pub fn rotulo(self) -> &'static str {
+        match self {
+            ModoRolagem::Sistemas => "Sistema a sistema",
+            ModoRolagem::Fita => "Fita contínua",
+        }
+    }
+
+    /// Nome estável usado nas preferências salvas.
+    pub fn chave(self) -> &'static str {
+        match self {
+            ModoRolagem::Sistemas => "sistemas",
+            ModoRolagem::Fita => "fita",
+        }
+    }
+
+    pub fn de_chave(s: &str) -> Option<Self> {
+        Self::TODOS.into_iter().find(|m| m.chave() == s.trim())
+    }
+}
+
 /// Opções de exibição.
 #[derive(Clone, Copy, Debug)]
 pub struct OpcoesVisuais {
     pub zoom: f32,
+    /// Acompanhar a execução (rolagem automática).
     pub seguir: bool,
+    pub modo: ModoRolagem,
+    /// Força a paleta clara (papel branco, tinta escura) mesmo com o tema Noite.
+    pub papel_branco: bool,
 }
 
 impl Default for OpcoesVisuais {
@@ -2270,6 +2341,8 @@ impl Default for OpcoesVisuais {
         Self {
             zoom: 1.0,
             seguir: true,
+            modo: ModoRolagem::Sistemas,
+            papel_branco: false,
         }
     }
 }
@@ -2298,90 +2371,98 @@ pub fn desenhar_partitura(
 ) -> RespostaPartitura {
     let zoom = opc.zoom.clamp(ZOOM_MIN, ZOOM_MAX);
     let esp = ESP_BASE_PX * zoom;
+    let fita = opc.modo == ModoRolagem::Fita;
     let largura_px = (ui.available_width() - 12.0).max(120.0);
+    let altura_vista = ui.available_height();
     let largura_sp = (largura_px / esp).max(LARGURA_MINIMA);
-    let chave = (
-        (largura_sp * 8.0).round() as u32,
+    // Na fita a largura da vista não muda o layout: a chave só distingue o modo.
+    let chave: ChaveLayout = (
+        if fita {
+            0
+        } else {
+            (largura_sp * 8.0).round() as u32
+        },
         (zoom * 1000.0).round() as u32,
+        opc.modo,
     );
     let layout = match &estado.cache {
-        Some((a, b, v, l)) if (*a, *b) == chave && *v == estado.versao => l.clone(),
+        Some((k, v, l)) if *k == chave && *v == estado.versao => l.clone(),
         _ => {
-            let l = Arc::new(calcular_layout(p, largura_sp));
-            estado.cache = Some((chave.0, chave.1, estado.versao, l.clone()));
+            let l = Arc::new(if fita {
+                calcular_layout_fita(p)
+            } else {
+                calcular_layout(p, largura_sp)
+            });
+            estado.cache = Some((chave, estado.versao, l.clone()));
+            estado.ultimo_sistema = None;
             l
         }
     };
     estado.ultimo_layout = Some(layout.clone());
-    let pal = Paleta::para_tema(ui.visuals().dark_mode);
+    let pal = Paleta::para_tema(ui.visuals().dark_mode && !opc.papel_branco);
     let mut resposta = RespostaPartitura::default();
-    ScrollArea::both()
-        .id_salt("partitura-rolagem")
-        .auto_shrink([false, false])
-        .show(ui, |ui| {
-            let tamanho = vec2(layout.largura * esp, layout.altura * esp + 8.0);
-            let (resp, painter) = ui.allocate_painter(tamanho, Sense::click());
-            let origem = resp.rect.min;
-            painter.rect_filled(resp.rect, 4.0, pal.papel);
-            let visivel = ui.clip_rect();
-            for (i, s) in layout.sistemas.iter().enumerate() {
-                let faixa = Rect::from_min_max(
-                    pos2(origem.x, origem.y + (s.y_topo - 6.0) * esp),
-                    pos2(
-                        origem.x + layout.largura * esp,
-                        origem.y + (s.y_base + 6.0) * esp,
-                    ),
+    let mut area = ScrollArea::both()
+        .id_salt(if fita {
+            "partitura-fita"
+        } else {
+            "partitura-rolagem"
+        })
+        .auto_shrink([false, false]);
+    if fita
+        && opc.seguir
+        && let Some(d) = marcas.destaque
+        && let Some(x) = layout.x_no_compasso(d.compasso, d.tempo)
+    {
+        // Cursor parado a 1/3 da largura visível: a fita é que anda, a cada quadro.
+        area = area.horizontal_scroll_offset((x * esp - largura_px * FRACAO_CURSOR_FITA).max(0.0));
+    }
+    area.show(ui, |ui| {
+        let altura_px = layout.altura * esp + 8.0;
+        let tamanho = vec2(
+            layout.largura * esp,
+            if fita {
+                altura_px.max(altura_vista)
+            } else {
+                altura_px
+            },
+        );
+        let (resp, painter) = ui.allocate_painter(tamanho, Sense::click());
+        // Na fita o sistema fica centrado na vertical, sobre o papel que ocupa a vista.
+        let origem = resp.rect.min + vec2(0.0, ((tamanho.y - altura_px) / 2.0).max(0.0).floor());
+        painter.rect_filled(resp.rect, 4.0, pal.papel);
+        let visivel = ui.clip_rect();
+        for (i, s) in layout.sistemas.iter().enumerate() {
+            let faixa = Rect::from_min_max(
+                pos2(origem.x, origem.y + (s.y_topo - 6.0) * esp),
+                pos2(
+                    origem.x + layout.largura * esp,
+                    origem.y + (s.y_base + 6.0) * esp,
+                ),
+            );
+            let _ = i;
+            if !faixa.intersects(visivel) {
+                continue;
+            }
+            // Seleção e compasso atual.
+            for c in s.primeiro..s.fim {
+                let cl = &layout.compassos[c];
+                let r = Rect::from_min_max(
+                    pos2(origem.x + cl.x0 * esp, origem.y + (s.y_topo - 1.0) * esp),
+                    pos2(origem.x + cl.x1 * esp, origem.y + (s.y_base + 1.0) * esp),
                 );
-                let _ = i;
-                if !faixa.intersects(visivel) {
-                    continue;
-                }
-                // Seleção e compasso atual.
-                for c in s.primeiro..s.fim {
-                    let cl = &layout.compassos[c];
-                    let r = Rect::from_min_max(
-                        pos2(origem.x + cl.x0 * esp, origem.y + (s.y_topo - 1.0) * esp),
-                        pos2(origem.x + cl.x1 * esp, origem.y + (s.y_base + 1.0) * esp),
-                    );
-                    if marcas.selecionado == Some(c) {
-                        painter.rect_filled(
-                            r,
-                            2.0,
-                            Color32::from_rgba_unmultiplied(
-                                pal.esquerda.r(),
-                                pal.esquerda.g(),
-                                pal.esquerda.b(),
-                                26,
-                            ),
-                        );
-                    }
-                    if marcas.destaque.map(|d| d.compasso) == Some(c) {
-                        painter.rect_filled(
-                            r,
-                            2.0,
-                            Color32::from_rgba_unmultiplied(
-                                pal.direita.r(),
-                                pal.direita.g(),
-                                pal.direita.b(),
-                                14,
-                            ),
-                        );
-                    }
-                }
-                if let Some(d) = marcas.destaque
-                    && (s.primeiro..s.fim).contains(&d.compasso)
-                    && let Some(x) = layout.x_no_compasso(d.compasso, d.tempo)
-                {
-                    let r = Rect::from_min_max(
-                        pos2(
-                            origem.x + (x - 1.1) * esp,
-                            origem.y + (s.y_topo - 1.5) * esp,
-                        ),
-                        pos2(
-                            origem.x + (x + 1.1) * esp,
-                            origem.y + (s.y_base + 1.5) * esp,
+                if marcas.selecionado == Some(c) {
+                    painter.rect_filled(
+                        r,
+                        2.0,
+                        Color32::from_rgba_unmultiplied(
+                            pal.esquerda.r(),
+                            pal.esquerda.g(),
+                            pal.esquerda.b(),
+                            26,
                         ),
                     );
+                }
+                if marcas.destaque.map(|d| d.compasso) == Some(c) {
                     painter.rect_filled(
                         r,
                         2.0,
@@ -2389,36 +2470,65 @@ pub fn desenhar_partitura(
                             pal.direita.r(),
                             pal.direita.g(),
                             pal.direita.b(),
-                            38,
+                            14,
                         ),
                     );
                 }
-                pintar_itens(&painter, origem, esp, &s.itens, &pal, marcas.destaque, true);
             }
             if let Some(d) = marcas.destaque
-                && opc.seguir
+                && (s.primeiro..s.fim).contains(&d.compasso)
+                && let Some(x) = layout.x_no_compasso(d.compasso, d.tempo)
             {
-                let atual = layout.compassos.get(d.compasso).map(|c| c.sistema);
-                if atual.is_some() && atual != estado.ultimo_sistema {
-                    if let Some(s) = atual.and_then(|i| layout.sistemas.get(i)) {
-                        let r = Rect::from_min_max(
-                            pos2(origem.x, origem.y + (s.y_topo - 3.0) * esp),
-                            pos2(origem.x + 10.0, origem.y + (s.y_base + 3.0) * esp),
-                        );
-                        ui.scroll_to_rect(r, Some(Align::Center));
-                    }
-                    estado.ultimo_sistema = atual;
+                let r = Rect::from_min_max(
+                    pos2(
+                        origem.x + (x - 1.1) * esp,
+                        origem.y + (s.y_topo - 1.5) * esp,
+                    ),
+                    pos2(
+                        origem.x + (x + 1.1) * esp,
+                        origem.y + (s.y_base + 1.5) * esp,
+                    ),
+                );
+                painter.rect_filled(
+                    r,
+                    2.0,
+                    Color32::from_rgba_unmultiplied(
+                        pal.direita.r(),
+                        pal.direita.g(),
+                        pal.direita.b(),
+                        38,
+                    ),
+                );
+            }
+            pintar_itens(&painter, origem, esp, &s.itens, &pal, marcas.destaque, true);
+        }
+        if let Some(d) = marcas.destaque
+            && opc.seguir
+            && !fita
+        {
+            let atual = layout.compassos.get(d.compasso).map(|c| c.sistema);
+            if atual.is_some() && atual != estado.ultimo_sistema {
+                if let Some(s) = atual.and_then(|i| layout.sistemas.get(i)) {
+                    // Sistema atual no topo (com folga para número de compasso e casas):
+                    // o seguinte fica visível logo abaixo, para o leitor olhar adiante.
+                    let r = Rect::from_min_max(
+                        pos2(origem.x, origem.y + (s.y_topo - 4.0) * esp),
+                        pos2(origem.x + 10.0, origem.y + (s.y_base + 3.0) * esp),
+                    );
+                    ui.scroll_to_rect(r, Some(Align::Min));
                 }
-            } else if marcas.destaque.is_none() {
-                estado.ultimo_sistema = None;
+                estado.ultimo_sistema = atual;
             }
-            if resp.clicked()
-                && let Some(pos) = resp.interact_pointer_pos()
-            {
-                let (x, y) = ((pos.x - origem.x) / esp, (pos.y - origem.y) / esp);
-                resposta.compasso_clicado = layout.compasso_em(x, y);
-            }
-        });
+        } else if marcas.destaque.is_none() {
+            estado.ultimo_sistema = None;
+        }
+        if resp.clicked()
+            && let Some(pos) = resp.interact_pointer_pos()
+        {
+            let (x, y) = ((pos.x - origem.x) / esp, (pos.y - origem.y) / esp);
+            resposta.compasso_clicado = layout.compasso_em(x, y);
+        }
+    });
     resposta
 }
 
@@ -2672,7 +2782,10 @@ mod testes {
                 ui,
                 p,
                 est,
-                OpcoesVisuais { zoom, seguir: true },
+                OpcoesVisuais {
+                    zoom,
+                    ..OpcoesVisuais::default()
+                },
                 Marcas {
                     destaque,
                     selecionado: Some(1),
@@ -2700,6 +2813,183 @@ mod testes {
                 quadro(&ctx, &p, &mut est, zoom, Some(d));
             }
         }
+    }
+
+    #[test]
+    fn fita_e_um_unico_sistema_com_todos_os_compassos_em_x_crescente() {
+        for i in 0..3 {
+            let p = Partitura::de_musicxml(arq(i)).expect("válida");
+            let l = calcular_layout_fita(&p);
+            assert_eq!(l.sistemas.len(), 1, "arquivo {i}");
+            let s = &l.sistemas[0];
+            assert_eq!((s.primeiro, s.fim), (0, p.compassos.len()));
+            assert_eq!(l.compassos.len(), p.compassos.len());
+            let mut x = s.x0;
+            for (m, cl) in l.compassos.iter().enumerate() {
+                assert_eq!(cl.sistema, 0);
+                assert!(cl.x1 > cl.x0, "arquivo {i} compasso {m}");
+                assert!(cl.x0 >= x - 1e-3, "arquivo {i} compasso {m}: x não cresce");
+                x = cl.x1;
+                // Colunas dentro do compasso e em ordem crescente.
+                assert!(cl.colunas.windows(2).all(|c| c[0].1 <= c[1].1));
+                assert!(
+                    cl.colunas
+                        .iter()
+                        .all(|(_, cx)| *cx >= cl.x0 && *cx <= cl.x1)
+                );
+            }
+            assert!((s.x1 - x).abs() < 1e-3);
+            assert!((l.largura - (s.x1 + MARGEM_DIREITA)).abs() < 1e-3);
+            // Todas as notas com altura continuam presentes.
+            let esperado: usize = p
+                .partes
+                .iter()
+                .flat_map(|x| &x.compassos)
+                .flat_map(|c| &c.notas)
+                .filter(|n| n.altura.is_some())
+                .count();
+            assert_eq!(cabecas(&l).len(), esperado, "arquivo {i}");
+        }
+    }
+
+    #[test]
+    fn fita_e_mais_larga_que_a_quebra_em_sistemas() {
+        let p = Partitura::de_musicxml(arq(0)).expect("válida");
+        let fita = calcular_layout_fita(&p);
+        let largo = calcular_layout(&p, 160.0);
+        assert!(fita.largura > largo.largura);
+    }
+
+    #[test]
+    fn fita_vazia_ou_minima_nao_quebra_e_cursor_e_clique_funcionam() {
+        let p = Partitura::de_musicxml(MINIMA).expect("válida");
+        let l = calcular_layout_fita(&p);
+        assert_eq!(l.sistemas.len(), 1);
+        let p = Partitura::de_musicxml(arq(1)).expect("válida");
+        let l = calcular_layout_fita(&p);
+        let x0 = l.x_no_compasso(2, 0.0).expect("x");
+        let x1 = l.x_no_compasso(2, 1.0).expect("x");
+        assert!(x1 > x0);
+        let cl = &l.compassos[5];
+        let s = &l.sistemas[0];
+        let achado = l.compasso_em((cl.x0 + cl.x1) / 2.0, (s.y_topo + s.y_base) / 2.0);
+        assert_eq!(achado, Some(5));
+    }
+
+    fn quadro_com(
+        escuro: bool,
+        p: &Partitura,
+        est: &mut EstadoVisual,
+        opc: OpcoesVisuais,
+        destaque: Option<Destaque>,
+    ) -> Vec<Shape> {
+        let ctx = Context::default();
+        let entrada = RawInput {
+            screen_rect: Some(Rect::from_min_size(pos2(0.0, 0.0), vec2(1280.0, 800.0))),
+            ..Default::default()
+        };
+        let mut saida = ctx.run_ui(entrada, |ui| {
+            ui.visuals_mut().dark_mode = escuro;
+            desenhar_partitura(
+                ui,
+                p,
+                est,
+                opc,
+                Marcas {
+                    destaque,
+                    selecionado: Some(1),
+                },
+            );
+        });
+        let formas = std::mem::take(&mut saida.shapes)
+            .into_iter()
+            .map(|c| c.shape)
+            .collect();
+        saida.drop_without_applying_deltas();
+        formas
+    }
+
+    fn cor_do_papel(formas: &[Shape], pal: &Paleta) -> bool {
+        formas
+            .iter()
+            .any(|f| matches!(f, Shape::Rect(r) if r.fill == pal.papel))
+    }
+
+    #[test]
+    fn papel_branco_usa_a_paleta_clara_mesmo_no_tema_noite() {
+        let p = Partitura::de_musicxml(arq(0)).expect("válida");
+        let (escura, clara) = (Paleta::para_tema(true), Paleta::para_tema(false));
+        assert_eq!(clara.papel, Color32::WHITE);
+        let mut est = EstadoVisual::default();
+        let normal = quadro_com(true, &p, &mut est, OpcoesVisuais::default(), None);
+        assert!(cor_do_papel(&normal, &escura));
+        assert!(!cor_do_papel(&normal, &clara));
+        let branco = OpcoesVisuais {
+            papel_branco: true,
+            ..OpcoesVisuais::default()
+        };
+        let f = quadro_com(true, &p, &mut est, branco, None);
+        assert!(cor_do_papel(&f, &clara));
+        assert!(!cor_do_papel(&f, &escura));
+        // No tema Claro o papel branco não muda nada.
+        let f = quadro_com(false, &p, &mut est, branco, None);
+        assert!(cor_do_papel(&f, &clara));
+    }
+
+    #[test]
+    fn sobreposicoes_de_selecao_e_cursor_tem_contraste_no_papel_branco() {
+        // A seleção (azul) e o cursor (âmbar) saem da paleta clara quando o papel é branco,
+        // com opacidade baixa: sobre branco escurecem pouco e a tinta continua legível.
+        let pal = Paleta::para_tema(false);
+        for (cor, alfa) in [(pal.esquerda, 26u8), (pal.direita, 38)] {
+            let a = f32::from(alfa) / 255.0;
+            let mistura = |c: u8| (f32::from(c) * a + 255.0 * (1.0 - a)).round() as u8;
+            let fundo = (mistura(cor.r()), mistura(cor.g()), mistura(cor.b()));
+            // Ainda claro (luminância alta) e bem distante da tinta.
+            let lum = 0.2126 * f32::from(fundo.0)
+                + 0.7152 * f32::from(fundo.1)
+                + 0.0722 * f32::from(fundo.2);
+            assert!(lum > 190.0, "fundo da sobreposição muito escuro: {lum}");
+        }
+    }
+
+    #[test]
+    fn modos_de_rolagem_desenham_e_o_cache_distingue_o_modo() {
+        let p = Partitura::de_musicxml(arq(1)).expect("válida");
+        let mut est = EstadoVisual::default();
+        let d = Destaque {
+            compasso: 5,
+            tempo: 0.5,
+        };
+        let sistemas = quadro_com(false, &p, &mut est, OpcoesVisuais::default(), Some(d));
+        assert!(sistemas.len() > 10);
+        let n_sistemas = est.ultimo_layout.as_ref().expect("layout").sistemas.len();
+        assert!(n_sistemas > 1);
+        let fita = OpcoesVisuais {
+            modo: ModoRolagem::Fita,
+            ..OpcoesVisuais::default()
+        };
+        let f = quadro_com(false, &p, &mut est, fita, Some(d));
+        assert!(f.len() > 10);
+        assert_eq!(
+            est.ultimo_layout.as_ref().expect("layout").sistemas.len(),
+            1
+        );
+        // Voltando ao modo anterior o layout com sistemas é recalculado.
+        quadro_com(false, &p, &mut est, OpcoesVisuais::default(), Some(d));
+        assert_eq!(
+            est.ultimo_layout.as_ref().expect("layout").sistemas.len(),
+            n_sistemas
+        );
+    }
+
+    #[test]
+    fn modo_de_rolagem_ida_e_volta_pela_chave() {
+        for m in ModoRolagem::TODOS {
+            assert_eq!(ModoRolagem::de_chave(m.chave()), Some(m));
+        }
+        assert_eq!(ModoRolagem::de_chave("outro"), None);
+        assert_eq!(ModoRolagem::default(), ModoRolagem::Sistemas);
     }
 
     #[test]
@@ -2805,6 +3095,8 @@ mod testes {
                         OpcoesVisuais {
                             zoom,
                             seguir: false,
+                            papel_branco: std::env::var("PT_PARTITURA_PAPEL_BRANCO").is_ok(),
+                            ..OpcoesVisuais::default()
                         },
                         Marcas {
                             destaque: Some(Destaque {
