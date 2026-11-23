@@ -306,13 +306,13 @@ fn rotacionar(mascara: u16, raiz: u8) -> u16 {
     (((m >> r) | (m << (12 - r))) & 0xFFF) as u16
 }
 
-/// Identifica o acorde de um conjunto de notas simultâneas. Exige ao menos duas classes de
-/// altura distintas. Prefere a leitura cuja fundamental é o baixo (estado fundamental); senão,
+/// Identifica o acorde de um conjunto de notas simultâneas. Exige ao menos três classes de
+/// altura distintas: duas notas são um intervalo, não um acorde (nem "quinta" tipo C5). Prefere a leitura cuja fundamental é o baixo (estado fundamental); senão,
 /// a primeira qualidade de [`Qualidade::TODAS`] que casa exatamente. Sem casamento exato,
 /// devolve `None` (não impõe rótulo).
 pub fn identificar_acorde(notas: &[NotaMidi]) -> Option<Acorde> {
     let mascara = mascara_de(notas);
-    if mascara.count_ones() < 2 {
+    if mascara.count_ones() < 3 {
         return None;
     }
     let baixo = ClasseAltura::de_nota(*notas.iter().min_by_key(|n| n.numero())?);
@@ -801,7 +801,6 @@ mod testes {
             (&[60, 62, 67], "Csus2"),
             (&[59, 62, 65, 69], "Bm7(b5)"),
             (&[59, 62, 65, 68], "Bdim7"),
-            (&[48, 55], "C5"),
             (&[58, 62, 65], "Bb"),
         ];
         for (notas, esperado) in casos {
@@ -820,6 +819,7 @@ mod testes {
     fn sem_rotulo_quando_nao_ha_casamento() {
         assert_eq!(identificar_acorde(&ns(&[60])), None);
         assert_eq!(identificar_acorde(&ns(&[60, 72])), None);
+        assert_eq!(identificar_acorde(&ns(&[48, 55])), None, "duas notas não são acorde (C5)");
         assert_eq!(identificar_acorde(&ns(&[60, 61, 62])), None);
         assert_eq!(identificar_acorde(&[]), None);
     }
@@ -828,6 +828,9 @@ mod testes {
     fn construir_acorde_e_inversoes_e_reidentificar() {
         for raiz in 0..12u8 {
             for q in Qualidade::TODAS {
+                if q.intervalos().len() < 3 {
+                    continue; // "5" (power chord) é intervalo: não é identificado como acorde.
+                }
                 let a = Acorde::novo(ClasseAltura::nova(raiz), q);
                 let base = n(48);
                 for inv in 0..q.intervalos().len() {
