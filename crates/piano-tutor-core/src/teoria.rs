@@ -790,7 +790,7 @@ mod testes {
 
     #[test]
     fn qualidades_comuns() {
-        let casos: [(&[u8], &str); 12] = [
+        let casos: [(&[u8], &str); 11] = [
             (&[57, 60, 64], "Am"),
             (&[55, 59, 62, 65], "G7"),
             (&[60, 64, 67, 71], "C7M"),
