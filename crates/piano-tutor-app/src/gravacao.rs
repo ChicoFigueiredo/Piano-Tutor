@@ -43,6 +43,8 @@ pub const TAMANHO_MAX_ARQUIVO: u64 = 4 * 1024 * 1024;
 pub const EVENTOS_MAX: usize = 500_000;
 /// Maior número de trilhas lidas de um arquivo.
 pub const TRILHAS_MAX: usize = 256;
+/// Máximo de eventos agendados de uma vez por [`agendar_gravacao`].
+pub const REPLAY_EVENTOS_MAX: usize = 256;
 /// Quanto à frente a reprodução agenda.
 pub const ANTECEDENCIA: Duration = Duration::from_millis(150);
 /// Atraso entre apertar "Tocar" e o primeiro som.
@@ -733,6 +735,47 @@ struct Captura {
     pedal: [bool; 16],
 }
 
+impl Captura {
+    /// Cópia finalizada da captura: eventos em ordem, duração de pelo menos `duracao_min_ns`
+    /// e, no fim, o "soltar" das notas e do pedal que ainda estavam abertos.
+    fn para_gravacao(&self, duracao_min_ns: u64) -> Gravacao {
+        let mut eventos = self.eventos.clone();
+        eventos.sort_by_key(|e| e.t_ns);
+        let mut duracao = duracao_min_ns;
+        if let Some(u) = eventos.last() {
+            duracao = duracao.max(u.t_ns);
+        }
+        for &(canal, nota) in &self.ligadas {
+            eventos.push(EventoGravado {
+                t_ns: duracao,
+                msg: Mensagem::NotaDesligada {
+                    canal,
+                    nota,
+                    velocidade: 0,
+                },
+            });
+        }
+        for (canal, baixo) in self.pedal.iter().enumerate() {
+            if *baixo {
+                eventos.push(EventoGravado {
+                    t_ns: duracao,
+                    msg: Mensagem::Controle {
+                        canal: canal as u8,
+                        controle: CC_SUSTAIN,
+                        valor: 0,
+                    },
+                });
+            }
+        }
+        Gravacao {
+            nome: String::new(),
+            eventos,
+            tempos: Vec::new(),
+            duracao_ns: duracao,
+        }
+    }
+}
+
 #[derive(Debug)]
 struct Tocando {
     take: usize,
@@ -929,40 +972,7 @@ impl EstadoGravacao {
             self.mensagem = Some("Contagem cancelada.".to_owned());
             return;
         }
-        let mut eventos = c.eventos;
-        eventos.sort_by_key(|e| e.t_ns);
-        let mut duracao = agora_ns - c.t0_ns;
-        if let Some(u) = eventos.last() {
-            duracao = duracao.max(u.t_ns);
-        }
-        for (canal, nota) in c.ligadas {
-            eventos.push(EventoGravado {
-                t_ns: duracao,
-                msg: Mensagem::NotaDesligada {
-                    canal,
-                    nota,
-                    velocidade: 0,
-                },
-            });
-        }
-        for (canal, baixo) in c.pedal.iter().enumerate() {
-            if *baixo {
-                eventos.push(EventoGravado {
-                    t_ns: duracao,
-                    msg: Mensagem::Controle {
-                        canal: canal as u8,
-                        controle: CC_SUSTAIN,
-                        valor: 0,
-                    },
-                });
-            }
-        }
-        let g = Gravacao {
-            nome: String::new(),
-            eventos,
-            tempos: Vec::new(),
-            duracao_ns: duracao,
-        };
+        let g = c.para_gravacao(agora_ns - c.t0_ns);
         if g.total_notas() == 0 {
             self.mensagem = Some("Nada foi gravado: nenhuma nota tocada.".to_owned());
             return;
@@ -1207,18 +1217,38 @@ impl EstadoGravacao {
         }
     }
 
-    /// Salvamento temporário de recuperação: grava as gravações ainda não salvas em
-    /// `gravacoes/recuperacao/`, sem marcá-las como salvas. Devolve quantas foram escritas.
+    /// Salvamento temporário de recuperação: grava as gravações ainda não salvas, e a captura
+    /// em andamento (cópia finalizada, sem encerrá-la), em `gravacoes/recuperacao/`, sem
+    /// marcá-las como salvas. Devolve quantas foram escritas.
     pub fn salvar_recuperacao(&mut self) -> usize {
         let Some(pasta) = self.pasta_gravacoes().map(|p| p.join("recuperacao")) else {
             return 0;
         };
+        // Lista de (nome, gravação): os takes não salvos e, por último, uma cópia finalizada da
+        // captura em andamento (com pelo menos uma nota), sem encerrá-la.
+        let mut itens: Vec<(String, Gravacao)> = self
+            .takes
+            .iter()
+            .enumerate()
+            .filter(|(_, t)| !t.salvo)
+            .map(|(i, t)| {
+                (
+                    format!("{}-{}.mid", i + 1, nome_seguro(&t.gravacao.nome)),
+                    t.gravacao.clone(),
+                )
+            })
+            .collect();
+        if let Some(c) = &self.captura {
+            let g = c.para_gravacao(0);
+            if g.total_notas() > 0 {
+                itens.push(("gravacao-em-andamento.mid".to_owned(), g));
+            }
+        }
         let mut n = 0;
-        for (i, t) in self.takes.iter().enumerate().filter(|(_, t)| !t.salvo) {
-            let Ok(bytes) = t.gravacao.para_smf() else {
+        for (nome, g) in itens {
+            let Ok(bytes) = g.para_smf() else {
                 continue;
             };
-            let nome = format!("{}-{}.mid", i + 1, nome_seguro(&t.gravacao.nome));
             let ok = std::fs::create_dir_all(&pasta)
                 .and_then(|()| std::fs::write(pasta.join(nome), bytes))
                 .is_ok();
@@ -1418,6 +1448,29 @@ fn avancar(t: &mut Tocando, g: &Gravacao, som: &mut ServicoSom) -> bool {
         t.fim_ns = Some(fim);
     }
     t.fim_ns.is_some_and(|f| agora >= f)
+}
+
+/// Agenda no motor, a partir de `inicio_ns`, todas as notas (e o pedal) de uma gravação no
+/// canal de demonstração, como a reprodução da F06, e solta o que ficar aberto no fim.
+/// Usada pelo feedback dos exercícios ("ouvir de novo o que toquei"). Devolve o instante do
+/// fim. Limita-se aos primeiros [`REPLAY_EVENTOS_MAX`] eventos para não encher a fila do motor.
+pub fn agendar_gravacao(som: &mut ServicoSom, g: &Gravacao, inicio_ns: u64) -> u64 {
+    let mut t = Tocando {
+        take: 0,
+        inicio_ns,
+        pos0_ns: 0,
+        proximo: 0,
+        ligadas: Vec::new(),
+        pedal: false,
+        ultimo_ns: inicio_ns,
+        fim_ns: None,
+    };
+    for e in g.eventos.iter().take(REPLAY_EVENTOS_MAX) {
+        enviar_mensagem(som, inicio_ns.saturating_add(e.t_ns), e.msg, &mut t);
+    }
+    let fim = inicio_ns.saturating_add(g.duracao_ns);
+    cortar_em(som, &mut t, fim);
+    fim
 }
 
 #[cfg(test)]
@@ -2764,5 +2817,99 @@ mod testes {
                 let _ = Gravacao::de_smf(&m, "x");
             }
         }
+    }
+    // --- Recuperação da captura em andamento e replay agendado -----------------------------
+
+    #[test]
+    fn captura_em_andamento_conta_como_nao_salva_e_entra_na_recuperacao() {
+        let pasta = pasta_temp("captura");
+        let relogio = RelogioManual::novo();
+        let (mut som, _motor) = servico_pronto(Arc::new(relogio.clone()) as Arc<dyn Relogio>);
+        let mut e = EstadoGravacao::novo(Some(pasta.clone()));
+        assert!(!e.tem_dados_nao_salvos());
+        e.gravar(&mut som);
+        // Gravando, mas ainda sem nenhum evento: nada a perder.
+        assert!(!e.tem_dados_nao_salvos());
+        assert_eq!(e.salvar_recuperacao(), 0);
+        // Acorde com pedal; nada solto ainda e a gravação segue ativa.
+        e.evento(&cc_ev(0, 64, 127, 100));
+        e.evento(&lig_ev(0, 60, 80, 200));
+        e.evento(&lig_ev(0, 64, 90, 200));
+        e.evento(&des_ev(0, 60, 700));
+        assert!(e.gravando());
+        assert!(e.tem_dados_nao_salvos(), "captura com eventos conta");
+        assert_eq!(e.salvar_recuperacao(), 1);
+        assert!(e.gravando(), "a captura continua ativa");
+        assert!(e.takes.is_empty(), "não vira take nem é marcada como salva");
+        // O rascunho abre como .mid com as notas, o pedal e as notas abertas soltas no fim.
+        let arquivo = pasta
+            .join("gravacoes")
+            .join("recuperacao")
+            .join("gravacao-em-andamento.mid");
+        let g = ler_arquivo(&arquivo).expect("rascunho válido");
+        assert_eq!(g.total_notas(), 2);
+        let m: Vec<Mensagem> = g.eventos.iter().map(|x| x.msg).collect();
+        assert!(m.contains(&pedal(0, 127)));
+        assert!(m.contains(&pedal(0, 0)), "pedal solto no fim");
+        let notas = g.notas();
+        assert_eq!(
+            notas.iter().map(|n| n.nota).collect::<Vec<_>>(),
+            vec![60, 64]
+        );
+        assert!(notas[1].fim_ns > notas[1].inicio_ns, "nota 64 foi solta");
+        // Continuar gravando e recuperar de novo reescreve com o conteúdo novo.
+        e.evento(&lig_ev(0, 67, 70, 900));
+        assert_eq!(e.salvar_recuperacao(), 1);
+        assert_eq!(ler_arquivo(&arquivo).expect("lê").total_notas(), 3);
+        let _ = std::fs::remove_dir_all(pasta);
+    }
+
+    #[test]
+    fn recuperacao_salva_takes_e_captura_juntos() {
+        let pasta = pasta_temp("juntos");
+        let relogio = RelogioManual::novo();
+        let (mut som, _motor) = servico_pronto(Arc::new(relogio.clone()) as Arc<dyn Relogio>);
+        let mut e = EstadoGravacao::novo(Some(pasta.clone()));
+        e.takes.push(Take::nova(simples(), false, None));
+        e.gravar(&mut som);
+        e.evento(&lig_ev(0, 72, 80, 50));
+        assert_eq!(e.salvar_recuperacao(), 2);
+        let dir = pasta.join("gravacoes").join("recuperacao");
+        assert!(dir.join("1-simples.mid").is_file());
+        assert!(dir.join("gravacao-em-andamento.mid").is_file());
+        let _ = std::fs::remove_dir_all(pasta);
+    }
+
+    #[test]
+    fn agendar_gravacao_toca_no_canal_de_demonstracao_e_solta_o_que_ficar_aberto() {
+        let relogio = RelogioManual::novo();
+        let (mut som, motor) = servico_pronto(Arc::new(relogio.clone()) as Arc<dyn Relogio>);
+        motor.renderizar(BLOCO, 0);
+        let mut g = simples();
+        // Nota aberta no arquivo e pedal que ficou apertado.
+        g.eventos.push(ev(550, lig(0, 67, 70)));
+        g.eventos.push(ev(550, pedal(0, 127)));
+        g.duracao_ns = 800 * MS;
+        let inicio = som.agora_ns() + 50 * MS;
+        let fim = agendar_gravacao(&mut som, &g, inicio);
+        assert_eq!(fim, inicio + 800 * MS);
+        motor.renderizar(48_000 * 2, 0);
+        let v = eventos_de_nota(&motor);
+        assert!(v.iter().all(|(_, c, _, _)| *c == CANAL_DEMONSTRACAO));
+        let ordem: Vec<(bool, u8)> = v.iter().map(|(l, _, n, _)| (*l, *n)).collect();
+        assert_eq!(
+            ordem,
+            vec![
+                (true, 60),
+                (true, 64),
+                (false, 60),
+                (false, 64),
+                (true, 67),
+                (false, 67)
+            ]
+        );
+        assert_eq!(motor.notas_ativas(), 0, "a nota aberta foi solta no fim");
+        let d = (v[2].3 - v[0].3) as f64;
+        assert!((d - 300.0 * 48.0).abs() <= 2.0 * BLOCO as f64, "{d} frames");
     }
 }

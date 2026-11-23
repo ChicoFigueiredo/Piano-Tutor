@@ -6,14 +6,18 @@ use crate::exercicios::{
     Classificacao, ConfigExercicios, EstadoExercicios, Fase, JANELA_MAX_MS, JANELA_MIN_MS, Tipo,
     Tom, nome_nota,
 };
+use crate::gravacao::agendar_gravacao;
 use crate::som::ServicoSom;
 use crate::tela_espelho::desenhar_teclado_embutido;
 use bancada_casca::egui::{Button, Color32, RichText, ScrollArea, Slider, Ui, vec2};
 use piano_tutor_core::NotaMidi;
+use piano_tutor_core::ritmo::{BPM_MAX, BPM_MIN};
 use std::time::Duration;
 
 const VERDE: Color32 = Color32::from_rgb(70, 200, 110);
 const VERMELHO: Color32 = Color32::from_rgb(235, 100, 100);
+/// Quantos erros a tela lista de uma vez.
+const MAX_ERROS_NA_TELA: usize = 8;
 const AMARELO: Color32 = Color32::from_rgb(230, 190, 70);
 
 fn cor_do_tom(t: Tom) -> Option<Color32> {
@@ -48,6 +52,16 @@ fn ouvir(som: &mut ServicoSom, e: &EstadoExercicios) {
     }
 }
 
+/// Toca de novo o que o aluno tocou na tentativa (replay pela lógica da F06). Devolve `false`
+/// quando não há nota registrada.
+pub fn ouvir_tentativa(som: &mut ServicoSom, e: &EstadoExercicios) -> bool {
+    let Some(g) = e.tentativa_como_gravacao() else {
+        return false;
+    };
+    agendar_gravacao(som, &g, som.agora_ns() + 30_000_000);
+    true
+}
+
 fn nomes(notas: &[NotaMidi]) -> String {
     notas
         .iter()
@@ -77,6 +91,7 @@ pub fn desenhar_tela(
             desenhar_exercicio(ui, e, som);
             ui.add_space(6.0);
             desenhar_feedback(ui, e);
+            desenhar_erros(ui, e);
             ui.add_space(6.0);
             desenhar_estatisticas(ui, e);
             ui.add_space(6.0);
@@ -195,6 +210,14 @@ fn desenhar_exercicio(ui: &mut Ui, e: &mut EstadoExercicios, som: &mut ServicoSo
         {
             ouvir(som, e);
         }
+        let tem_toques = !e.tentativa.registro.is_empty();
+        if ui
+            .add_enabled(tem_toques, Button::new("Ouvir o que toquei"))
+            .on_hover_text("Toca de novo as notas que você tocou nesta tentativa")
+            .clicked()
+        {
+            ouvir_tentativa(som, e);
+        }
         if ui
             .button("Reiniciar")
             .on_hover_text("Volta ao primeiro passo")
@@ -265,6 +288,26 @@ fn desenhar_feedback(ui: &mut Ui, e: &EstadoExercicios) {
     }
 }
 
+fn desenhar_erros(ui: &mut Ui, e: &EstadoExercicios) {
+    let erros = e.erros_localizados();
+    if erros.is_empty() {
+        return;
+    }
+    ui.label(RichText::new("Onde errei").strong());
+    for erro in erros.iter().take(MAX_ERROS_NA_TELA) {
+        ui.label(erro.texto());
+    }
+    if erros.len() > MAX_ERROS_NA_TELA {
+        ui.label(
+            RichText::new(format!(
+                "... e mais {} erro(s) nesta tentativa.",
+                erros.len() - MAX_ERROS_NA_TELA
+            ))
+            .weak(),
+        );
+    }
+}
+
 fn desenhar_estatisticas(ui: &mut Ui, e: &EstadoExercicios) {
     let t = &e.tentativa;
     let aprov = |c: crate::exercicios::Contagem| {
@@ -308,6 +351,7 @@ fn desenhar_ajustes(ui: &mut Ui, e: &mut EstadoExercicios) {
         mut janela_ms,
         mut limite_s,
         mut mostrar_dica,
+        mut bpm_grade,
     } = e.config;
     ui.horizontal_wrapped(|ui| {
         ui.label("Janela para notas juntas (acordes e intervalos):");
@@ -331,10 +375,15 @@ fn desenhar_ajustes(ui: &mut Ui, e: &mut EstadoExercicios) {
         &mut mostrar_dica,
         "Mostrar teclas-guia nos exercícios de ouvido",
     );
+    ui.horizontal_wrapped(|ui| {
+        ui.label("Andamento da grade do compasso do erro (4/4):");
+        ui.add(Slider::new(&mut bpm_grade, BPM_MIN..=BPM_MAX).suffix(" bpm"));
+    });
     let novo = ConfigExercicios {
         janela_ms,
         limite_s,
         mostrar_dica,
+        bpm_grade,
     };
     if novo != e.config {
         e.config = novo;
@@ -369,8 +418,76 @@ fn desenhar_progresso(ui: &mut Ui, e: &mut EstadoExercicios) {
     }
     ui.label(
         RichText::new(
-            "Pendente: replay do trecho (F06, Gravação) e compasso do erro (F08, grade).",
+            "O compasso do erro conta a partir da sua primeira nota (compasso 1, tempo 1), \
+             em 4/4 no andamento escolhido acima.",
         )
         .weak(),
     );
+}
+
+#[cfg(test)]
+mod testes {
+    use super::*;
+    use crate::som::CANAL_DEMONSTRACAO;
+    use crate::som::apoio_testes::{BLOCO, servico_pronto};
+    use piano_tutor_audio::RelogioManual;
+    use piano_tutor_audio::sintetizador::RegistroFalso;
+    use piano_tutor_core::tempo::Relogio;
+    use std::sync::Arc;
+
+    const MS: u64 = 1_000_000;
+
+    fn n(x: u8) -> NotaMidi {
+        NotaMidi::nova(x).expect("nota")
+    }
+
+    fn estado_no_exercicio_2() -> EstadoExercicios {
+        let mut e = EstadoExercicios::novo(None);
+        e.progresso[0].concluido = true;
+        assert!(e.selecionar(1));
+        e
+    }
+
+    #[test]
+    fn ouvir_tentativa_toca_de_novo_o_que_o_aluno_tocou_inclusive_o_erro() {
+        let relogio = RelogioManual::novo();
+        let (mut som, motor) = servico_pronto(Arc::new(relogio.clone()) as Arc<dyn Relogio>);
+        motor.renderizar(BLOCO, 0);
+        let mut e = estado_no_exercicio_2();
+        // Sem toques: nada a ouvir e nada agendado.
+        assert!(!ouvir_tentativa(&mut som, &e));
+        // Dó (certo), Ré (certo), Fá# (erro), Mi (certo), em instantes do relógio do aluno.
+        for (x, t_ms) in [(60u8, 2000u64), (62, 2500), (66, 3100), (64, 3600)] {
+            e.classificar(true, n(x), t_ms * MS);
+        }
+        assert!(ouvir_tentativa(&mut som, &e));
+        motor.renderizar(48_000 * 4, 0);
+        let v: Vec<(bool, u8, u8, u64)> = motor
+            .registro()
+            .iter()
+            .filter_map(|r| match *r {
+                RegistroFalso::Ligada {
+                    frame, canal, nota, ..
+                } => Some((true, canal, nota, frame)),
+                RegistroFalso::Desligada {
+                    frame, canal, nota, ..
+                } => Some((false, canal, nota, frame)),
+                _ => None,
+            })
+            .collect();
+        assert!(v.iter().all(|x| x.1 == CANAL_DEMONSTRACAO));
+        let ligadas: Vec<(u8, u64)> = v.iter().filter(|x| x.0).map(|x| (x.2, x.3)).collect();
+        assert_eq!(
+            ligadas.iter().map(|x| x.0).collect::<Vec<_>>(),
+            vec![60, 62, 66, 64],
+            "mesma ordem, com o erro"
+        );
+        // Mesmos intervalos do que foi tocado: 500, 600 e 500 ms (48 frames por ms).
+        for (i, ms) in [(1usize, 500.0), (2, 1100.0), (3, 1600.0)] {
+            let d = (ligadas[i].1 - ligadas[0].1) as f64;
+            assert!((d - ms * 48.0).abs() <= 2.0 * BLOCO as f64, "nota {i}: {d}");
+        }
+        assert_eq!(motor.notas_ativas(), 0, "tudo solto no fim");
+        assert_eq!(v.iter().filter(|x| !x.0).count(), 4);
+    }
 }

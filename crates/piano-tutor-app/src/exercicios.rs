@@ -12,11 +12,18 @@
 //! - nota errada conta um erro, mas o aluno corrige e continua no mesmo passo;
 //! - sem limite de tempo por padrão (o limite é opcional) e com pausa.
 //!
-//! Pendente (fora desta entrega): replay do trecho com a Gravação (F06) e indicação do
-//! compasso do erro com a grade (F08). O registro de eventos da tentativa
-//! (`Tentativa::registro`) já guarda instante, nota, passo e classificação para essa ligação.
+//! Feedback de erro (F05-5):
+//!
+//! - **replay**: [`EstadoExercicios::tentativa_como_gravacao`] converte o registro da tentativa
+//!   em uma `Gravacao` da F06 (o que o aluno tocou, com os instantes relativos à primeira
+//!   nota); a tela a agenda no motor de som para o aluno "ouvir de novo";
+//! - **compasso do erro**: [`EstadoExercicios::erros_localizados`] posiciona cada nota errada
+//!   na grade de compasso do núcleo (`piano_tutor_core::ritmo::Agendador`, 4/4, andamento
+//!   configurável, compasso 1 = instante da primeira nota tocada na tentativa).
 
+use crate::gravacao::{EventoGravado, Gravacao, Mensagem};
 use piano_tutor_core::NotaMidi;
+use piano_tutor_core::ritmo::{Agendador, BPM_MAX, BPM_MIN, Formula};
 use piano_tutor_core::teclado::{ConfigNomes, rotulo};
 use std::fmt::Write as _;
 use std::path::PathBuf;
@@ -26,6 +33,16 @@ pub const JANELA_PADRAO_MS: u32 = 150;
 /// Limites aceitos para a janela.
 pub const JANELA_MIN_MS: u32 = 10;
 pub const JANELA_MAX_MS: u32 = 2000;
+/// Andamento padrão da grade que localiza o compasso do erro (bpm).
+pub const BPM_GRADE_PADRAO: u16 = 60;
+/// Fórmula de compasso da grade do feedback de erro.
+pub const FORMULA_GRADE: Formula = Formula::QuatroQuatro;
+/// Duração máxima de cada nota no replay da tentativa, em ns.
+const NOTA_REPLAY_NS: u64 = 400_000_000;
+/// Menor duração de uma nota do replay (a menos que a próxima venha antes), em ns.
+const NOTA_REPLAY_MIN_NS: u64 = 1_000_000;
+/// Velocidade das notas do replay da tentativa.
+const VELOCIDADE_REPLAY: u8 = 80;
 /// Teto do registro de eventos de uma tentativa.
 const MAX_REGISTRO: usize = 2000;
 /// Nome do arquivo de progresso dentro da pasta de dados.
@@ -447,6 +464,43 @@ pub struct Evento {
     pub resultado: Classificacao,
 }
 
+/// Onde, na grade de compasso, uma nota foi tocada (contagem a partir de 1).
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub struct LocalNaGrade {
+    pub compasso: u64,
+    pub pulso: u64,
+}
+
+impl LocalNaGrade {
+    pub fn texto(self) -> String {
+        format!("compasso {}, tempo {}", self.compasso, self.pulso)
+    }
+}
+
+/// Uma nota errada da tentativa, com o passo esperado e o lugar na grade.
+#[derive(Clone, Debug, PartialEq)]
+pub struct ErroLocalizado {
+    pub nota: NotaMidi,
+    /// Índice do passo (0-based) que estava esperado.
+    pub passo: usize,
+    /// Notas esperadas no passo.
+    pub esperado: Vec<NotaMidi>,
+    pub local: LocalNaGrade,
+}
+
+impl ErroLocalizado {
+    /// Texto com símbolo `[X]`, nunca só cor.
+    pub fn texto(&self) -> String {
+        format!(
+            "[X] {} no passo {} ({}); esperado: {}",
+            nome_nota(self.nota),
+            self.passo + 1,
+            self.local.texto(),
+            nomes(&self.esperado)
+        )
+    }
+}
+
 /// Tentativa em curso do exercício atual.
 #[derive(Clone, Debug)]
 pub struct Tentativa {
@@ -457,7 +511,7 @@ pub struct Tentativa {
     pub feedback: Feedback,
     pub inicio_ns: Option<u64>,
     pub pausado_desde: Option<u64>,
-    /// Registro das notas tocadas (base para o replay da F06 e o compasso da F08).
+    /// Registro das notas tocadas (base do replay da F06 e do compasso do erro da F08).
     pub registro: Vec<Evento>,
     grupo: Vec<(NotaMidi, u64)>,
 }
@@ -512,6 +566,8 @@ pub struct ConfigExercicios {
     pub limite_s: u32,
     /// Mostra as teclas-guia também nos exercícios de ouvido.
     pub mostrar_dica: bool,
+    /// Andamento (bpm) da grade que indica o compasso do erro.
+    pub bpm_grade: u16,
 }
 
 impl Default for ConfigExercicios {
@@ -520,6 +576,7 @@ impl Default for ConfigExercicios {
             janela_ms: JANELA_PADRAO_MS,
             limite_s: 0,
             mostrar_dica: false,
+            bpm_grade: BPM_GRADE_PADRAO,
         }
     }
 }
@@ -838,6 +895,91 @@ impl EstadoExercicios {
         estourou
     }
 
+    // ---------- feedback de erro: replay e compasso (F05-5) ----------
+
+    /// Grade de compasso da tentativa: 4/4 no andamento configurado, com o compasso 1
+    /// começando na primeira nota tocada. `None` se ainda não houve nota.
+    pub fn grade(&self) -> Option<Agendador> {
+        let t0 = self.tentativa.registro.first()?.t_ns;
+        Some(Agendador::novo(t0, self.config.bpm_grade, FORMULA_GRADE))
+    }
+
+    /// Lugar de um instante na grade (compasso e tempo, contados a partir de 1).
+    pub fn local_na_grade(&self, t_ns: u64) -> Option<LocalNaGrade> {
+        let p = self.grade()?.posicao(t_ns)?;
+        Some(LocalNaGrade {
+            compasso: p.compasso + 1,
+            pulso: p.pulso + 1,
+        })
+    }
+
+    /// Notas erradas da tentativa, em ordem, cada uma com o passo esperado e o compasso.
+    pub fn erros_localizados(&self) -> Vec<ErroLocalizado> {
+        let Some(ex) = self.exercicio() else {
+            return Vec::new();
+        };
+        self.tentativa
+            .registro
+            .iter()
+            .filter(|ev| ev.resultado == Classificacao::Errada)
+            .filter_map(|ev| {
+                Some(ErroLocalizado {
+                    nota: ev.nota,
+                    passo: ev.passo,
+                    esperado: ex.passos.get(ev.passo)?.notas.clone(),
+                    local: self.local_na_grade(ev.t_ns)?,
+                })
+            })
+            .collect()
+    }
+
+    /// O que o aluno tocou na tentativa, como `Gravacao` da F06 (para ouvir de novo).
+    /// Cada nota dura 3/4 do intervalo até a próxima, no máximo 400 ms; notas ignoradas (pausa, depois de
+    /// concluir) ficam de fora. `None` se não há nota registrada.
+    pub fn tentativa_como_gravacao(&self) -> Option<Gravacao> {
+        let toques: Vec<&Evento> = self
+            .tentativa
+            .registro
+            .iter()
+            .filter(|ev| ev.resultado != Classificacao::Ignorada)
+            .collect();
+        let t0 = toques.first()?.t_ns;
+        let mut eventos: Vec<EventoGravado> = Vec::with_capacity(toques.len() * 2);
+        let mut fim = 0u64;
+        for (i, ev) in toques.iter().enumerate() {
+            let inicio = ev.t_ns.saturating_sub(t0);
+            // Solta antes da próxima nota (3/4 do intervalo), no máximo 400 ms.
+            let dur = toques.get(i + 1).map_or(NOTA_REPLAY_NS, |p| {
+                (p.t_ns.saturating_sub(ev.t_ns) / 4 * 3).clamp(NOTA_REPLAY_MIN_NS, NOTA_REPLAY_NS)
+            });
+            let (canal, nota) = (0, ev.nota.numero());
+            eventos.push(EventoGravado {
+                t_ns: inicio,
+                msg: Mensagem::NotaLigada {
+                    canal,
+                    nota,
+                    velocidade: VELOCIDADE_REPLAY,
+                },
+            });
+            eventos.push(EventoGravado {
+                t_ns: inicio + dur,
+                msg: Mensagem::NotaDesligada {
+                    canal,
+                    nota,
+                    velocidade: 64,
+                },
+            });
+            fim = fim.max(inicio + dur);
+        }
+        eventos.sort_by_key(|e| e.t_ns);
+        Some(Gravacao {
+            nome: "Tentativa".to_owned(),
+            eventos,
+            tempos: Vec::new(),
+            duracao_ns: fim,
+        })
+    }
+
     // ---------- progressão ----------
 
     /// Vai para o exercício `indice` se estiver liberado.
@@ -876,6 +1018,7 @@ impl EstadoExercicios {
         let _ = writeln!(s, "janela_ms={}", self.config.janela_ms);
         let _ = writeln!(s, "limite_s={}", self.config.limite_s);
         let _ = writeln!(s, "dica={}", u8::from(self.config.mostrar_dica));
+        let _ = writeln!(s, "grade_bpm={}", self.config.bpm_grade);
         if let Some(e) = self.exercicio() {
             let _ = writeln!(s, "atual={}", e.id);
         }
@@ -914,6 +1057,13 @@ impl EstadoExercicios {
                     }
                 }
                 "dica" => self.config.mostrar_dica = v == "1",
+                "grade_bpm" => {
+                    if let Ok(x) = v.parse::<u16>()
+                        && (BPM_MIN..=BPM_MAX).contains(&x)
+                    {
+                        self.config.bpm_grade = x;
+                    }
+                }
                 "atual" => atual_id = v.parse().ok(),
                 _ => self.aplicar_chave_exercicio(k, v),
             }
@@ -1699,5 +1849,150 @@ mod testes {
         let escala: Vec<NotaMidi> = piano_tutor_core::teoria::TipoEscala::Maior.notas(n(60));
         let passos: Vec<NotaMidi> = ex[5].passos.iter().map(|p| p.notas[0]).collect();
         assert_eq!(passos, escala);
+    }
+    // --- F05-5: compasso do erro e replay da tentativa ---------------------------------------
+
+    /// Exercício 2 (Dó Ré Mi Fá Sol ...), grade a `bpm` bpm. Toques `(nota, instante em ms)`.
+    fn tentativa_com_erros(bpm: u16) -> EstadoExercicios {
+        let mut e = em(2);
+        e.config.bpm_grade = bpm;
+        for (x, t_ms) in [
+            (60u8, 5000u64), // certo, compasso 1 tempo 1 (início da grade)
+            (62, 6000),      // certo
+            (66, 7200),      // erro (esperava Mi)
+            (64, 8000),      // certo
+            (65, 9000),      // certo
+            (61, 10_500),    // erro (esperava Sol)
+        ] {
+            e.classificar(true, n(x), t_ms * MS);
+        }
+        e
+    }
+
+    #[test]
+    fn erro_e_localizado_no_compasso_e_tempo_da_grade_4_por_4() {
+        // 60 bpm: 1 s por tempo, 4 s por compasso, contando da primeira nota (5 s).
+        let e = tentativa_com_erros(60);
+        let erros = e.erros_localizados();
+        assert_eq!(erros.len(), 2);
+        assert_eq!(erros[0].nota, n(66));
+        assert_eq!(erros[0].passo, 2);
+        assert_eq!(erros[0].esperado, vec![n(64)]);
+        // 7,2 s - 5 s = 2,2 s: tempo 3 do compasso 1.
+        assert_eq!(
+            erros[0].local,
+            LocalNaGrade {
+                compasso: 1,
+                pulso: 3
+            }
+        );
+        // 10,5 s - 5 s = 5,5 s: tempo 2 do compasso 2.
+        assert_eq!(erros[1].nota, n(61));
+        assert_eq!(erros[1].passo, 4);
+        assert_eq!(erros[1].esperado, vec![n(67)]);
+        assert_eq!(
+            erros[1].local,
+            LocalNaGrade {
+                compasso: 2,
+                pulso: 2
+            }
+        );
+        let t = erros[1].texto();
+        assert!(t.starts_with("[X]"), "{t}");
+        assert!(t.contains("compasso 2, tempo 2"), "{t}");
+        assert!(t.contains("passo 5"), "{t}");
+        assert!(t.contains("esperado: Sol4"), "{t}");
+        // Os acertos não aparecem como erro.
+        assert!(erros.iter().all(|x| x.nota != n(62)));
+    }
+
+    #[test]
+    fn andamento_da_grade_muda_o_compasso_do_erro() {
+        // 120 bpm: 0,5 s por tempo, 2 s por compasso. 2,2 s depois da primeira nota = tempo 1
+        // do compasso 2; 5,5 s = tempo 4 do compasso 3.
+        let e = tentativa_com_erros(120);
+        let l: Vec<LocalNaGrade> = e.erros_localizados().iter().map(|x| x.local).collect();
+        assert_eq!(
+            l,
+            vec![
+                LocalNaGrade {
+                    compasso: 2,
+                    pulso: 1
+                },
+                LocalNaGrade {
+                    compasso: 3,
+                    pulso: 4
+                },
+            ]
+        );
+    }
+
+    #[test]
+    fn sem_toques_nao_ha_grade_nem_erros_nem_replay() {
+        let e = em(2);
+        assert!(e.grade().is_none());
+        assert!(e.local_na_grade(1).is_none());
+        assert!(e.erros_localizados().is_empty());
+        assert!(e.tentativa_como_gravacao().is_none());
+        // Só acertos: sem erro listado.
+        let mut e = em(2);
+        toca(&mut e, &[60, 62], 0, 400);
+        assert!(e.erros_localizados().is_empty());
+    }
+
+    #[test]
+    fn bpm_da_grade_e_salvo_e_valores_fora_da_faixa_sao_ignorados() {
+        let mut e = em(1);
+        e.config.bpm_grade = 90;
+        let texto = e.para_texto();
+        assert!(texto.contains("grade_bpm=90"));
+        let mut outro = em(1);
+        outro.aplicar_texto(&texto);
+        assert_eq!(outro.config.bpm_grade, 90);
+        for ruim in ["grade_bpm=5", "grade_bpm=900", "grade_bpm=abc"] {
+            outro.aplicar_texto(ruim);
+            assert_eq!(outro.config.bpm_grade, BPM_GRADE_PADRAO, "{ruim}");
+        }
+    }
+
+    #[test]
+    fn tentativa_vira_gravacao_da_f06_com_o_que_o_aluno_tocou() {
+        let mut e = tentativa_com_erros(60);
+        // NoteOff e nota depois de pausar não entram.
+        e.classificar(false, n(60), 11_000 * MS);
+        let g = e.tentativa_como_gravacao().expect("gravação");
+        assert_eq!(g.total_notas(), 6, "seis toques, certos e errados");
+        let ligadas: Vec<(u8, u64)> = g
+            .eventos
+            .iter()
+            .filter_map(|x| match x.msg {
+                Mensagem::NotaLigada { nota, .. } => Some((nota, x.t_ns / MS)),
+                _ => None,
+            })
+            .collect();
+        // Ordem e instantes relativos à primeira nota (5 s).
+        assert_eq!(
+            ligadas,
+            vec![
+                (60, 0),
+                (62, 1000),
+                (66, 2200),
+                (64, 3000),
+                (65, 4000),
+                (61, 5500)
+            ]
+        );
+        // Cada nota solta antes da próxima, e a última em até 400 ms.
+        for par in g.notas().windows(2) {
+            assert!(par[0].fim_ns > par[0].inicio_ns);
+            assert!(par[0].fim_ns < par[1].inicio_ns);
+        }
+        let ultima = g.notas().pop().expect("nota");
+        assert_eq!(ultima.fim_ns - ultima.inicio_ns, 400 * MS);
+        assert_eq!(g.duracao_ns, 5900 * MS);
+        // É uma gravação F06 de verdade: exporta para .mid e reimporta com as mesmas notas.
+        let de_novo = Gravacao::de_smf(&g.para_smf().expect("exporta"), "t").expect("lê");
+        let m = |x: &Gravacao| x.eventos.iter().map(|v| v.msg).collect::<Vec<_>>();
+        assert_eq!(m(&g), m(&de_novo));
     }
 }
