@@ -956,4 +956,61 @@ mod testes {
         assert_eq!(pos.passo(&p, 0), Some(4));
         assert_eq!(pos.passo(&p, 2), None);
     }
+
+    #[test]
+    fn mil_compassos_no_agendador_nao_acumulam_erro_em_nenhuma_formula() {
+        // O instante do primeiro tique de cada compasso é calculado do índice, não somado:
+        // erro máximo de 1 ns (truncamento) em qualquer dos 1.000 compassos.
+        for formula in Formula::TODAS {
+            for bpm in [BPM_MIN, 60, 97, 120, 133, BPM_MAX] {
+                let inicio = 7_000_000_000u64;
+                let a = Agendador::novo(inicio, bpm, formula);
+                let tiques_compasso = TIQUES_POR_PULSO * formula.pulsos();
+                let mut anterior = inicio;
+                for k in 0..=1_000u64 {
+                    let t = a.instante(k * tiques_compasso);
+                    // Exato, em racional: início + k * pulsos * 60e9 / bpm.
+                    let exato = u128::from(k) * u128::from(formula.pulsos()) * 60_000_000_000u128
+                        / u128::from(bpm);
+                    let esperado = inicio + u64::try_from(exato).expect("cabe em u64");
+                    assert!(
+                        t.abs_diff(esperado) <= 1,
+                        "{} a {bpm} bpm, compasso {k}: {t} vs {esperado}",
+                        formula.texto()
+                    );
+                    // Compassos consecutivos: a distância nunca difere do ideal em mais de 1 ns.
+                    if k > 0 {
+                        let ideal = formula.pulsos() as f64 * 60_000_000_000f64 / f64::from(bpm);
+                        assert!(((t - anterior) as f64 - ideal).abs() <= 1.0);
+                    }
+                    anterior = t;
+                }
+            }
+        }
+    }
+
+    #[test]
+    fn mil_compassos_de_4_4_a_97_bpm_batem_com_o_total_teorico() {
+        // 1.000 compassos de 4/4 = 4.000 pulsos a 97 bpm = 240.000/97 s.
+        let mut a = Agendador::novo(0, 97, Formula::QuatroQuatro);
+        let mut v = Vec::new();
+        let fim = a.instante(4_000 * TIQUES_POR_PULSO);
+        let mut h = 0;
+        while h < fim {
+            h += 16_666_667;
+            a.emitir_ate(h, ConfigRitmo::default(), None, &mut v);
+        }
+        let c = cliques(&v);
+        // O pulso de índice 3.999 (último do compasso 1.000) ocorre em 3.999 * 60/97 s.
+        let (instante, _) = c[3_999];
+        let teorico = (3_999u128 * 60_000_000_000 / 97) as u64;
+        assert!(instante.abs_diff(teorico) <= 1, "{instante} vs {teorico}");
+        // Acentos: um forte a cada quatro cliques, nos 1.000 compassos.
+        let fortes = c
+            .iter()
+            .take(4_000)
+            .filter(|(_, k)| matches!(k, Clique::Forte))
+            .count();
+        assert_eq!(fortes, 1_000);
+    }
 }

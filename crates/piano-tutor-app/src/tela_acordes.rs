@@ -1,9 +1,11 @@
 //! Tela Acordes: "o que toquei?", dicionário de acordes, escalas, campo harmônico e desafio.
 
-use crate::acordes::{Conjunto, EstadoAcordes, Modo};
+use crate::acordes::{
+    Conjunto, EstadoAcordes, Modo, rotulo_da_tonalidade, tonalidades_disponiveis,
+};
 use crate::espelho::EstadoEspelho;
 use crate::som::ServicoSom;
-use crate::tela_espelho::{descrever_ligadas, desenhar_teclado_embutido, texto_tela};
+use crate::tela_espelho::{desenhar_teclado_embutido, texto_tela};
 use bancada_casca::egui::{Button, Color32, ComboBox, RichText, ScrollArea, Slider, Ui, vec2};
 use piano_tutor_core::NotaMidi;
 use piano_tutor_core::teclado::rotulo;
@@ -54,9 +56,15 @@ pub fn desenhar_tela(
                 }
             });
             ui.add_space(6.0);
-            // O que está sendo tocado agora, em qualquer modo.
-            let tocando = descrever_ligadas(espelho).unwrap_or_else(|| {
-                "Toque duas ou mais notas juntas para ver o intervalo ou o acorde.".to_owned()
+            escolher_tonalidade(ui, a);
+            ui.add_space(6.0);
+            // O que está sendo tocado agora, em qualquer modo: o gesto (nota, acorde, arpejo
+            // ou sequência) sobre os ataques recentes. Gesto ambíguo não mostra rótulo.
+            let ligadas: Vec<NotaMidi> = espelho.teclas().notas_ligadas().collect();
+            a.observar(&ligadas, som.agora_ns());
+            let tocando = a.texto_do_gesto().unwrap_or_else(|| {
+                "Toque notas para ver o que foi tocado: nota, acorde, arpejo ou sequência."
+                    .to_owned()
             });
             ui.label(RichText::new(tocando).size(20.0).strong());
             ui.add_space(6.0);
@@ -75,16 +83,45 @@ pub fn desenhar_tela(
         });
 }
 
+/// Seletor de tonalidade (maiores e menores): fixa a grafia enarmônica dos nomes da tela e
+/// mostra a armadura.
+fn escolher_tonalidade(ui: &mut Ui, a: &mut EstadoAcordes) {
+    ui.horizontal_wrapped(|ui| {
+        let atual = a
+            .tonalidade
+            .map_or_else(|| "sem tonalidade".to_owned(), rotulo_da_tonalidade);
+        ComboBox::from_id_salt("tonalidade-grafia")
+            .selected_text(format!("Tonalidade: {atual}"))
+            .height(360.0)
+            .show_ui(ui, |ui| {
+                ui.selectable_value(&mut a.tonalidade, None, "Sem tonalidade (grafia padrão)");
+                for t in tonalidades_disponiveis() {
+                    ui.selectable_value(&mut a.tonalidade, Some(t), rotulo_da_tonalidade(t));
+                }
+            });
+        match a.armadura() {
+            Some(texto) => {
+                ui.label(texto);
+            }
+            None => {
+                ui.label(
+                    RichText::new(
+                        "Escolha uma tonalidade para ver a armadura e a grafia (Fá# ou Solb).",
+                    )
+                    .weak(),
+                );
+            }
+        }
+    });
+}
+
 fn escolher_fundamental(ui: &mut Ui, a: &mut EstadoAcordes) {
     ui.horizontal_wrapped(|ui| {
         ui.label("Tônica:");
         for v in 0..12u8 {
             let c = ClasseAltura::nova(v);
-            ui.selectable_value(
-                &mut a.fundamental,
-                c,
-                format!("{} ({})", c.cifra(), c.nome_pt()),
-            );
+            let texto = format!("{} ({})", a.nome_da_classe(c), a.nome_pt_da_classe(c));
+            ui.selectable_value(&mut a.fundamental, c, texto);
         }
     });
 }
@@ -107,7 +144,7 @@ fn desenhar_dicionario(ui: &mut Ui, a: &mut EstadoAcordes, som: &mut ServicoSom)
     ui.horizontal_wrapped(|ui| {
         ui.label("Tipo:");
         for q in Qualidade::TODAS {
-            let texto = format!("{}{}", a.fundamental.cifra(), q.sufixo());
+            let texto = format!("{}{}", a.nome_da_classe(a.fundamental), q.sufixo());
             if ui.selectable_value(&mut a.qualidade, q, texto).clicked() {
                 a.inversao = 0;
             }
@@ -131,14 +168,14 @@ fn desenhar_dicionario(ui: &mut Ui, a: &mut EstadoAcordes, som: &mut ServicoSom)
     ui.add_space(6.0);
     ui.horizontal(|ui| {
         ui.label(
-            RichText::new(acorde.cifra())
+            RichText::new(a.cifra_do_acorde(&acorde))
                 .size(30.0)
                 .strong()
                 .color(VERDE),
         );
         ui.vertical(|ui| {
-            ui.label(RichText::new(acorde.nome()).strong());
-            ui.label(format!("Notas: {}", nomes(&notas)));
+            ui.label(RichText::new(a.nome_do_acorde(&acorde)).strong());
+            ui.label(format!("Notas: {}", nomes(a, &notas)));
             let formula: Vec<String> = a.qualidade.intervalos().iter().map(|i| grau(*i)).collect();
             ui.label(format!("Fórmula: {}", formula.join(" - ")));
         });
@@ -167,10 +204,14 @@ fn desenhar_escalas(ui: &mut Ui, a: &mut EstadoAcordes, som: &mut ServicoSom) {
     let notas = a.notas_da_escala();
     ui.horizontal(|ui| {
         ui.label(
-            RichText::new(format!("{} {}", a.fundamental.nome_pt(), a.escala.nome()))
-                .size(22.0)
-                .strong()
-                .color(VERDE),
+            RichText::new(format!(
+                "{} {}",
+                a.nome_pt_da_classe(a.fundamental),
+                a.escala.nome()
+            ))
+            .size(22.0)
+            .strong()
+            .color(VERDE),
         );
         if ui.button("Ouvir subindo").clicked() {
             ouvir_em_sequencia(som, &notas, 330);
@@ -181,12 +222,12 @@ fn desenhar_escalas(ui: &mut Ui, a: &mut EstadoAcordes, som: &mut ServicoSom) {
             ouvir_em_sequencia(som, &v, 300);
         }
     });
-    ui.label(format!("Notas: {}", nomes(&notas)));
+    ui.label(format!("Notas: {}", nomes(a, &notas)));
     ui.add_space(8.0);
     ui.label(
         RichText::new(format!(
             "Campo harmônico de {} maior (clique para ouvir e ver no teclado)",
-            a.fundamental.cifra()
+            a.nome_da_classe(a.fundamental)
         ))
         .strong(),
     );
@@ -194,7 +235,7 @@ fn desenhar_escalas(ui: &mut Ui, a: &mut EstadoAcordes, som: &mut ServicoSom) {
         for (i, ac) in campo_harmonico_maior(a.fundamental).iter().enumerate() {
             if ui
                 .add(
-                    Button::new(format!("{}  {}", GRAUS_ROMANOS[i], ac.cifra()))
+                    Button::new(format!("{}  {}", GRAUS_ROMANOS[i], a.cifra_do_acorde(ac)))
                         .min_size(vec2(70.0, 30.0)),
                 )
                 .clicked()
@@ -221,11 +262,12 @@ fn desenhar_desafio(ui: &mut Ui, a: &mut EstadoAcordes, som: &mut ServicoSom) {
             });
         if a.conjunto == Conjunto::CampoHarmonico {
             ComboBox::from_id_salt("tonalidade-desafio")
-                .selected_text(format!("Tonalidade: {}", a.fundamental.cifra()))
+                .selected_text(format!("Tônica: {}", a.nome_da_classe(a.fundamental)))
                 .show_ui(ui, |ui| {
                     for v in 0..12u8 {
                         let c = ClasseAltura::nova(v);
-                        ui.selectable_value(&mut a.fundamental, c, c.cifra());
+                        let texto = a.nome_da_classe(c);
+                        ui.selectable_value(&mut a.fundamental, c, texto);
                     }
                 });
         }
@@ -244,11 +286,11 @@ fn desenhar_desafio(ui: &mut Ui, a: &mut EstadoAcordes, som: &mut ServicoSom) {
         let texto = if a.de_ouvido {
             "?".to_owned()
         } else {
-            alvo.cifra()
+            a.cifra_do_acorde(&alvo)
         };
         ui.label(RichText::new(texto).size(40.0).strong().color(VERDE));
         if !a.de_ouvido {
-            ui.label(RichText::new(alvo.nome()).size(18.0));
+            ui.label(RichText::new(a.nome_do_acorde(&alvo)).size(18.0));
         }
         ui.add_space(12.0);
         if ui
@@ -281,7 +323,11 @@ fn desenhar_desafio(ui: &mut Ui, a: &mut EstadoAcordes, som: &mut ServicoSom) {
         a.pulados,
         a.ultimo
             .as_ref()
-            .map(|r| format!(" · último: {} em {:.1} s", r.alvo.cifra(), r.segundos))
+            .map(|r| format!(
+                " · último: {} em {:.1} s",
+                a.cifra_do_acorde(&r.alvo),
+                r.segundos
+            ))
             .unwrap_or_default()
     ));
     ui.label(
@@ -292,7 +338,10 @@ fn desenhar_desafio(ui: &mut Ui, a: &mut EstadoAcordes, som: &mut ServicoSom) {
     );
 }
 
-fn nomes(notas: &[NotaMidi]) -> String {
+fn nomes(a: &EstadoAcordes, notas: &[NotaMidi]) -> String {
+    if a.tonalidade.is_some() {
+        return a.nomes_das_notas(notas);
+    }
     notas
         .iter()
         .map(|n| texto_tela(&rotulo(*n, Default::default())))
@@ -397,6 +446,27 @@ mod testes {
     }
 
     #[test]
+    fn desenha_cada_modo_em_cada_tonalidade() {
+        let ctx = Context::default();
+        let mut a = EstadoAcordes::default();
+        let mut e = EstadoEspelho::novo();
+        let (mut som, _m) = servico_pronto(Arc::new(RelogioManual::novo()));
+        a.semear(som.agora_ns());
+        a.sortear(som.agora_ns());
+        for t in std::iter::once(None).chain(
+            crate::acordes::tonalidades_disponiveis()
+                .into_iter()
+                .map(Some),
+        ) {
+            a.tonalidade = t;
+            for modo in [Modo::Dicionario, Modo::Escalas, Modo::Desafio] {
+                a.modo = modo;
+                quadro(&ctx, &mut a, &mut e, &mut som);
+            }
+        }
+    }
+
+    #[test]
     fn os_glifos_usados_nos_textos_das_telas_existem_na_fonte() {
         let ctx = Context::default();
         let mut a = EstadoAcordes::default();
@@ -408,7 +478,7 @@ mod testes {
         let usados = format!(
             "·—…ªº°ÁÉÓÚàáâãçéêíóôõú{}{}",
             GRAUS_ROMANOS.concat(),
-            "1ª inversão 2ª inversão 3ª inversão"
+            "1ª inversão 2ª inversão 3ª inversão Arpejo ascendente descendente sequência bemóis"
         );
         let fonte = FontId::proportional(14.0);
         let faltam: String = usados

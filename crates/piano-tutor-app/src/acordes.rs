@@ -3,8 +3,25 @@
 
 use piano_tutor_core::NotaMidi;
 use piano_tutor_core::teoria::{
-    Acorde, ClasseAltura, Qualidade, TipoEscala, campo_harmonico_maior,
+    Acorde, ClasseAltura, DirecaoArpejo, Gesto, JanelasGesto, Modo as ModoTonal, NotaTocada,
+    Qualidade, TipoEscala, Tonalidade, campo_harmonico_maior, classificar_gesto,
+    descrever_intervalo,
 };
+
+/// Ataque lembrado e o último instante em que a tecla foi vista ligada.
+#[derive(Clone, Copy, Debug)]
+struct Recente {
+    ataque: NotaTocada,
+    visto_ns: u64,
+}
+
+/// Quanto tempo um ataque continua contando para "o que estou tocando" depois de a tecla ser
+/// solta (enquanto segurada, conta sempre).
+pub const RETENCAO_NS: u64 = 4_000_000_000;
+/// Máximo de ataques lembrados.
+const MAX_RECENTES: usize = 16;
+/// Máximo de notas citadas no texto de uma sequência.
+const MAX_NOTAS_NO_TEXTO: usize = 8;
 
 /// Aba da tela.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
@@ -72,6 +89,12 @@ pub struct EstadoAcordes {
     pub ultimo: Option<Resultado>,
     /// Depois de um acerto, espera soltar todas as teclas para sortear o próximo.
     pub aguardando_soltar: bool,
+    /// Tonalidade declarada (grafia dos nomes e armadura). `None`: grafia padrão, sem armadura.
+    pub tonalidade: Option<Tonalidade>,
+    /// Ataques recentes, vistos quadro a quadro (ver [`EstadoAcordes::observar`]).
+    recentes: Vec<Recente>,
+    /// Teclas ligadas no quadro anterior.
+    ligadas_antes: Vec<NotaMidi>,
     semente: u64,
 }
 
@@ -93,9 +116,79 @@ impl Default for EstadoAcordes {
             pulados: 0,
             ultimo: None,
             aguardando_soltar: false,
+            tonalidade: None,
+            recentes: Vec::new(),
+            ligadas_antes: Vec::new(),
             semente: 0x9E37_79B9_7F4A_7C15,
         }
     }
+}
+
+/// As 30 tonalidades (15 maiores, de 7 bemóis a 7 sustenidos; depois as 15 menores).
+pub fn tonalidades_disponiveis() -> Vec<Tonalidade> {
+    [ModoTonal::Maior, ModoTonal::Menor]
+        .into_iter()
+        .flat_map(|m| (-7..=7i8).filter_map(move |q| Tonalidade::da_armadura(q, m)))
+        .collect()
+}
+
+/// Rótulo de uma tonalidade para o seletor: "Sol maior (1 sustenido)".
+pub fn rotulo_da_tonalidade(t: Tonalidade) -> String {
+    let modo = match t.modo() {
+        ModoTonal::Maior => "maior",
+        ModoTonal::Menor => "menor",
+    };
+    format!(
+        "{} {modo} ({})",
+        nome_pt_da_grafia(&t.nome_tonica()),
+        quantidade_de_acidentes(t)
+    )
+}
+
+fn quantidade_de_acidentes(t: Tonalidade) -> String {
+    let n = t.numero_de_acidentes();
+    match (n, t.armadura_quintas() > 0) {
+        (0, _) => "sem acidentes".to_owned(),
+        (1, true) => "1 sustenido".to_owned(),
+        (_, true) => format!("{n} sustenidos"),
+        (1, false) => "1 bemol".to_owned(),
+        (_, false) => format!("{n} bemóis"),
+    }
+}
+
+/// Texto da armadura: "Armadura de Ré maior: 2 sustenidos (F# C#)".
+pub fn texto_da_armadura(t: Tonalidade) -> String {
+    let modo = match t.modo() {
+        ModoTonal::Maior => "maior",
+        ModoTonal::Menor => "menor",
+    };
+    let base = format!(
+        "Armadura de {} {modo}: {}",
+        nome_pt_da_grafia(&t.nome_tonica()),
+        quantidade_de_acidentes(t)
+    );
+    let acidentes = t.acidentes_da_armadura();
+    if acidentes.is_empty() {
+        base
+    } else {
+        format!("{base} ({})", acidentes.join(" "))
+    }
+}
+
+/// "F#" -> "Fá#", "Bb" -> "Sib", "Cb" -> "Dób" (mesma grafia de [`ClasseAltura::nome_pt`]).
+pub fn nome_pt_da_grafia(nome: &str) -> String {
+    let mut cs = nome.chars();
+    let letra = match cs.next() {
+        Some('C') => "Dó",
+        Some('D') => "Ré",
+        Some('E') => "Mi",
+        Some('F') => "Fá",
+        Some('G') => "Sol",
+        Some('A') => "Lá",
+        Some('B') => "Si",
+        _ => return nome.to_owned(),
+    };
+    format!("{letra}{}", cs.as_str())
 }
 
 fn mascara(notas: impl IntoIterator<Item = NotaMidi>) -> u16 {
@@ -228,6 +321,181 @@ impl EstadoAcordes {
         self.pulados += 1;
         self.sortear(agora_ns)
     }
+
+    // --- Grafia e armadura (tonalidade declarada) ---------------------------------------
+
+    /// Nome de uma classe de altura na grafia da tonalidade declarada ("F#" em Sol maior,
+    /// "Gb" em Ré♭ maior); sem tonalidade, a grafia padrão de [`ClasseAltura::cifra`].
+    pub fn nome_da_classe(&self, c: ClasseAltura) -> String {
+        match self.tonalidade {
+            Some(t) => t.grafia(c),
+            None => c.cifra().to_owned(),
+        }
+    }
+
+    /// Nome em português de uma classe de altura na mesma grafia ("Fá#", "Solb").
+    pub fn nome_pt_da_classe(&self, c: ClasseAltura) -> String {
+        match self.tonalidade {
+            Some(t) => nome_pt_da_grafia(&t.grafia(c)),
+            None => c.nome_pt().to_owned(),
+        }
+    }
+
+    /// Cifra do acorde na grafia da tonalidade ("Gb", "C/E", "Bb/D").
+    pub fn cifra_do_acorde(&self, a: &Acorde) -> String {
+        let base = format!(
+            "{}{}",
+            self.nome_da_classe(a.fundamental),
+            a.qualidade.sufixo()
+        );
+        if a.baixo == a.fundamental {
+            base
+        } else {
+            format!("{base}/{}", self.nome_da_classe(a.baixo))
+        }
+    }
+
+    /// Nome por extenso do acorde na grafia da tonalidade ("Solb maior").
+    pub fn nome_do_acorde(&self, a: &Acorde) -> String {
+        format!(
+            "{} {}",
+            self.nome_pt_da_classe(a.fundamental),
+            a.qualidade.nome()
+        )
+    }
+
+    /// Nome de uma nota com oitava na grafia da tonalidade ("Fá#4"). Dó♭ e Si♯ trocam de
+    /// oitava em relação ao número MIDI (Dó♭4 = MIDI 59, Si♯3 = MIDI 60).
+    pub fn nome_da_nota(&self, nota: NotaMidi) -> String {
+        let nome = self.nome_da_classe(ClasseAltura::de_nota(nota));
+        let ajuste = if nome.starts_with("Cb") {
+            1
+        } else if nome.starts_with("B#") {
+            -1
+        } else {
+            0
+        };
+        format!(
+            "{}{}",
+            nome_pt_da_grafia(&nome),
+            i32::from(nota.oitava()) + ajuste
+        )
+    }
+
+    /// Notas separadas por espaço, na grafia da tonalidade.
+    pub fn nomes_das_notas(&self, notas: &[NotaMidi]) -> String {
+        notas
+            .iter()
+            .map(|n| self.nome_da_nota(*n))
+            .collect::<Vec<_>>()
+            .join(" ")
+    }
+
+    /// Armadura da tonalidade declarada, em texto.
+    pub fn armadura(&self) -> Option<String> {
+        self.tonalidade.map(texto_da_armadura)
+    }
+
+    // --- "O que estou tocando": gesto sobre os ataques recentes -----------------------------
+
+    /// Atualiza os ataques recentes com as teclas ligadas **neste quadro**: cada tecla que não
+    /// estava ligada no quadro anterior vira um ataque em `agora_ns`. A resolução do tempo é a
+    /// do quadro da interface (não há carimbo do teclado aqui), então ataques no mesmo quadro
+    /// contam como simultâneos.
+    pub fn observar(&mut self, ligadas: &[NotaMidi], agora_ns: u64) {
+        for r in &mut self.recentes {
+            if ligadas.contains(&r.ataque.nota) {
+                r.visto_ns = agora_ns;
+            }
+        }
+        for n in ligadas {
+            if !self.ligadas_antes.contains(n) {
+                self.recentes.push(Recente {
+                    ataque: NotaTocada {
+                        nota: *n,
+                        inicio_ns: agora_ns,
+                    },
+                    visto_ns: agora_ns,
+                });
+            }
+        }
+        self.recentes
+            .retain(|r| agora_ns.saturating_sub(r.visto_ns) <= RETENCAO_NS);
+        if self.recentes.len() > MAX_RECENTES {
+            let sobra = self.recentes.len() - MAX_RECENTES;
+            self.recentes.drain(..sobra);
+        }
+        self.ligadas_antes = ligadas.to_vec();
+    }
+
+    /// Ataques do gesto mais recente: do último ataque para trás, até uma pausa maior que a
+    /// janela de sequência (depois disso são notas de outro gesto).
+    fn ultimo_gesto(&self) -> Vec<NotaTocada> {
+        let mut v: Vec<NotaTocada> = self.recentes.iter().map(|r| r.ataque).collect();
+        v.sort_by_key(|e| e.inicio_ns);
+        let max = JanelasGesto::PADRAO.sequencia_max_ns;
+        let mut inicio = v.len();
+        while inicio > 0 {
+            if inicio < v.len() && v[inicio].inicio_ns - v[inicio - 1].inicio_ns > max {
+                break;
+            }
+            inicio -= 1;
+        }
+        v.split_off(inicio)
+    }
+
+    /// Classificação do gesto mais recente (ver [`classificar_gesto`]).
+    pub fn gesto(&self) -> Gesto {
+        classificar_gesto(&self.ultimo_gesto(), JanelasGesto::PADRAO)
+    }
+
+    /// Texto de "o que estou tocando". `None` quando não há nada tocado ou quando o gesto é
+    /// ambíguo (nenhum rótulo é imposto). Um par de notas nunca é chamado de acorde.
+    pub fn texto_do_gesto(&self) -> Option<String> {
+        match self.gesto() {
+            Gesto::Vazio | Gesto::Ambiguo | Gesto::NotasSeparadas { .. } => None,
+            Gesto::NotaIsolada(n) => Some(format!("Nota isolada: {}", self.nome_da_nota(n))),
+            Gesto::Simultaneo { notas, acorde } => Some(match (acorde, notas.len()) {
+                (Some(a), _) => format!(
+                    "Acorde: {} ({}, {})",
+                    self.cifra_do_acorde(&a),
+                    self.nome_do_acorde(&a),
+                    a.texto_inversao()
+                ),
+                (None, 2) => format!(
+                    "Duas notas juntas: {}",
+                    descrever_intervalo(notas[0], notas[1])
+                ),
+                (None, _) => "Notas juntas sem nome de acorde reconhecido".to_owned(),
+            }),
+            Gesto::Arpejo {
+                direcao, acorde, ..
+            } => {
+                let sentido = match direcao {
+                    DirecaoArpejo::Ascendente => " ascendente",
+                    DirecaoArpejo::Descendente => " descendente",
+                    DirecaoArpejo::Misto => " (ordem mista)",
+                };
+                Some(format!(
+                    "Arpejo{sentido} de {} ({})",
+                    self.cifra_do_acorde(&acorde),
+                    self.nome_do_acorde(&acorde)
+                ))
+            }
+            Gesto::Sequencia { notas } => {
+                let mais = if notas.len() > MAX_NOTAS_NO_TEXTO {
+                    " ..."
+                } else {
+                    ""
+                };
+                let ate = &notas[..notas.len().min(MAX_NOTAS_NO_TEXTO)];
+                Some(format!(
+                    "Notas em sequência: {}{mais}",
+                    self.nomes_das_notas(ate)
+                ))
+            }
+        }
+    }
 }
 
 #[cfg(test)]
@@ -311,5 +579,302 @@ mod testes {
             let a = e.sortear(i);
             assert!(a.qualidade.intervalos().len() == 4);
         }
+    }
+
+    // --- Gesto, tonalidade e grafia (F04 na interface) -------------------------------------
+
+    const MS: u64 = 1_000_000;
+
+    /// Toca `quadros`: lista de (instante em ms, teclas ligadas naquele quadro).
+    fn tocar(e: &mut EstadoAcordes, quadros: &[(u64, &[u8])]) {
+        for (ms, teclas) in quadros {
+            let v: Vec<NotaMidi> = teclas.iter().map(|x| n(*x)).collect();
+            e.observar(&v, ms * MS);
+        }
+    }
+
+    fn em(t: Option<(i8, ModoTonal)>) -> EstadoAcordes {
+        EstadoAcordes {
+            tonalidade: t.and_then(|(q, m)| Tonalidade::da_armadura(q, m)),
+            ..EstadoAcordes::default()
+        }
+    }
+
+    #[test]
+    fn observar_registra_so_ataques_novos() {
+        let mut e = EstadoAcordes::default();
+        tocar(
+            &mut e,
+            &[(0, &[60]), (16, &[60]), (100, &[60, 64]), (116, &[60, 64])],
+        );
+        assert_eq!(e.recentes.len(), 2);
+        assert_eq!(e.recentes[0].ataque.inicio_ns, 0);
+        assert_eq!(e.recentes[1].ataque.inicio_ns, 100 * MS);
+        // Soltar e tocar de novo é outro ataque.
+        tocar(&mut e, &[(200, &[]), (300, &[60])]);
+        assert_eq!(e.recentes.len(), 3);
+    }
+
+    #[test]
+    fn sem_teclas_nao_ha_texto() {
+        let mut e = EstadoAcordes::default();
+        assert_eq!(e.texto_do_gesto(), None);
+        tocar(&mut e, &[(0, &[])]);
+        assert_eq!(e.texto_do_gesto(), None);
+    }
+
+    #[test]
+    fn nota_isolada() {
+        let mut e = EstadoAcordes::default();
+        tocar(&mut e, &[(0, &[60])]);
+        assert_eq!(e.texto_do_gesto().as_deref(), Some("Nota isolada: Dó4"));
+    }
+
+    #[test]
+    fn acorde_simultaneo_com_inversao() {
+        let mut e = EstadoAcordes::default();
+        tocar(&mut e, &[(0, &[60, 64, 67])]);
+        assert_eq!(
+            e.texto_do_gesto().as_deref(),
+            Some("Acorde: C (Dó maior, estado fundamental)")
+        );
+        let mut e = EstadoAcordes::default();
+        tocar(&mut e, &[(0, &[64]), (16, &[64, 67, 72])]);
+        assert_eq!(
+            e.texto_do_gesto().as_deref(),
+            Some("Acorde: C/E (Dó maior, 1ª inversão)")
+        );
+    }
+
+    #[test]
+    fn par_de_notas_nunca_e_chamado_de_acorde() {
+        for par in [[60u8, 64], [48, 55], [60, 67], [60, 72]] {
+            let mut e = EstadoAcordes::default();
+            tocar(&mut e, &[(0, &par)]);
+            let t = e.texto_do_gesto().expect("par descrito");
+            assert!(t.starts_with("Duas notas juntas: "), "{t}");
+            assert!(!t.contains("Acorde"), "{t}");
+            assert!(!t.contains("C5"), "{t}");
+        }
+    }
+
+    #[test]
+    fn arpejo_ainda_com_as_teclas_soltas() {
+        let mut e = EstadoAcordes::default();
+        // Cada tecla é solta antes da próxima, como num arpejo sem pedal.
+        tocar(
+            &mut e,
+            &[
+                (0, &[60]),
+                (150, &[]),
+                (300, &[64]),
+                (450, &[]),
+                (600, &[67]),
+                (750, &[]),
+            ],
+        );
+        assert_eq!(
+            e.texto_do_gesto().as_deref(),
+            Some("Arpejo ascendente de C (Dó maior)")
+        );
+        let mut e = EstadoAcordes::default();
+        tocar(
+            &mut e,
+            &[(0, &[72]), (300, &[67]), (600, &[64]), (900, &[60])],
+        );
+        assert_eq!(
+            e.texto_do_gesto().as_deref(),
+            Some("Arpejo descendente de C (Dó maior)")
+        );
+    }
+
+    #[test]
+    fn sequencia_sem_acorde_e_so_sequencia() {
+        let mut e = EstadoAcordes::default();
+        tocar(&mut e, &[(0, &[60]), (300, &[62]), (600, &[64])]);
+        assert_eq!(
+            e.texto_do_gesto().as_deref(),
+            Some("Notas em sequência: Dó4 Ré4 Mi4")
+        );
+        // Duas notas em sequência: sequência, nunca arpejo nem acorde.
+        let mut e = EstadoAcordes::default();
+        tocar(&mut e, &[(0, &[60]), (400, &[64])]);
+        assert_eq!(
+            e.texto_do_gesto().as_deref(),
+            Some("Notas em sequência: Dó4 Mi4")
+        );
+    }
+
+    #[test]
+    fn gesto_ambiguo_nao_mostra_nada() {
+        let mut e = EstadoAcordes::default();
+        // 80 ms entre as notas: nem juntas nem em sequência.
+        tocar(&mut e, &[(0, &[60]), (80, &[60, 64]), (160, &[60, 64, 67])]);
+        assert_eq!(e.gesto(), Gesto::Ambiguo);
+        assert_eq!(e.texto_do_gesto(), None);
+    }
+
+    #[test]
+    fn notas_antigas_somem_mas_teclas_seguradas_ficam() {
+        let mut e = EstadoAcordes::default();
+        tocar(&mut e, &[(0, &[60, 64, 67])]);
+        // Segurando por 10 s: continua mostrando o acorde.
+        tocar(&mut e, &[(10_000, &[60, 64, 67])]);
+        assert!(e.texto_do_gesto().is_some());
+        // Soltou: some depois da retenção.
+        tocar(&mut e, &[(10_100, &[])]);
+        assert!(e.texto_do_gesto().is_some());
+        tocar(&mut e, &[(14_000, &[])]);
+        assert!(e.texto_do_gesto().is_some(), "ainda dentro da retenção");
+        tocar(&mut e, &[(14_200, &[])]);
+        assert_eq!(e.texto_do_gesto(), None);
+    }
+
+    #[test]
+    fn pausa_longa_separa_os_gestos() {
+        let mut e = EstadoAcordes::default();
+        tocar(
+            &mut e,
+            &[(0, &[60, 64, 67]), (100, &[]), (3_000, &[62, 65, 69])],
+        );
+        assert_eq!(
+            e.texto_do_gesto().as_deref(),
+            Some("Acorde: Dm (Ré menor, estado fundamental)")
+        );
+    }
+
+    #[test]
+    fn historico_e_limitado() {
+        let mut e = EstadoAcordes::default();
+        for i in 0..100u64 {
+            tocar(&mut e, &[(i * 10, &[60]), (i * 10 + 5, &[])]);
+        }
+        assert!(e.recentes.len() <= MAX_RECENTES);
+    }
+
+    #[test]
+    fn tonalidades_disponiveis_sao_as_15_maiores_e_as_15_menores() {
+        let v = tonalidades_disponiveis();
+        assert_eq!(v.len(), 30);
+        assert!(v[..15].iter().all(|t| t.modo() == ModoTonal::Maior));
+        assert!(v[15..].iter().all(|t| t.modo() == ModoTonal::Menor));
+        let mut cifras: Vec<String> = v.iter().map(|t| t.cifra()).collect();
+        cifras.sort();
+        cifras.dedup();
+        assert_eq!(cifras.len(), 30, "sem repetidas");
+    }
+
+    #[test]
+    fn grafia_dos_acordes_muda_com_a_tonalidade() {
+        let fa_sus = Acorde::novo(ClasseAltura::nova(6), Qualidade::Maior);
+        assert_eq!(em(None).cifra_do_acorde(&fa_sus), "F#");
+        assert_eq!(
+            em(Some((1, ModoTonal::Maior))).cifra_do_acorde(&fa_sus),
+            "F#"
+        );
+        assert_eq!(
+            em(Some((-5, ModoTonal::Maior))).cifra_do_acorde(&fa_sus),
+            "Gb"
+        );
+        assert_eq!(
+            em(Some((-5, ModoTonal::Maior))).nome_do_acorde(&fa_sus),
+            "Solb maior"
+        );
+        assert_eq!(
+            em(Some((1, ModoTonal::Maior))).nome_do_acorde(&fa_sus),
+            "Fá# maior"
+        );
+        // Baixo (inversão) segue a mesma grafia: Gb/Bb em Ré♭ maior, F#/A# em Si maior.
+        let inv = Acorde {
+            baixo: ClasseAltura::nova(10),
+            ..fa_sus
+        };
+        assert_eq!(
+            em(Some((-5, ModoTonal::Maior))).cifra_do_acorde(&inv),
+            "Gb/Bb"
+        );
+        assert_eq!(
+            em(Some((5, ModoTonal::Maior))).cifra_do_acorde(&inv),
+            "F#/A#"
+        );
+    }
+
+    #[test]
+    fn gesto_usa_a_grafia_da_tonalidade() {
+        let mut bemol = em(Some((-5, ModoTonal::Maior)));
+        tocar(&mut bemol, &[(0, &[66])]);
+        assert_eq!(
+            bemol.texto_do_gesto().as_deref(),
+            Some("Nota isolada: Solb4")
+        );
+        let mut sustenido = em(Some((2, ModoTonal::Maior)));
+        tocar(&mut sustenido, &[(0, &[66])]);
+        assert_eq!(
+            sustenido.texto_do_gesto().as_deref(),
+            Some("Nota isolada: Fá#4")
+        );
+        // Acorde de Sol♭ maior (Solb-Sib-Reb) em Ré♭ maior.
+        let mut e = em(Some((-5, ModoTonal::Maior)));
+        tocar(&mut e, &[(0, &[66, 70, 73])]);
+        assert_eq!(
+            e.texto_do_gesto().as_deref(),
+            Some("Acorde: Gb (Solb maior, estado fundamental)")
+        );
+    }
+
+    #[test]
+    fn oitava_de_do_bemol_e_si_sustenido_segue_a_grafia() {
+        // Dó♭4 = MIDI 59 (soa como Si3); Si♯3 = MIDI 60 (soa como Dó4).
+        assert_eq!(em(Some((-6, ModoTonal::Maior))).nome_da_nota(n(59)), "Dób4");
+        assert_eq!(em(Some((7, ModoTonal::Maior))).nome_da_nota(n(60)), "Si#3");
+        assert_eq!(em(None).nome_da_nota(n(59)), "Si3");
+        assert_eq!(em(None).nome_da_nota(n(60)), "Dó4");
+    }
+
+    #[test]
+    fn armadura_em_texto() {
+        let t = |q, m| Tonalidade::da_armadura(q, m).expect("válida");
+        assert_eq!(
+            texto_da_armadura(t(0, ModoTonal::Maior)),
+            "Armadura de Dó maior: sem acidentes"
+        );
+        assert_eq!(
+            texto_da_armadura(t(0, ModoTonal::Menor)),
+            "Armadura de Lá menor: sem acidentes"
+        );
+        assert_eq!(
+            texto_da_armadura(t(1, ModoTonal::Maior)),
+            "Armadura de Sol maior: 1 sustenido (F#)"
+        );
+        assert_eq!(
+            texto_da_armadura(t(-1, ModoTonal::Maior)),
+            "Armadura de Fá maior: 1 bemol (Bb)"
+        );
+        assert_eq!(
+            texto_da_armadura(t(-5, ModoTonal::Maior)),
+            "Armadura de Réb maior: 5 bemóis (Bb Eb Ab Db Gb)"
+        );
+        assert_eq!(
+            texto_da_armadura(t(3, ModoTonal::Menor)),
+            "Armadura de Fá# menor: 3 sustenidos (F# C# G#)"
+        );
+        assert_eq!(em(None).armadura(), None);
+        assert_eq!(
+            em(Some((2, ModoTonal::Maior))).armadura().as_deref(),
+            Some("Armadura de Ré maior: 2 sustenidos (F# C#)")
+        );
+    }
+
+    #[test]
+    fn rotulos_do_seletor_cobrem_as_30_tonalidades() {
+        let rotulos: Vec<String> = tonalidades_disponiveis()
+            .into_iter()
+            .map(rotulo_da_tonalidade)
+            .collect();
+        assert_eq!(rotulos[0], "Dób maior (7 bemóis)");
+        assert_eq!(rotulos[7], "Dó maior (sem acidentes)");
+        assert_eq!(rotulos[14], "Dó# maior (7 sustenidos)");
+        assert_eq!(rotulos[22], "Lá menor (sem acidentes)");
+        assert_eq!(rotulos[16], "Mib menor (6 bemóis)");
     }
 }

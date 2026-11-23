@@ -1998,4 +1998,120 @@ mod testes {
         assert!(inicios > 5);
         assert_eq!(inicios, fins);
     }
+
+    // --- F04-5: 1.000 compassos no mapa simbólico, sem erro acumulado ------------------------
+
+    /// MusicXML com `n` compassos de 4/4 feitos de 12 colcheias de tercina (`divisions` = 3,
+    /// cada nota dura 1/3 de semínima): a soma em ponto flutuante acumularia erro; em racionais
+    /// é exata. Andamento declarado: `bpm`.
+    fn xml_de_tercinas(n: usize, bpm: u32) -> String {
+        let mut x = String::from(
+            r#"<?xml version="1.0" encoding="UTF-8"?>
+<score-partwise version="4.0"><part-list><score-part id="P1"><part-name>Piano</part-name></score-part></part-list>
+<part id="P1">"#,
+        );
+        for k in 0..n {
+            x.push_str(&format!(r#"<measure number="{}">"#, k + 1));
+            if k == 0 {
+                x.push_str(&format!(
+                    "<attributes><divisions>3</divisions><time><beats>4</beats><beat-type>4</beat-type></time></attributes>\
+                     <direction><direction-type><metronome><beat-unit>quarter</beat-unit><per-minute>{bpm}</per-minute></metronome></direction-type><sound tempo=\"{bpm}\"/></direction>"
+                ));
+            }
+            for _ in 0..12 {
+                x.push_str(
+                    "<note><pitch><step>C</step><octave>4</octave></pitch><duration>1</duration><voice>1</voice><type>eighth</type><time-modification><actual-notes>3</actual-notes><normal-notes>2</normal-notes></time-modification></note>",
+                );
+            }
+            x.push_str("</measure>");
+        }
+        x.push_str("</part></score-partwise>");
+        x
+    }
+
+    #[test]
+    fn mil_compassos_de_tercinas_nao_acumulam_erro_no_mapa_simbolico() {
+        let p = Partitura::de_musicxml(&xml_de_tercinas(1_000, 97)).expect("1.000 compassos");
+        assert_eq!(p.compassos.len(), 1_000);
+        assert_eq!(p.total_de_notas(), 12_000);
+        // Início de cada compasso: exatamente 4 * k semínimas, sem resíduo.
+        for (k, c) in p.compassos.iter().enumerate() {
+            assert_eq!(c.inicio, Fracao::inteiro(4 * k as i64), "compasso {k}");
+            assert_eq!(c.duracao, Fracao::inteiro(4));
+            assert!(!c.incompleto);
+        }
+        assert_eq!(p.duracao_escrita(), Fracao::inteiro(4_000));
+        assert_eq!(p.duracao_da_execucao(), Fracao::inteiro(4_000));
+        // Eventos: o j-ésimo começa em j/3 de semínima, exato (comparação racional).
+        let ev = p.eventos_de_reproducao();
+        assert_eq!(ev.len(), 12_000);
+        for (j, e) in ev.iter().enumerate() {
+            assert_eq!(e.inicio, Fracao::nova(j as i64, 3), "evento {j}");
+            assert_eq!(e.duracao, Fracao::nova(1, 3));
+            assert_eq!(e.compasso, j / 12);
+        }
+        let ultimo = ev.last().expect("último evento");
+        assert_eq!(ultimo.inicio + ultimo.duracao, Fracao::inteiro(4_000));
+        // Tempo: 4.000 semínimas a 97 bpm = 240.000/97 s; erro relativo < 1e-12 (um único
+        // produto em ponto flutuante, sem soma acumulada).
+        let mapa = p.mapa_de_andamento();
+        let s = mapa.segundos(p.duracao_escrita().como_f64(), 120.0, 1.0);
+        let exato = 4_000.0 * 60.0 / 97.0;
+        assert!((s - exato).abs() / exato < 1e-12, "{s} vs {exato}");
+    }
+
+    #[test]
+    fn mil_compassos_a_120_bpm_dao_exatamente_2000_segundos() {
+        let p = Partitura::de_musicxml(&xml_de_tercinas(1_000, 120)).expect("1.000 compassos");
+        let mapa = p.mapa_de_andamento();
+        let s = mapa.segundos(p.duracao_escrita().como_f64(), 120.0, 1.0);
+        let ns = (s * 1e9).round() as i64;
+        assert_eq!(
+            ns,
+            2_000_000_000_000,
+            "erro de {} ns em 1.000 compassos",
+            ns - 2_000_000_000_000
+        );
+        // O início do compasso 1.000 (índice 999) também cai em tempo exato: 3.996 semínimas.
+        let inicio = p.compassos[999].inicio;
+        assert_eq!(inicio, Fracao::inteiro(3_996));
+        let s999 = mapa.segundos(inicio.como_f64(), 120.0, 1.0);
+        assert_eq!((s999 * 1e9).round() as i64, 1_998_000_000_000);
+    }
+
+    #[test]
+    fn mil_compassos_de_formulas_mistas_3_4_4_4_e_6_8_somam_exatamente() {
+        // Ciclo 3/4, 4/4, 6/8 (3 + 4 + 3 semínimas); compassos só com pausa de compasso.
+        let formulas = [(3, 4), (4, 4), (6, 8)];
+        let mut x = String::from(
+            r#"<?xml version="1.0" encoding="UTF-8"?>
+<score-partwise version="4.0"><part-list><score-part id="P1"><part-name>Piano</part-name></score-part></part-list>
+<part id="P1">"#,
+        );
+        for k in 0..1_000usize {
+            let (b, u) = formulas[k % 3];
+            x.push_str(&format!(r#"<measure number="{}">"#, k + 1));
+            x.push_str(&format!(
+                "<attributes><divisions>2</divisions><time><beats>{b}</beats><beat-type>{u}</beat-type></time></attributes>"
+            ));
+            x.push_str("</measure>");
+        }
+        x.push_str("</part></score-partwise>");
+        let p = Partitura::de_musicxml(&x).expect("1.000 compassos mistos");
+        assert_eq!(p.compassos.len(), 1_000);
+        let mut esperado = Fracao::ZERO;
+        for (k, c) in p.compassos.iter().enumerate() {
+            let (b, u) = formulas[k % 3];
+            assert_eq!((c.forma.batidas, c.forma.unidade), (b, u), "compasso {k}");
+            assert_eq!(c.inicio, esperado, "compasso {k}");
+            esperado = esperado + Fracao::nova(i64::from(b) * 4, i64::from(u));
+        }
+        // 333 ciclos de 10 semínimas + um compasso de 3/4 = 3.333 semínimas.
+        assert_eq!(esperado, Fracao::inteiro(3_333));
+        assert_eq!(p.duracao_escrita(), Fracao::inteiro(3_333));
+        assert_eq!(p.duracao_da_execucao(), Fracao::inteiro(3_333));
+        // Pulso composto de 6/8 vale 3/2 de semínima; 3/4 e 4/4, 1.
+        assert_eq!(p.compassos[2].forma.duracao_do_pulso(), Fracao::nova(3, 2));
+        assert_eq!(p.compassos[0].forma.duracao_do_pulso(), Fracao::inteiro(1));
+    }
 }
