@@ -1,10 +1,12 @@
 [Desktop Entry]
 Type=Application
 Version=1.0
-Name=Olá Piano Tutor
-Name[en]=Hello Piano Tutor
+Name=Piano Tutor
+Name[en]=Piano Tutor
 Comment=Tutor de piano com motor SoundFont
 Exec=piano-tutor
+Icon=piano-tutor
+StartupWMClass=piano-tutor
 Terminal=false
 Categories=Audio;Music;Education;
 Keywords=piano;música;soundfont;midi;

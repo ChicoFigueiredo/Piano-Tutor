@@ -617,6 +617,8 @@ pub fn config() -> ConfigCasca {
     let mut config = ConfigCasca::nova(TITULO, TOKENS_JSON, TEMAS_JSON);
     config.tema_inicial = TEMAS[0].id.to_owned();
     config.icones = crate::icones::familia();
+    config.icone_janela = Some(crate::icones::icone_janela());
+    config.id_app = Some("piano-tutor".to_owned());
     config
 }
 

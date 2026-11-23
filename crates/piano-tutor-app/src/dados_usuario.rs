@@ -844,9 +844,15 @@ mod testes {
         let r = preparar(&d).expect("preparar");
         let b = r.backup.expect("houve backup");
         assert!(b.join("preferencias.txt").is_file());
-        assert!(!b.join(PASTA_SOUNDFONTS).exists(), "SF2 não entra no backup");
+        assert!(
+            !b.join(PASTA_SOUNDFONTS).exists(),
+            "SF2 não entra no backup"
+        );
         restaurar_de(&d, Some(&b)).expect("restaurar");
-        assert!(d.join(PASTA_SOUNDFONTS).join("x.sf2").is_file(), "SF2 continua");
+        assert!(
+            d.join(PASTA_SOUNDFONTS).join("x.sf2").is_file(),
+            "SF2 continua"
+        );
         let _ = fs::remove_dir_all(&d);
     }
 }

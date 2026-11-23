@@ -40,6 +40,75 @@ pub fn familia() -> FamiliaDeIcones {
         })
 }
 
+/// Ícone da janela (128×128 RGBA), desenhado em código com a mesma geometria de
+/// `assets/icones/piano-tutor.svg` (grade 256): quadrado azul arredondado com teclado branco.
+pub fn icone_janela() -> bancada_casca::egui::IconData {
+    const L: usize = 128;
+    const SS: usize = 4; // superamostragem por eixo
+    let mut rgba = vec![0u8; L * L * 4];
+    for y in 0..L {
+        for x in 0..L {
+            let (mut fundo, mut branco) = (0u32, 0u32);
+            for sy in 0..SS {
+                for sx in 0..SS {
+                    // Coordenadas na grade 256 do SVG.
+                    let gx = (x as f32 + (sx as f32 + 0.5) / SS as f32) * 2.0;
+                    let gy = (y as f32 + (sy as f32 + 0.5) / SS as f32) * 2.0;
+                    if dentro_arredondado(gx, gy, 16.0, 16.0, 224.0, 224.0, 52.0) {
+                        fundo += 1;
+                        if branco_do_logo(gx, gy) {
+                            branco += 1;
+                        }
+                    }
+                }
+            }
+            let total = (SS * SS) as f32;
+            let a = fundo as f32 / total;
+            let w = if fundo == 0 {
+                0.0
+            } else {
+                branco as f32 / fundo as f32
+            };
+            let t = y as f32 / L as f32;
+            let azul = [
+                90.0 + (32.0 - 90.0) * t,
+                170.0 + (121.0 - 170.0) * t,
+                247.0 + (214.0 - 247.0) * t,
+            ];
+            let i = (y * L + x) * 4;
+            for c in 0..3 {
+                rgba[i + c] = (azul[c] + (255.0 - azul[c]) * w).round() as u8;
+            }
+            rgba[i + 3] = (a * 255.0).round() as u8;
+        }
+    }
+    bancada_casca::egui::IconData {
+        rgba,
+        width: L as u32,
+        height: L as u32,
+    }
+}
+
+fn dentro_arredondado(x: f32, y: f32, x0: f32, y0: f32, l: f32, a: f32, r: f32) -> bool {
+    let cx = x.clamp(x0 + r, x0 + l - r);
+    let cy = y.clamp(y0 + r, y0 + a - r);
+    (x - cx).powi(2) + (y - cy).powi(2) <= r * r
+}
+
+fn branco_do_logo(x: f32, y: f32) -> bool {
+    // Contorno do teclado (traço 10 em volta de 52,78 152×108 r12).
+    let fora = dentro_arredondado(x, y, 47.0, 73.0, 162.0, 118.0, 17.0);
+    let dentro = dentro_arredondado(x, y, 57.0, 83.0, 142.0, 98.0, 7.0);
+    let contorno = fora && !dentro;
+    let pretas = [80.0, 120.0, 160.0]
+        .iter()
+        .any(|&px| x >= px && x <= px + 16.0 && (78.0..=140.0).contains(&y));
+    let divisorias = [88.0, 128.0, 168.0]
+        .iter()
+        .any(|&dx| (x - dx).abs() <= 4.0 && (136.0..=190.0).contains(&y));
+    contorno || pretas || divisorias
+}
+
 #[cfg(test)]
 mod testes {
     use super::*;
@@ -71,6 +140,15 @@ mod testes {
         let codigos: std::collections::HashSet<char> = pares().map(|(_, c)| c).collect();
         assert_eq!(codigos.len(), pares().count(), "códigos únicos");
         assert!(pares().all(|(_, c)| ('\u{E000}'..='\u{F8FF}').contains(&c)));
+    }
+
+    #[test]
+    fn icone_da_janela_tem_canto_transparente_e_centro_opaco() {
+        let i = icone_janela();
+        assert_eq!((i.width, i.height, i.rgba.len()), (128, 128, 128 * 128 * 4));
+        assert_eq!(i.rgba[3], 0, "canto transparente");
+        let centro = (64 * 128 + 64) * 4;
+        assert_eq!(i.rgba[centro + 3], 255);
     }
 
     #[test]

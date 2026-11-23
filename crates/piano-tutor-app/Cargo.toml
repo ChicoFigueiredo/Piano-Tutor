@@ -44,5 +44,6 @@ depends = "$auto, fluid-soundfont-gm"
 assets = [
     ["target/release/piano-tutor-app", "usr/bin/piano-tutor", "755"],
     ["pacote/piano-tutor.desktop", "usr/share/applications/piano-tutor.desktop", "644"],
+    ["../../assets/icones/piano-tutor.svg", "usr/share/icons/hicolor/scalable/apps/piano-tutor.svg", "644"],
     ["../../README.md", "usr/share/doc/piano-tutor/README.md", "644"],
 ]
