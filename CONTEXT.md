@@ -8,7 +8,15 @@ Professor assistido de piano e teclado, local-first, que ouve o teclado físico,
 
 **Aula**:
 Vídeo-fonte de um tutor, mantido apenas localmente, do qual se pode derivar conteúdo.
-_Evitar_: videoaula como sinônimo de lição, curso
+_Evitar_: videoaula como sinônimo de lição ou de Curso
+
+**Curso**:
+Sequência ordenada de Lições de uma mesma origem, com progresso próprio: o Curso de fábrica do Piano Tutor ou o Curso de um tutor (ex.: Luciano Alves).
+_Evitar_: módulo, trilha, programa
+
+**Seção**:
+Divisão de um Curso de tutor, na ordem do autor, que agrupa Aulas e as Lições derivadas delas.
+_Evitar_: módulo, capítulo, disciplina
 
 **Lição**:
 Conteúdo pedagógico aprovado e versionado, criado à mão ou derivado de uma Aula, que agrupa Exercícios.
@@ -17,6 +25,18 @@ _Evitar_: aula, módulo
 **Exercício**:
 Unidade praticável com um Gabarito, pertencente a uma Lição ou fornecida de fábrica.
 _Evitar_: lição, desafio, atividade
+
+**Acervo**:
+Biblioteca de partituras do aplicativo, com as de domínio público que vêm com ele e as importadas pelo aluno.
+_Evitar_: repositório, banco de partituras
+
+**Pacote local**:
+Conteúdo derivado de material protegido (partituras, Lições, alinhamentos) que só existe no computador do aluno e nunca entra no repositório público.
+_Evitar_: conteúdo privado, assets
+
+**Alinhamento**:
+Ligação entre cada nota de uma partitura aprovada e o instante em que ela soa numa Aula.
+_Evitar_: sincronia, transcrição de áudio
 
 **Gabarito**:
 Resposta esperada de um Exercício; só existe a partir de conteúdo aprovado, nunca de saída bruta de IA.
