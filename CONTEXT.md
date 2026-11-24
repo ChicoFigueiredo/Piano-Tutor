@@ -11,7 +11,7 @@ Vídeo-fonte de um tutor, mantido apenas localmente, do qual se pode derivar con
 _Evitar_: videoaula como sinônimo de lição ou de Curso
 
 **Curso**:
-Sequência ordenada de Lições de uma mesma origem, com progresso próprio: o Curso de fábrica do Piano Tutor ou o Curso de um tutor (ex.: Luciano Alves).
+Sequência ordenada de Lições de uma mesma origem, com progresso próprio: o Curso de fábrica do Piano Tutor ou o Curso de um tutor (ex.: Luciano Alves), que chega por um Pacote de Curso.
 _Evitar_: módulo, trilha, programa
 
 **Seção**:
@@ -30,9 +30,17 @@ _Evitar_: lição, desafio, atividade
 Biblioteca de partituras do aplicativo, com as de domínio público que vêm com ele e as importadas pelo aluno.
 _Evitar_: repositório, banco de partituras
 
-**Pacote local**:
-Conteúdo derivado de material protegido (partituras, Lições, alinhamentos) que só existe no computador do aluno e nunca entra no repositório público.
-_Evitar_: conteúdo privado, assets
+**Pacote de Curso**:
+Arquivo plugável que abastece o aplicativo com um Curso de tutor (Lições, partituras, áudios, Alinhamentos, Roteiro) sem fazer parte dele; pode ser distribuído só com licença do autor.
+_Evitar_: plugin como sinônimo de extensão de código, conteúdo embutido, pacote local
+
+**Roteiro**:
+Falas aprovadas que o professor diz ao aluno durante uma Lição, ligadas aos passos dos Exercícios, ditas por voz sintética.
+_Evitar_: legenda, transcrição, fala da Aula
+
+**Chamada e resposta**:
+Modo de Exercício em que o professor toca ou anuncia um trecho e o aluno o repete no teclado.
+_Evitar_: eco, imitação, pergunta e resposta (nome de uma música do curso)
 
 **Alinhamento**:
 Ligação entre cada nota de uma partitura aprovada e o instante em que ela soa numa Aula.
