@@ -89,3 +89,23 @@ Versões fixadas com `=` em `crates/piano-tutor-core/Cargo.toml`; licenças lida
 | `syn`, `quote`, `proc-macro2`, `unicode-ident` | 2.0.119, 1.0.47, 1.0.107, 1.0.27 | MIT OR Apache-2.0 (`unicode-ident` também Unicode-3.0) | só em compilação (derive) |
 
 `cargo deny`/`cargo license` **não foram executados**: a conferência acima é do campo `license` de cada crate, não de uma auditoria jurídica.
+
+## Dependências do `piano-tutor-curso` (M4, Pacote de Curso)
+
+Versões fixadas com `=` em `crates/piano-tutor-curso/Cargo.toml`; licenças conferidas nos `Cargo.toml` dos crates no registro local (2026-11-24).
+
+| Crate | Versão | Licença | Uso |
+| --- | --- | --- | --- |
+| `ed25519-dalek` | 2.2.0 | BSD-3-Clause | assinatura e verificação do manifesto (traz `curve25519-dalek` 4.1.3, BSD-3-Clause; `subtle` 2.6.1, BSD-3-Clause; `fiat-crypto` 0.2.9, MIT OR Apache-2.0 OR BSD-1-Clause; `ed25519` 2.2.3, `signature` 2.2.0, `zeroize`, `sha2` 0.10.9 e `rand_core` 0.6.4, MIT OR Apache-2.0) |
+| `sha2` | 0.11.1 | MIT OR Apache-2.0 | SHA-256 dos arquivos (mesma versão do app) |
+| `zip` | 9.8.1 | MIT | contêiner `.ptcurso` (mesma configuração do core) |
+| `flate2` | 1.1.11 | MIT OR Apache-2.0 | deflate (backend `miniz_oxide`, Rust puro) |
+| `serde` | 1.0.229 | MIT OR Apache-2.0 | modelo de dados |
+| `toml` | 1.2.0 | MIT OR Apache-2.0 | manifesto e Roteiro (traz `toml_writer`, `serde_spanned`, `toml_datetime`, `toml_parser`, MIT OR Apache-2.0) |
+| `serde_json` | 1.0.154 | MIT OR Apache-2.0 | Alinhamento |
+| `dirs` | 7.0.0 | MIT OR Apache-2.0 | pasta de dados padrão da CLI |
+| `getrandom` | 0.4.3 | MIT OR Apache-2.0 | semente aleatória das chaves geradas |
+| `tempfile` | 3.27.0 | MIT OR Apache-2.0 | **somente dev-dependency**: pastas temporárias nos testes |
+
+O crate não faz rede e as fixtures dos testes são sintéticas (nenhum conteúdo de curso real no repositório). Transitivas não listadas não foram auditadas uma a uma: **NÃO VERIFICADO** (usar `cargo deny` na CI). Chaves privadas de autor nunca entram no repositório.
+

@@ -1,0 +1,40 @@
+[package]
+name = "piano-tutor-curso"
+description = "Pacote de Curso do Piano Tutor: formato, empacotador, verificador e instalador (só dados, assinado com ed25519)"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+publish = false
+
+[lib]
+name = "piano_tutor_curso"
+path = "src/lib.rs"
+
+[[bin]]
+name = "piano-tutor-curso"
+path = "src/main.rs"
+
+[lints]
+workspace = true
+
+[dependencies]
+# Assinatura ed25519 do manifesto (ADR-0009): Rust puro, BSD-3-Clause.
+ed25519-dalek = { version = "=2.2.0", default-features = false, features = ["std", "fast", "zeroize"] }
+# SHA-256 dos arquivos do pacote (mesma versão do app): MIT OR Apache-2.0.
+sha2 = "=0.11.1"
+# Contêiner .ptcurso: zip somente com deflate (mesma configuração do core), MIT.
+zip = { version = "=9.8.1", default-features = false, features = ["deflate-flate2"] }
+# Backend único do flate2: miniz_oxide, Rust puro, MIT OR Zlib OR Apache-2.0.
+flate2 = { version = "=1.1.11", default-features = false, features = ["rust_backend"] }
+# Manifesto e Roteiro (TOML) e Alinhamento (JSON): MIT OR Apache-2.0.
+serde = { version = "=1.0.229", features = ["derive"] }
+toml = "=1.2.0"
+serde_json = "=1.0.154"
+# Pasta de dados padrão do usuário: MIT OR Apache-2.0.
+dirs = "=7.0.0"
+# Sementes aleatórias para gerar chaves: MIT OR Apache-2.0.
+getrandom = "=0.4.3"
+
+[dev-dependencies]
+# Pastas temporárias nos testes: MIT OR Apache-2.0.
+tempfile = "=3.27.0"
