@@ -2855,10 +2855,9 @@ dependencies = [
  "dirs",
  "piano-tutor-audio",
  "piano-tutor-core",
+ "piano-tutor-curso",
  "piano-tutor-midi",
- "serde",
  "sha2 0.11.1",
- "toml",
  "ureq",
 ]
 
