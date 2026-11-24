@@ -32,6 +32,7 @@
 //! ```
 
 mod chaves;
+pub mod cli;
 mod empacotamento;
 mod erro;
 mod instalacao;
