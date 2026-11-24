@@ -18,6 +18,7 @@ mao = "direita"
 objetivo = "Tocar as notas de Dó maior uma a uma, subindo."
 instrucoes = "Toque Dó, Mi, Sol e Dó, uma nota de cada vez. Sem dedilhado fixo: use o que ficar confortável."
 passos = "C4 E4 G4 C5"
+dedilhado = "1 2 3 5"
 roteiro = [
   "Ponha a mão direita sobre as teclas, com os dedos curvos e o punho solto.",
   "Comece no Dó, a fundamental do acorde.",
@@ -35,6 +36,7 @@ mao = "direita"
 objetivo = "Subir e descer o arpejo de Dó maior."
 instrucoes = "Toque Dó, Mi, Sol, Dó, Sol, Mi e Dó. O Dó agudo é tocado uma vez só."
 passos = "C4 E4 G4 C5 G4 E4 C4"
+dedilhado = "1 2 3 5 3 2 1"
 roteiro = [
   "Ponha a mão direita sobre as teclas, com os dedos curvos e o punho solto.",
   "Comece no Dó, a fundamental do acorde.",
@@ -142,6 +144,7 @@ mao = "esquerda"
 objetivo = "Arpejar Dó maior com a mão esquerda."
 instrucoes = "Use a mão esquerda, uma oitava abaixo. Toque Dó, Mi, Sol, Dó, Sol, Mi e Dó."
 passos = "C3 E3 G3 C4 G3 E3 C3"
+dedilhado = "5 3 2 1 2 3 5"
 roteiro = [
   "Ponha a mão esquerda sobre as teclas, com os dedos curvos e o punho solto.",
   "Comece no Dó, a fundamental do acorde.",

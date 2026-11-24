@@ -19,6 +19,7 @@ tipo = "localizar"
 objetivo = "Localizar o Dó central (Dó4), a nota de referência do teclado."
 instrucoes = "O Dó central é a tecla branca logo à esquerda do grupo de duas teclas pretas, no meio do teclado. Toque essa tecla."
 passos = "C4"
+dedilhado = "1"
 roteiro = [
   "Sente-se no centro do teclado, com os ombros soltos.",
   "Ache o grupo de duas teclas pretas mais perto do meio.",

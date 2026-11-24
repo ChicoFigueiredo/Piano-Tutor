@@ -377,8 +377,10 @@ pub fn pintar_teclado(
         tom: opacidade_do_tom(estilo.velocidade_de(g.nota)),
         cromatico: cromatico(g.nota),
         // A tecla tocada sempre mostra o dedo indicado, para conferir se o dedo usado é o certo.
+        // A guia (tecla a tocar) também: sem dedilhado na Lição nem desenho reconhecido (nota
+        // isolada, melodia passo a passo), vale o dedo de referência.
         dedo: dedo_de(g.nota).or_else(|| {
-            if ligadas.contains(&g.indice) {
+            if ligadas.contains(&g.indice) || e.guias.contains(&g.nota) {
                 e.dedo_de_referencia(g.nota, estilo.divisao)
                     .and_then(|d| e.nomenclatura.rotulo(d))
             } else {
