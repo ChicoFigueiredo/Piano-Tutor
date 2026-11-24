@@ -18,6 +18,7 @@ pub enum Etapa {
     Cobertura,
     Velocidade,
     Pedal,
+    Bend,
     Concluida,
 }
 
@@ -29,7 +30,8 @@ impl Etapa {
             Etapa::Cobertura => 3,
             Etapa::Velocidade => 4,
             Etapa::Pedal => 5,
-            Etapa::Concluida => 6,
+            Etapa::Bend => 6,
+            Etapa::Concluida => 7,
         }
     }
 }
@@ -77,9 +79,69 @@ pub struct PerfilTeclado {
     pub velocity: Suporte,
     pub velocity_faixa: Option<(u8, u8)>,
     pub pedal: Suporte,
+    /// Roda de pitch bend: se transmite e o curso medido.
+    pub bend: Suporte,
+    pub bend_curso: Option<CursoBend>,
     /// Teclas conferidas (de 61) e quantas mandaram liberação.
     pub conferidas: usize,
     pub liberacoes: usize,
+}
+
+/// Curso medido da roda de pitch bend (valores centrados em zero, `-8192..=8191`). Rodas
+/// baratas ficam descentradas, chiam em repouso e não chegam ao fundo; o curso corrige isso.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub struct CursoBend {
+    /// Valor em repouso (roda solta).
+    pub centro: i16,
+    /// Menor e maior valor alcançados.
+    pub minimo: i16,
+    pub maximo: i16,
+    /// Distância do centro tratada como repouso (absorve o chiado).
+    pub zona_morta: i16,
+}
+
+/// Zona morta mínima: 2 passos da resolução de 7 bits que o REVAS usa (128 unidades).
+pub const ZONA_MORTA_MIN: i16 = 256;
+
+impl CursoBend {
+    /// Bend corrigido: zona morta em volta do centro e cada lado esticado até o fundo de curso
+    /// MIDI. Um lado que não se afastou do centro além da zona morta fica sempre em zero.
+    pub fn normalizar(&self, valor: i16) -> i16 {
+        let d = i32::from(valor) - i32::from(self.centro);
+        let zona = i32::from(self.zona_morta);
+        if d.abs() <= zona {
+            return 0;
+        }
+        let (curso, alvo) = if d > 0 {
+            (i32::from(self.maximo) - i32::from(self.centro) - zona, 8191)
+        } else {
+            (i32::from(self.centro) - i32::from(self.minimo) - zona, 8192)
+        };
+        if curso <= 0 {
+            return 0;
+        }
+        let v = ((d.abs() - zona).min(curso) * alvo + curso / 2) / curso;
+        (if d > 0 { v } else { -v }).clamp(-8192, 8191) as i16
+    }
+
+    fn para_texto(&self) -> String {
+        format!(
+            "{},{},{},{}",
+            self.centro, self.minimo, self.maximo, self.zona_morta
+        )
+    }
+
+    fn de_texto(v: &str) -> Option<Self> {
+        let mut it = v.split(',').map(|x| x.trim().parse::<i16>());
+        let c = Self {
+            centro: it.next()?.ok()?,
+            minimo: it.next()?.ok()?,
+            maximo: it.next()?.ok()?,
+            zona_morta: it.next()?.ok()?,
+        };
+        (it.next().is_none() && c.minimo <= c.centro && c.centro <= c.maximo && c.zona_morta >= 0)
+            .then_some(c)
+    }
 }
 
 impl PerfilTeclado {
@@ -100,6 +162,10 @@ impl PerfilTeclado {
             let _ = writeln!(s, "velocity_faixa={a}-{b}");
         }
         let _ = writeln!(s, "pedal={}", self.pedal.chave());
+        let _ = writeln!(s, "bend={}", self.bend.chave());
+        if let Some(c) = self.bend_curso {
+            let _ = writeln!(s, "bend_curso={}", c.para_texto());
+        }
         let _ = writeln!(s, "conferidas={}", self.conferidas);
         let _ = writeln!(s, "liberacoes={}", self.liberacoes);
         s
@@ -112,6 +178,8 @@ impl PerfilTeclado {
             velocity: Suporte::NaoTestado,
             velocity_faixa: None,
             pedal: Suporte::NaoTestado,
+            bend: Suporte::NaoTestado,
+            bend_curso: None,
             conferidas: 0,
             liberacoes: 0,
         };
@@ -134,12 +202,19 @@ impl PerfilTeclado {
                     p.velocity_faixa = Some((a.parse().ok()?, b.parse().ok()?));
                 }
                 "pedal" => p.pedal = Suporte::de_chave(v)?,
+                "bend" => p.bend = Suporte::de_chave(v)?,
+                "bend_curso" => p.bend_curso = CursoBend::de_texto(v),
                 "conferidas" => p.conferidas = v.parse().ok()?,
                 "liberacoes" => p.liberacoes = v.parse().ok()?,
                 _ => {}
             }
         }
         (tem_grave && p.teclado().is_some()).then_some(p)
+    }
+
+    /// Bend do teclado físico corrigido pelo curso calibrado (sem calibração, inalterado).
+    pub fn bend_corrigido(&self, valor: i16) -> i16 {
+        self.bend_curso.map_or(valor, |c| c.normalizar(valor))
     }
 
     /// Lê o perfil salvo (ausente ou inválido = `None`).
@@ -169,7 +244,15 @@ pub struct Calibracao {
     pedal_visto: bool,
     pub pedal: Suporte,
     pub ultima_nota: Option<u8>,
+    pub bend: Suporte,
+    /// Valores de bend recebidos na etapa do bend, em ordem (até [`MAX_AMOSTRAS_BEND`]).
+    amostras_bend: Vec<i16>,
 }
+
+/// Amostras guardadas na etapa do bend (a roda manda dezenas por segundo).
+const MAX_AMOSTRAS_BEND: usize = 20_000;
+/// Últimas amostras usadas para achar o repouso quando o usuário confirma.
+const AMOSTRAS_REPOUSO: usize = 24;
 
 impl Default for Calibracao {
     fn default() -> Self {
@@ -193,6 +276,8 @@ impl Calibracao {
             pedal_visto: false,
             pedal: Suporte::NaoTestado,
             ultima_nota: None,
+            bend: Suporte::NaoTestado,
+            amostras_bend: Vec::new(),
         }
     }
 
@@ -218,6 +303,12 @@ impl Calibracao {
             EventoMidi::NotaDesligada { nota, .. } => {
                 if self.etapa == Etapa::Cobertura && self.na_faixa(nota.numero()) {
                     self.liberadas[usize::from(nota.numero())] = true;
+                }
+            }
+            EventoMidi::PitchBend { valor, .. } => {
+                if self.etapa == Etapa::Bend && self.amostras_bend.len() < MAX_AMOSTRAS_BEND {
+                    self.amostras_bend.push(valor);
+                    self.bend = Suporte::Sim;
                 }
             }
             EventoMidi::ControleMudou { controle: 64, .. } => {
@@ -280,7 +371,7 @@ impl Calibracao {
                 self.vel_min = Some(self.vel_min.map_or(velocidade, |m| m.min(velocidade)));
                 self.vel_max = Some(self.vel_max.map_or(velocidade, |m| m.max(velocidade)));
             }
-            Etapa::Pedal | Etapa::Concluida => {}
+            Etapa::Pedal | Etapa::Bend | Etapa::Concluida => {}
         }
     }
 
@@ -339,14 +430,52 @@ impl Calibracao {
                 }
                 Etapa::Pedal
             }
-            Etapa::Pedal | Etapa::Concluida => Etapa::Concluida,
+            Etapa::Pedal => Etapa::Bend,
+            Etapa::Bend | Etapa::Concluida => Etapa::Concluida,
         };
     }
 
     /// "Não tenho pedal / ele não respondeu".
     pub fn sem_pedal(&mut self) {
         self.pedal = Suporte::NaoSuportado;
+        self.etapa = Etapa::Bend;
+    }
+
+    /// "O teclado não tem roda de bend / ela não respondeu".
+    pub fn sem_bend(&mut self) {
+        self.bend = Suporte::NaoSuportado;
+        self.amostras_bend.clear();
         self.etapa = Etapa::Concluida;
+    }
+
+    /// Quantos valores de bend chegaram na etapa do bend.
+    pub fn amostras_bend(&self) -> usize {
+        self.amostras_bend.len()
+    }
+
+    /// Curso medido até agora: repouso = média das últimas amostras (a roda solta), zona morta
+    /// = o dobro do chiado em repouso (no mínimo [`ZONA_MORTA_MIN`]).
+    pub fn curso_bend(&self) -> Option<CursoBend> {
+        let a = &self.amostras_bend;
+        if a.is_empty() {
+            return None;
+        }
+        let repouso = &a[a.len().saturating_sub(AMOSTRAS_REPOUSO)..];
+        let soma: i32 = repouso.iter().map(|&v| i32::from(v)).sum();
+        let centro = (soma / repouso.len() as i32) as i16;
+        let chiado = repouso
+            .iter()
+            .map(|&v| (i32::from(v) - i32::from(centro)).abs())
+            .max()
+            .unwrap_or(0);
+        let minimo = *a.iter().min()?;
+        let maximo = *a.iter().max()?;
+        Some(CursoBend {
+            centro,
+            minimo: minimo.min(centro),
+            maximo: maximo.max(centro),
+            zona_morta: (chiado * 2).clamp(i32::from(ZONA_MORTA_MIN), 2048) as i16,
+        })
     }
 
     /// O perfil resultante (só depois de medir a faixa de 61 teclas).
@@ -362,6 +491,12 @@ impl Calibracao {
             velocity: self.suporte_velocity(),
             velocity_faixa: self.faixa_velocidade(),
             pedal: self.pedal,
+            bend: self.bend,
+            bend_curso: if self.bend == Suporte::Sim {
+                self.curso_bend()
+            } else {
+                None
+            },
             conferidas: self.conferidas(),
             liberacoes: self.liberacoes(),
         })
@@ -392,7 +527,18 @@ impl Calibracao {
                 .map(|(a, b)| format!(" (observado {a} a {b})"))
                 .unwrap_or_default()
         );
-        let _ = writeln!(s, "- Pedal de sustain (CC64): {}\n", p.pedal.texto());
+        let _ = writeln!(s, "- Pedal de sustain (CC64): {}", p.pedal.texto());
+        let _ = writeln!(
+            s,
+            "- Roda de pitch bend: {}{}\n",
+            p.bend.texto(),
+            p.bend_curso
+                .map(|c| format!(
+                    " (repouso {}, curso {} a {}, zona morta ±{})",
+                    c.centro, c.minimo, c.maximo, c.zona_morta
+                ))
+                .unwrap_or_default()
+        );
         let _ = writeln!(s, "| Tecla | MIDI | Nota | Conferida | Liberação |");
         let _ = writeln!(s, "|---:|---:|---|---|---|");
         for (i, (n, c, l)) in self.mapa().into_iter().enumerate() {
@@ -417,6 +563,68 @@ fn vazio_ou(s: &str) -> &str {
 
 #[cfg(test)]
 mod testes {
+
+    fn bend(valor: i16) -> EventoMidi {
+        EventoMidi::PitchBend {
+            canal: piano_tutor_core::midi::CanalMidi::novo(0).expect("canal"),
+            valor,
+            timestamp_monotonico_ns: 0,
+        }
+    }
+
+    #[test]
+    fn curso_do_bend_descentrado_vira_repouso_zero_e_fundo_de_curso() {
+        let mut k = Calibracao::nova("REVAS");
+        k.etapa = Etapa::Bend;
+        // Roda como a do REVAS: vai a -3072 e +2048, e solta chia em volta de -2600.
+        for v in [-1000, -3072, -2000, 0, 2048, 500] {
+            k.evento(&bend(v));
+        }
+        for i in 0..30 {
+            k.evento(&bend(if i % 2 == 0 { -2560 } else { -2688 }));
+        }
+        let c = k.curso_bend().expect("curso");
+        assert_eq!((c.minimo, c.maximo), (-3072, 2048));
+        assert!((c.centro + 2624).abs() <= 1, "{c:?}");
+        assert_eq!(c.zona_morta, ZONA_MORTA_MIN);
+        assert_eq!(c.normalizar(-2600), 0, "repouso com chiado é zero");
+        assert_eq!(c.normalizar(2048), 8191);
+        assert_eq!(c.normalizar(-3072), -8192);
+        let meio = c.normalizar(-200);
+        assert!(meio > 1000 && meio < 8191, "{meio}");
+        k.avancar();
+        assert_eq!(k.etapa, Etapa::Concluida);
+        let p = k.perfil();
+        assert!(p.is_none() || p.as_ref().is_some_and(|p| p.bend == Suporte::Sim));
+    }
+
+    #[test]
+    fn curso_do_bend_vai_e_volta_no_texto_do_perfil() {
+        let c = CursoBend {
+            centro: -2600,
+            minimo: -3072,
+            maximo: 2048,
+            zona_morta: 256,
+        };
+        assert_eq!(CursoBend::de_texto(&c.para_texto()), Some(c));
+        assert_eq!(CursoBend::de_texto("1,2"), None);
+        assert_eq!(
+            CursoBend::de_texto("5,10,20,1"),
+            None,
+            "mínimo acima do centro"
+        );
+    }
+
+    #[test]
+    fn sem_roda_de_bend_conclui_como_nao_suportado() {
+        let mut k = Calibracao::nova("X");
+        k.etapa = Etapa::Bend;
+        k.sem_bend();
+        assert_eq!(k.etapa, Etapa::Concluida);
+        assert_eq!(k.bend, Suporte::NaoSuportado);
+        assert_eq!(k.curso_bend(), None);
+    }
+
     use super::*;
     use piano_tutor_core::midi::CanalMidi;
 

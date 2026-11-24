@@ -78,12 +78,13 @@ pub fn desenhar_tela(
 }
 
 fn desenhar_etapas(ui: &mut Ui, k: &Calibracao) {
-    const NOMES: [&str; 6] = [
+    const NOMES: [&str; 7] = [
         "Tecla mais grave",
         "Tecla mais aguda",
         "Conferir as 61 teclas",
         "Força do toque (velocity)",
         "Pedal",
+        "Roda de bend",
         "Salvar",
     ];
     ui.horizontal_wrapped(|ui| {
@@ -183,6 +184,39 @@ fn desenhar_etapa_atual(ui: &mut Ui, k: &mut Calibracao, pedidos: &mut Vec<AcaoC
                 }
             }
         }
+        Etapa::Bend => {
+            instrucao(
+                ui,
+                "Leve a roda de pitch bend até o fim para cima e para baixo, depois SOLTE e espere.",
+            );
+            ui.label(
+                "Com a roda solta, clique em Continuar: o app aprende o repouso e o curso da roda \
+                 (rodas descentradas deixam o som desafinado).",
+            );
+            match k.curso_bend() {
+                Some(c) => {
+                    ui.label(format!(
+                        "{} valores recebidos · repouso agora {} · curso de {} a {} (fundo MIDI ±8192)",
+                        k.amostras_bend(),
+                        c.centro,
+                        c.minimo,
+                        c.maximo
+                    ));
+                    if ui.button("Continuar (roda solta)").clicked() {
+                        k.avancar();
+                    }
+                }
+                None => {
+                    ui.label("Nenhum bend recebido ainda.");
+                    if ui
+                        .button("Não tenho roda de bend / não respondeu")
+                        .clicked()
+                    {
+                        k.sem_bend();
+                    }
+                }
+            }
+        }
         Etapa::Concluida => {
             instrucao(ui, "Calibração concluída.");
             match k.perfil() {
@@ -199,6 +233,9 @@ fn desenhar_etapa_atual(ui: &mut Ui, k: &mut Calibracao, pedidos: &mut Vec<AcaoC
                         ui.end_row();
                         ui.label("Pedal");
                         ui.label(p.pedal.texto());
+                        ui.end_row();
+                        ui.label("Roda de bend");
+                        ui.label(p.bend.texto());
                         ui.end_row();
                     });
                     ui.add_space(6.0);
@@ -343,6 +380,9 @@ mod testes {
         });
         assert!(quadro(&ctx, &mut k).is_empty());
         k.avancar();
+        assert_eq!(k.etapa, Etapa::Bend);
+        assert!(quadro(&ctx, &mut k).is_empty());
+        k.avancar();
         assert_eq!(k.etapa, Etapa::Concluida);
         assert!(k.perfil().is_some());
         // Só o clique em "Salvar" emite pedido; desenhar a conclusão não emite nada.
@@ -361,6 +401,9 @@ mod testes {
         assert_eq!(k.etapa, Etapa::Pedal);
         assert!(quadro(&ctx, &mut k).is_empty());
         k.sem_pedal();
+        assert_eq!(k.etapa, Etapa::Bend);
+        assert!(quadro(&ctx, &mut k).is_empty());
+        k.sem_bend();
         assert_eq!(k.etapa, Etapa::Concluida);
         assert!(k.perfil().is_some(), "faixa de 61 teclas medida");
         assert!(quadro(&ctx, &mut k).is_empty());

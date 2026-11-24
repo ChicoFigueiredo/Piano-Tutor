@@ -460,14 +460,18 @@ impl AppPianoTutor {
     pub fn rotear(&mut self, saidas: Vec<SaidaMidi>) {
         for s in saidas {
             match s {
-                SaidaMidi::Evento(ev) => {
-                    self.gravacao.evento(&ev);
-                    if let EventoMidi::PitchBend { valor, .. } = ev {
-                        self.espelho.bend_fisico = valor;
-                    }
+                SaidaMidi::Evento(mut ev) => {
                     if self.rota_atual == ROTA_CALIBRACAO {
+                        // A calibração do bend precisa do valor cru da roda.
                         self.calibracao.evento(&ev);
                     }
+                    if let EventoMidi::PitchBend { valor, .. } = &mut ev {
+                        if let Some(p) = &self.perfil {
+                            *valor = p.bend_corrigido(*valor);
+                        }
+                        self.espelho.bend_fisico = *valor;
+                    }
+                    self.gravacao.evento(&ev);
                     if let EventoMidi::NotaLigada {
                         timestamp_monotonico_ns,
                         ..
