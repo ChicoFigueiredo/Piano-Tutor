@@ -241,6 +241,8 @@ pub struct EstadoEspelho {
     /// Mapa para decorar: com `Some(tônica)`, toda tecla da escala maior mostra o dedo, mesmo
     /// sem guia (ver [`crate::dedos::mapa_de_escala`]). Vem das preferências de exibição.
     pub mapa_dedos: Option<u8>,
+    /// Como o mapa distribui os dedos (escala contínua, uma oitava ou cinco dedos).
+    pub modo_mapa: crate::dedos::ModoMapa,
     /// Último dedo indicado para cada nota por uma guia (Lição, acorde, escala). Continua valendo
     /// depois que a guia some, como referência para a tecla tocada.
     dedos_recentes: Vec<(NotaMidi, u8)>,
@@ -288,6 +290,7 @@ impl EstadoEspelho {
             roda_bend: RodaBend::nova(),
             bend_fisico: 0,
             mapa_dedos: None,
+            modo_mapa: crate::dedos::ModoMapa::default(),
             dedos_recentes: Vec::new(),
             opcoes_tela: crate::tela_espelho::OpcoesVisuais::default(),
         }
@@ -320,9 +323,17 @@ impl EstadoEspelho {
         }
         let tonica = self.mapa_dedos.unwrap_or(0);
         let t = self.teclas.teclado();
+        t.indice_de(nota)?;
         let notas = (0..TECLAS).filter_map(|i| t.nota_de(i));
-        let mapa = crate::dedos::mapa_de_escala(tonica, notas, divisao.unwrap_or(60));
-        achar(&mapa).or(t.indice_de(nota).map(|_| 3))
+        crate::dedos::mapa_de_dedos(
+            crate::dedos::ModoMapa::EscalaContinua,
+            tonica,
+            notas,
+            divisao.unwrap_or(60),
+        )
+        .into_iter()
+        .find(|d| d.nota == nota)
+        .map(|d| d.dedo)
     }
 
     /// Bend a mostrar no indicador, de -1,0 a 1,0 do curso, e se veio do teclado físico. A roda
@@ -355,13 +366,13 @@ impl EstadoEspelho {
 
     /// Dedos do mapa para decorar em todas as teclas (vazio com o mapa desligado). Sem ponto de
     /// divisão, a mão direita começa no Dó central.
-    pub fn dedos_do_mapa(&self, divisao: Option<u8>) -> Vec<(NotaMidi, u8)> {
+    pub fn dedos_do_mapa(&self, divisao: Option<u8>) -> Vec<crate::dedos::DedoMapa> {
         let Some(tonica) = self.mapa_dedos else {
             return Vec::new();
         };
         let t = self.teclas.teclado();
         let notas = (0..TECLAS).filter_map(|i| t.nota_de(i));
-        crate::dedos::mapa_de_escala(tonica, notas, divisao.unwrap_or(60))
+        crate::dedos::mapa_de_dedos(self.modo_mapa, tonica, notas, divisao.unwrap_or(60))
     }
 
     pub fn teclado(&self) -> Teclado61 {
@@ -644,13 +655,21 @@ mod testes {
         assert!(e.dedos_do_mapa(None).is_empty(), "desligado por padrão");
         e.mapa_dedos = Some(0);
         let m = e.dedos_do_mapa(None);
-        // 61 teclas de Dó a Dó: 5 oitavas × 7 brancas + o Dó final = 36 teclas de Dó maior.
-        assert_eq!(m.len(), 36);
-        assert!(m.contains(&(n(60), 1)), "Dó central: polegar da direita");
+        assert_eq!(
+            m.len(),
+            61,
+            "toda tecla tem dedo, as pretas pela escala cromática"
+        );
+        assert_eq!(
+            m.iter().filter(|d| !d.cromatico).count(),
+            36,
+            "36 teclas de Dó maior"
+        );
         assert!(
             m.iter()
-                .all(|(x, _)| !matches!(x.numero() % 12, 1 | 3 | 6 | 8 | 10))
+                .any(|d| d.nota == n(60) && d.dedo == 1 && !d.cromatico)
         );
+        assert!(m.iter().filter(|d| d.cromatico).all(|d| d.dedo == 3));
     }
 
     #[test]

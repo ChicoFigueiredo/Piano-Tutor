@@ -213,6 +213,7 @@ impl AppPianoTutor {
         let mut espelho = espelho;
         espelho.nomenclatura = exibicao.dedos;
         espelho.mapa_dedos = exibicao.mapa_dedos;
+        espelho.modo_mapa = exibicao.modo_mapa;
         let prefs_pendentes = Some(PreferenciasSom::de_texto(&ler_secao(&banco, secoes::SOM)));
         let mut partitura = EstadoPartitura::novo(pasta_dados.clone());
         partitura.definir_preferencias(PreferenciasPartitura::de_texto(&ler_secao(
@@ -334,6 +335,7 @@ impl AppPianoTutor {
         let p = PreferenciasExibicao {
             dedos: self.espelho.nomenclatura,
             mapa_dedos: self.espelho.mapa_dedos,
+            modo_mapa: self.espelho.modo_mapa,
         };
         self.gravar_secao(secoes::EXIBICAO, &p.para_texto());
     }
@@ -453,6 +455,7 @@ impl AppPianoTutor {
         self.estado.definir_nomenclatura_dedos(exibicao.dedos);
         self.espelho.nomenclatura = exibicao.dedos;
         self.espelho.mapa_dedos = exibicao.mapa_dedos;
+        self.espelho.modo_mapa = exibicao.modo_mapa;
         self.prefs_pendentes = Some(PreferenciasSom::de_texto(&ler_secao(
             &self.banco,
             secoes::SOM,
@@ -555,7 +558,7 @@ impl AppPianoTutor {
             self.espelho.zoom(),
             self.espelho.nomes,
             self.espelho.nomenclatura,
-            self.espelho.mapa_dedos,
+            (self.espelho.mapa_dedos, self.espelho.modo_mapa),
             self.espelho.opcoes_tela,
         );
         self.panico();
@@ -566,7 +569,7 @@ impl AppPianoTutor {
         self.espelho.definir_zoom(zoom);
         self.espelho.nomes = nomes;
         self.espelho.nomenclatura = dedos;
-        self.espelho.mapa_dedos = mapa;
+        (self.espelho.mapa_dedos, self.espelho.modo_mapa) = mapa;
         self.espelho.opcoes_tela = opcoes;
     }
 
@@ -1244,6 +1247,29 @@ impl AppCasca for AppPianoTutor {
             if let Some(m) = seletor_mapa_dedos(ui, self.espelho.mapa_dedos) {
                 self.trocar_mapa_dedos(m);
             }
+            if self.espelho.mapa_dedos.is_some() {
+                let atual = self.espelho.modo_mapa;
+                let mut modo = atual;
+                egui::ComboBox::from_id_salt("piano.modo-mapa")
+                    .width(if compacto { 120.0 } else { 190.0 })
+                    .selected_text(modo.nome())
+                    .show_ui(ui, |ui| {
+                        for m in crate::dedos::MODOS_MAPA {
+                            ui.selectable_value(&mut modo, m, m.nome());
+                        }
+                    })
+                    .response
+                    .on_hover_text(
+                        "Escala em todas as oitavas: dedilhado contínuo (o 5 só entra no fim da \
+                         escala; as teclas fora dela mostram o dedo da escala cromática, num \
+                         círculo mais claro). Uma oitava: cada mão faz a escala de uma oitava, \
+                         com o 5 na ponta. Cinco dedos: um dedo por tecla na tônica.",
+                    );
+                if modo != atual {
+                    self.espelho.modo_mapa = modo;
+                    self.gravar_exibicao();
+                }
+            }
             return;
         }
         if id != acoes::CONTROLE_INSTRUMENTO {
@@ -1488,7 +1514,10 @@ mod testes {
         b.app.partitura.modo_pratica = piano_tutor_core::pratica::ModoPratica::Tempo;
         b.app.gravar_retratos();
         let meu = b.app.perfis().1.expect("ativo");
-        assert!(!meu.de_fabrica, "mudança sobre o de fábrica cria Meu perfil");
+        assert!(
+            !meu.de_fabrica,
+            "mudança sobre o de fábrica cria Meu perfil"
+        );
         b.app.trocar_perfil(fabrica.id);
         assert!(!b.app.espelho.opcoes_tela.ajustar_a_largura);
         assert!(!b.app.acordes.de_ouvido);

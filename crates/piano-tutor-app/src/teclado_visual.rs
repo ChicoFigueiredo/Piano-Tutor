@@ -330,6 +330,8 @@ struct Marca {
     tom: f32,
     /// Rótulo do dedo sugerido (já na nomenclatura escolhida), quando a Lição informa.
     dedo: Option<&'static str>,
+    /// O dedo do mapa vem da escala cromática (tecla fora da escala): círculo mais discreto.
+    cromatico: bool,
 }
 
 // ---------------------------------------------------------------------------------------------
@@ -356,8 +358,15 @@ pub fn pintar_teclado(
         Vec::new()
     };
     let dedo_de = |nota| {
-        let (_, d) = dedos.iter().chain(mapa.iter()).find(|(n, _)| *n == nota)?;
-        e.nomenclatura.rotulo(*d)
+        let d = dedos
+            .iter()
+            .find(|(n, _)| *n == nota)
+            .map(|(_, d)| *d)
+            .or_else(|| mapa.iter().find(|x| x.nota == nota).map(|x| x.dedo))?;
+        e.nomenclatura.rotulo(d)
+    };
+    let cromatico = |nota| {
+        !dedos.iter().any(|(n, _)| *n == nota) && mapa.iter().any(|x| x.nota == nota && x.cromatico)
     };
     let marca_de = |g: &GeometriaTecla| Marca {
         ligada: ligadas.contains(&g.indice),
@@ -366,6 +375,7 @@ pub fn pintar_teclado(
         esquerda: estilo.eh_mao_esquerda(g.nota),
         mao: estilo.cor_da_mao(g.nota),
         tom: opacidade_do_tom(estilo.velocidade_de(g.nota)),
+        cromatico: cromatico(g.nota),
         // A tecla tocada sempre mostra o dedo indicado, para conferir se o dedo usado é o certo.
         dedo: dedo_de(g.nota).or_else(|| {
             if ligadas.contains(&g.indice) {
@@ -587,13 +597,15 @@ fn pintar_branca(
     } else if !m.ligada
         && let Some(d) = m.dedo
     {
-        // Mapa para decorar: só o dedo, sem bolinha, na cor da mão.
-        pintar_dedo(
+        // Mapa para decorar: o dedo dentro de um círculo na cor da mão.
+        pintar_dedo_mapa(
             p,
             centro_ponto_guia_branca(r, w),
             w,
             d,
-            escurecer(m.mao, 0.35),
+            m.mao,
+            m.cromatico,
+            false,
         );
     }
     if w < LARGURA_MIN_ROTULO_PX {
@@ -760,12 +772,14 @@ fn pintar_preta(
     } else if !m.ligada
         && let Some(d) = m.dedo
     {
-        pintar_dedo(
+        pintar_dedo_mapa(
             p,
             Pos2::new(centro_x, r.bottom() - 1.3 * w),
             0.85 * w,
             d,
             m.mao,
+            m.cromatico,
+            true,
         );
     }
     if w < LARGURA_MIN_ROTULO_PX || estilo.rotulos == Rotulos::Nenhum {
@@ -820,6 +834,36 @@ fn pintar_ponto_guia(p: &Painter, c: Pos2, w: f32, mao: Color32, dedo: Option<&s
 }
 
 /// Número ou letra do dedo, centrado na bolinha; o tamanho acompanha a largura da tecla.
+/// Dedo do mapa para decorar: círculo vazado na cor da mão com o dedo dentro. O dedo da escala
+/// cromática (tecla fora da escala) sai com traço fino e mais transparente.
+fn pintar_dedo_mapa(
+    p: &Painter,
+    c: Pos2,
+    w: f32,
+    dedo: &str,
+    mao: Color32,
+    cromatico: bool,
+    preta: bool,
+) {
+    let raio = (0.32 * w).max(6.0);
+    let fundo = if preta {
+        Color32::from_rgb(36, 36, 42)
+    } else {
+        Color32::from_rgb(250, 247, 238)
+    };
+    let (traco, tinta) = if cromatico {
+        (
+            Stroke::new(1.0, alfa(mao, 150)),
+            alfa_f(escurecer(mao, 0.2), 0.75),
+        )
+    } else {
+        (Stroke::new(2.0, mao), escurecer(mao, 0.25))
+    };
+    let tinta = if preta { BRANCO } else { tinta };
+    p.circle(c, raio, fundo, traco);
+    pintar_dedo(p, c, w, dedo, tinta);
+}
+
 fn pintar_dedo(p: &Painter, c: Pos2, w: f32, dedo: &str, cor: Color32) {
     let px = (0.52 * w).clamp(9.0, 20.0);
     p.text(

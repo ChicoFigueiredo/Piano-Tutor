@@ -188,12 +188,14 @@ pub struct PreferenciasExibicao {
     pub dedos: NomenclaturaDedos,
     /// Mapa de dedos para decorar em todas as teclas: tônica maior (0 = Dó) ou desligado.
     pub mapa_dedos: Option<u8>,
+    pub modo_mapa: crate::dedos::ModoMapa,
 }
 
 impl PreferenciasExibicao {
     pub fn para_texto(&self) -> String {
         let mut s = String::from("# Piano Tutor: preferências de exibição v1\n");
         let _ = writeln!(s, "dedos={}", self.dedos.chave());
+        let _ = writeln!(s, "modo_mapa={}", self.modo_mapa.chave());
         match self.mapa_dedos {
             Some(t) => {
                 let _ = writeln!(s, "mapa_dedos={t}");
@@ -211,6 +213,9 @@ impl PreferenciasExibicao {
         for l in t.lines() {
             match l.trim().split_once('=').map(|(k, v)| (k.trim(), v.trim())) {
                 Some(("dedos", v)) => p.dedos = NomenclaturaDedos::de_chave(v).unwrap_or(p.dedos),
+                Some(("modo_mapa", v)) => {
+                    p.modo_mapa = crate::dedos::ModoMapa::de_chave(v).unwrap_or(p.modo_mapa);
+                }
                 Some(("mapa_dedos", v)) => {
                     p.mapa_dedos = v.parse::<u8>().ok().filter(|t| *t < 12);
                 }
@@ -241,7 +246,11 @@ mod testes {
     fn exibicao_ida_e_volta_e_lixo_vira_padrao() {
         for dedos in crate::dedos::NOMENCLATURAS {
             for mapa_dedos in [None, Some(0), Some(11)] {
-                let p = PreferenciasExibicao { dedos, mapa_dedos };
+                let p = PreferenciasExibicao {
+                    dedos,
+                    mapa_dedos,
+                    modo_mapa: crate::dedos::ModoMapa::UmaOitava,
+                };
                 assert_eq!(PreferenciasExibicao::de_texto(&p.para_texto()), p);
             }
         }

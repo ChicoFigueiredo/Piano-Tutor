@@ -380,6 +380,154 @@ pub fn mapa_de_escala(
         .collect()
 }
 
+/// Como o mapa para decorar distribui os dedos.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub enum ModoMapa {
+    /// Escala contínua em todas as oitavas (o 5 só aparece no fim de uma escala, então nas
+    /// oitavas do meio ele não surge); as notas fora da escala ganham o dedo da escala
+    /// cromática.
+    #[default]
+    EscalaContinua,
+    /// Uma oitava de cada mão a partir da divisão (direita subindo, esquerda logo abaixo),
+    /// com o 5 na ponta, como se estuda a escala de uma oitava.
+    UmaOitava,
+    /// Posição fixa de cinco dedos na tônica: um dedo por tecla, do 1 ao 5 (esquerda do 5 ao 1).
+    CincoDedos,
+}
+
+pub const MODOS_MAPA: [ModoMapa; 3] = [
+    ModoMapa::EscalaContinua,
+    ModoMapa::UmaOitava,
+    ModoMapa::CincoDedos,
+];
+
+impl ModoMapa {
+    pub fn chave(self) -> &'static str {
+        match self {
+            Self::EscalaContinua => "escala",
+            Self::UmaOitava => "uma-oitava",
+            Self::CincoDedos => "cinco-dedos",
+        }
+    }
+
+    pub fn de_chave(s: &str) -> Option<Self> {
+        MODOS_MAPA.into_iter().find(|m| m.chave() == s)
+    }
+
+    pub fn nome(self) -> &'static str {
+        match self {
+            Self::EscalaContinua => "Escala em todas as oitavas",
+            Self::UmaOitava => "Escala de uma oitava (com o 5)",
+            Self::CincoDedos => "Posição de cinco dedos",
+        }
+    }
+}
+
+/// Um dedo do mapa: `cromatico` quando a tecla está fora da escala e o dedo vem da escala
+/// cromática (o teclado o desenha mais discreto).
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct DedoMapa {
+    pub nota: NotaMidi,
+    pub dedo: u8,
+    pub cromatico: bool,
+}
+
+/// Dedo da escala cromática (tabela tradicional): pretas sempre com o 3; nas brancas, polegar,
+/// salvo onde duas brancas se seguem (Mi–Fá, Si–Dó), em que a direita põe o 2 no Fá e no Dó e a
+/// esquerda o 2 no Mi e no Si.
+pub fn dedo_cromatico(nota: NotaMidi, esquerda: bool) -> u8 {
+    match (nota.numero() % 12, esquerda) {
+        (1 | 3 | 6 | 8 | 10, _) => 3,
+        (5 | 0, false) | (4 | 11, true) => 2,
+        _ => 1,
+    }
+}
+
+/// Mapa de dedos para decorar, conforme o [`ModoMapa`] (ver cada variante).
+pub fn mapa_de_dedos(
+    modo: ModoMapa,
+    tonica: u8,
+    notas: impl IntoIterator<Item = NotaMidi>,
+    divisao: u8,
+) -> Vec<DedoMapa> {
+    let t = tonica % 12;
+    let (direita, esquerda) = ESCALA_MAIOR[usize::from(t)];
+    let notas: Vec<NotaMidi> = notas.into_iter().collect();
+    let tonica_direita = notas
+        .iter()
+        .map(|n| n.numero())
+        .filter(|n| *n >= divisao && n % 12 == t)
+        .min();
+    let grau_de = |n: u8| {
+        let rel = (n + 12 - t) % 12;
+        GRAUS_MAIOR.iter().position(|&g| g == rel)
+    };
+    match modo {
+        ModoMapa::EscalaContinua => {
+            let escala = mapa_de_escala(t, notas.iter().copied(), divisao);
+            notas
+                .iter()
+                .map(|&n| match escala.iter().find(|(x, _)| *x == n) {
+                    Some((_, d)) => DedoMapa {
+                        nota: n,
+                        dedo: *d,
+                        cromatico: false,
+                    },
+                    None => DedoMapa {
+                        nota: n,
+                        dedo: dedo_cromatico(n, n.numero() < divisao),
+                        cromatico: true,
+                    },
+                })
+                .collect()
+        }
+        ModoMapa::UmaOitava | ModoMapa::CincoDedos => {
+            let Some(td) = tonica_direita.or_else(|| {
+                notas
+                    .iter()
+                    .map(|n| n.numero())
+                    .filter(|n| n % 12 == t)
+                    .max()
+            }) else {
+                return Vec::new();
+            };
+            let te = td.saturating_sub(12);
+            let (graus, dd, de): (usize, [u8; 8], [u8; 8]) = if modo == ModoMapa::UmaOitava {
+                (8, direita, esquerda)
+            } else {
+                (5, [1, 2, 3, 4, 5, 0, 0, 0], [5, 4, 3, 2, 1, 0, 0, 0])
+            };
+            let mut v = Vec::new();
+            for &n in &notas {
+                let x = n.numero();
+                let posicao = |base: u8| -> Option<usize> {
+                    if x < base || x > base + 12 {
+                        return None;
+                    }
+                    let g = if x == base + 12 { Some(7) } else { grau_de(x) }?;
+                    (g < graus).then_some(g)
+                };
+                if let Some(g) = posicao(td) {
+                    v.push(DedoMapa {
+                        nota: n,
+                        dedo: dd[g],
+                        cromatico: false,
+                    });
+                } else if x < td
+                    && let Some(g) = posicao(te)
+                {
+                    v.push(DedoMapa {
+                        nota: n,
+                        dedo: de[g],
+                        cromatico: false,
+                    });
+                }
+            }
+            v
+        }
+    }
+}
+
 /// Dedo de cada tecla-guia, resolvido pelo próprio teclado quando a tela não informa: escala de
 /// uma oitava (8 notas, ou 13 na cromática) pela tabela tradicional, ou acorde de até 5 notas
 /// numa oitava pela inversão. Nota sozinha ou desenho desconhecido fica sem dedo.
@@ -401,6 +549,61 @@ pub fn inferir(guias: &[NotaMidi], esquerda: bool) -> Vec<(NotaMidi, u8)> {
 
 #[cfg(test)]
 mod testes_provedor {
+
+    fn mapa(modo: ModoMapa, tonica: u8) -> Vec<DedoMapa> {
+        let notas: Vec<NotaMidi> = (36..=96).filter_map(NotaMidi::nova).collect();
+        mapa_de_dedos(modo, tonica, notas, 60)
+    }
+
+    fn dedo(m: &[DedoMapa], x: u8) -> Option<u8> {
+        m.iter().find(|d| d.nota.numero() == x).map(|d| d.dedo)
+    }
+
+    #[test]
+    fn escala_continua_cobre_todas_as_teclas_com_as_pretas_no_cromatico() {
+        let m = mapa(ModoMapa::EscalaContinua, 0);
+        assert_eq!(m.len(), 61, "toda tecla tem dedo");
+        assert_eq!(dedo(&m, 61), Some(3), "Dó♯ cromático");
+        assert!(
+            m.iter()
+                .find(|d| d.nota.numero() == 61)
+                .is_some_and(|d| d.cromatico)
+        );
+        assert_eq!(dedo(&m, 60), Some(1));
+    }
+
+    #[test]
+    fn uma_oitava_tem_o_cinco_na_ponta_das_duas_maos() {
+        let m = mapa(ModoMapa::UmaOitava, 0);
+        let d: Vec<_> = [60, 62, 64, 65, 67, 69, 71, 72]
+            .map(|x| dedo(&m, x))
+            .to_vec();
+        assert_eq!(d, [1, 2, 3, 1, 2, 3, 4, 5].map(Some).to_vec());
+        let e: Vec<_> = [48, 50, 52, 53, 55, 57, 59].map(|x| dedo(&m, x)).to_vec();
+        assert_eq!(e, [5, 4, 3, 2, 1, 3, 2].map(Some).to_vec());
+        assert_eq!(dedo(&m, 74), None, "fora da oitava");
+    }
+
+    #[test]
+    fn cinco_dedos_um_por_tecla() {
+        let m = mapa(ModoMapa::CincoDedos, 7);
+        let d: Vec<_> = [67, 69, 71, 72, 74].map(|x| dedo(&m, x)).to_vec();
+        assert_eq!(d, [1, 2, 3, 4, 5].map(Some).to_vec(), "Sol maior, direita");
+        let e: Vec<_> = [55, 57, 59, 60, 62].map(|x| dedo(&m, x)).to_vec();
+        assert_eq!(
+            e,
+            [5, 4, 3, 2, 1].map(Some).to_vec(),
+            "esquerda uma oitava abaixo"
+        );
+        assert_eq!(m.len(), 10);
+    }
+
+    #[test]
+    fn cromatico_tradicional() {
+        let n = |x| NotaMidi::nova(x).expect("nota");
+        let d: Vec<u8> = (60..=72).map(|x| dedo_cromatico(n(x), false)).collect();
+        assert_eq!(d, vec![2, 3, 1, 3, 1, 2, 3, 1, 3, 1, 3, 1, 2]);
+    }
 
     #[test]
     fn mapa_de_do_maior_nas_duas_maos() {
