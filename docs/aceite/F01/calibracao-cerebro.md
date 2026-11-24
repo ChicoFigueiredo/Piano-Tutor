@@ -107,3 +107,16 @@ liberacoes=61
 ```
 
 Pendente de assinatura do titular: conferência visual de que cada tecla física acendeu a posição certa (F02-1) e a conferência manual de 100 notas e 20 acordes (F01-2).
+
+## Recalibração com a roda de pitch bend (mesmo dia)
+
+Depois da etapa nova da roda de bend, o titular recalibrou. Relatório do app:
+
+- Velocity: suportado (observado 1 a 119)
+- Pedal de sustain (CC64): suportado
+- Roda de pitch bend: suportado (repouso 373, curso -2944 a 2048, zona morta ±1302)
+
+Observações: o REVAS manda pitch bend no canal 1 com resolução de 128 unidades (7 bits). A roda
+não chega ao fundo de curso MIDI (±8192) e chia em repouso (cerca de ±650); a correção do app
+estica cada lado até ±8192 e trata o chiado como repouso. Uma captura anterior com `aseqdump`
+(3 min) mostrou o valor parado perto de -2700, provavelmente com a roda segurada.
