@@ -194,7 +194,7 @@ impl EstadoMonitor {
                 .gerenciador
                 .porta_selecionada()
                 .map(str::to_owned)
-                .or_else(|| self.gerenciador.portas().first().cloned());
+                .or_else(|| porta_sugerida(self.gerenciador.portas()).map(str::to_owned));
         }
         saidas
     }
@@ -417,8 +417,35 @@ fn texto_sem_glifos(s: &str) -> String {
     s.replace('♯', "#").replace('♭', "b")
 }
 
+/// Porta sugerida quando o usuário ainda não escolheu: a primeira que não seja a porta virtual
+/// "Midi Through" do ALSA (que nunca recebe nada do teclado); se só houver ela, usa a primeira.
+fn porta_sugerida(portas: &[String]) -> Option<&str> {
+    portas
+        .iter()
+        .find(|p| !p.contains("Midi Through"))
+        .or_else(|| portas.first())
+        .map(String::as_str)
+}
+
 #[cfg(test)]
 mod testes {
+    #[test]
+    fn sugestao_pula_midi_through() {
+        let portas = vec![
+            "Midi Through:Midi Through Port-0 14:0".to_string(),
+            "USB AudioDevice:USB AudioDevice MIDI 1 24:0".to_string(),
+        ];
+        assert_eq!(
+            super::porta_sugerida(&portas),
+            Some("USB AudioDevice:USB AudioDevice MIDI 1 24:0")
+        );
+        assert_eq!(
+            super::porta_sugerida(&portas[..1]),
+            Some("Midi Through:Midi Through Port-0 14:0")
+        );
+        assert_eq!(super::porta_sugerida(&[]), None);
+    }
+
     use super::*;
     use piano_tutor_midi::{FonteFalsa, RelogioManual};
 
