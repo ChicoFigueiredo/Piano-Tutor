@@ -16,6 +16,7 @@
 //!   dada (veja [`chaves_confiaveis`]); assinatura válida de chave desconhecida é só autêntica.
 //! * [`instalar`]: extrai para `<dados>/cursos/<id>/` de forma atômica; [`cursos_instalados`] lista.
 //! * [`empacotar`]: pasta de origem + [`ChavePrivada`] → bytes do `.ptcurso`.
+//! * [`importar`]: plano de importação + pasta da oficina → pasta-origem para `empacotar`.
 //! * [`Exercicio::serve_de_gabarito`] e [`Manifesto::exercicios_para_aluno`]: só Exercício
 //!   `aprovada` é Gabarito; `hipotese`, `em_revisao` e `rejeitada` nunca chegam ao aluno.
 //!
@@ -35,6 +36,7 @@ mod chaves;
 pub mod cli;
 mod empacotamento;
 mod erro;
+mod importacao;
 mod instalacao;
 mod leitura;
 mod modelo;
@@ -45,6 +47,7 @@ pub use chaves::{
 };
 pub use empacotamento::empacotar;
 pub use erro::ErroPacote;
+pub use importacao::{Resumo, importar};
 pub use instalacao::{CursoInstalado, cursos_instalados, instalar};
 pub use leitura::{Confianca, PacoteVerificado, ler_pacote, ler_pacote_de_arquivo};
 pub use modelo::{

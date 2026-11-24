@@ -5,8 +5,9 @@ use std::io::Write;
 use std::path::{Path, PathBuf};
 
 use crate::{
-    ChavePrivada, Confianca, ErroPacote, EstadoConteudo, PacoteVerificado, chaves_confiaveis,
-    cursos_instalados, empacotar, gerar_par, instalar, ler_chaves_da_pasta, ler_pacote_de_arquivo,
+    ChavePrivada, Confianca, ErroPacote, EstadoConteudo, PacoteVerificado, Resumo,
+    chaves_confiaveis, cursos_instalados, empacotar, gerar_par, importar, instalar,
+    ler_chaves_da_pasta, ler_pacote_de_arquivo,
 };
 
 pub const AJUDA: &str = "\
@@ -22,7 +23,9 @@ comandos:
   instalar <arquivo.ptcurso> [--dados <pasta>]
       instala em <dados>/cursos/<id>/ (padrão de --dados: pasta de dados do usuário/piano-tutor)
   listar [--dados <pasta>]
-      lista os cursos instalados";
+      lista os cursos instalados
+  importar --plano <plano.toml> --oficina <pasta> -o <pasta-origem> [--somente-aprovadas]
+      gera a pasta-origem de um Curso de tutor (ver \"Plano de importação\" na especificação)";
 
 /// Erro da CLI: uso incorreto (código 2) ou falha na execução (código 1).
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -66,6 +69,7 @@ pub fn executar(args: &[String], saida: &mut dyn Write) -> Result<(), ErroCli> {
         "verificar" => verificar(resto, saida),
         "instalar" => cmd_instalar(resto, saida),
         "listar" => listar(resto, saida),
+        "importar" => cmd_importar(resto, saida),
         outro => Err(ErroCli::Uso(format!("comando desconhecido: {outro:?}"))),
     }
 }
@@ -74,16 +78,31 @@ pub fn executar(args: &[String], saida: &mut dyn Write) -> Result<(), ErroCli> {
 struct Argumentos {
     posicionais: Vec<String>,
     opcoes: Vec<(String, String)>,
+    bandeiras: Vec<String>,
 }
 
 impl Argumentos {
-    /// `validas` lista as opções aceitas, cada uma com seus apelidos.
+    /// `validas` lista as opções com valor, cada uma com seus apelidos.
     fn ler(args: &[String], validas: &[&[&str]]) -> Result<Self, ErroCli> {
+        Self::ler_com_bandeiras(args, validas, &[])
+    }
+
+    /// Como [`Argumentos::ler`], e `bandeiras` lista as opções sem valor (ex.: `--somente-aprovadas`).
+    fn ler_com_bandeiras(
+        args: &[String],
+        validas: &[&[&str]],
+        bandeiras: &[&[&str]],
+    ) -> Result<Self, ErroCli> {
         let mut posicionais = Vec::new();
         let mut opcoes = Vec::new();
+        let mut marcadas = Vec::new();
         let mut it = args.iter();
         while let Some(a) = it.next() {
             if a.starts_with('-') && a.len() > 1 {
+                if let Some(grupo) = bandeiras.iter().find(|g| g.contains(&a.as_str())) {
+                    marcadas.push(grupo[0].to_string());
+                    continue;
+                }
                 let Some(grupo) = validas.iter().find(|g| g.contains(&a.as_str())) else {
                     return Err(ErroCli::Uso(format!("opção desconhecida: {a}")));
                 };
@@ -98,7 +117,12 @@ impl Argumentos {
         Ok(Self {
             posicionais,
             opcoes,
+            bandeiras: marcadas,
         })
+    }
+
+    fn tem_bandeira(&self, nome: &str) -> bool {
+        self.bandeiras.iter().any(|b| b == nome)
     }
 
     fn opcao(&self, nome: &str) -> Option<&str> {
@@ -248,6 +272,74 @@ fn cmd_instalar(args: &[String], saida: &mut dyn Write) -> Result<(), ErroCli> {
             pacote.chave_publica.curta(),
             dados.join("cursos").join("chaves-confiaveis").display()
         )?;
+    }
+    Ok(())
+}
+
+fn cmd_importar(args: &[String], saida: &mut dyn Write) -> Result<(), ErroCli> {
+    let a = Argumentos::ler_com_bandeiras(
+        args,
+        &[&["--plano"], &["--oficina"], &["-o", "--saida"]],
+        &[&["--somente-aprovadas"]],
+    )?;
+    let uso =
+        "importar --plano <plano.toml> --oficina <pasta> -o <pasta-origem> [--somente-aprovadas]";
+    a.exigir_posicionais(0, uso)?;
+    let faltou = |nome: &str| ErroCli::Uso(format!("faltou {nome}; uso: {uso}"));
+    let plano = a.opcao("--plano").ok_or_else(|| faltou("--plano"))?;
+    let oficina = a.opcao("--oficina").ok_or_else(|| faltou("--oficina"))?;
+    let destino = a.opcao("-o").ok_or_else(|| faltou("-o"))?;
+    let resumo = importar(
+        Path::new(plano),
+        Path::new(oficina),
+        Path::new(destino),
+        a.tem_bandeira("--somente-aprovadas"),
+    )?;
+    descrever_importacao(&resumo, saida)
+}
+
+fn descrever_importacao(r: &Resumo, saida: &mut dyn Write) -> Result<(), ErroCli> {
+    let c = &r.contagem;
+    writeln!(
+        saida,
+        "importado: {} ({}) em {}",
+        r.titulo,
+        r.id,
+        r.destino.display()
+    )?;
+    writeln!(
+        saida,
+        "Lições: {}  Exercícios: {}  (hipótese {}, em revisão {}, aprovada {}, rejeitada {})",
+        c.licoes,
+        c.exercicios,
+        c.por_estado(EstadoConteudo::Hipotese),
+        c.por_estado(EstadoConteudo::EmRevisao),
+        c.por_estado(EstadoConteudo::Aprovada),
+        c.por_estado(EstadoConteudo::Rejeitada),
+    )?;
+    let roteiro = if r.roteiro {
+        format!(
+            "roteiro com {} falas ({} aprovadas)",
+            r.falas, r.falas_aprovadas
+        )
+    } else {
+        "sem roteiro".to_string()
+    };
+    writeln!(
+        saida,
+        "Arquivos copiados: {} partituras, {} áudios, {} alinhamentos, {roteiro}",
+        r.partituras, r.audios, r.alinhamentos
+    )?;
+    writeln!(
+        saida,
+        "Omitidos pelo filtro: {} exercícios, {} falas",
+        r.omitidos_exercicios, r.omitidos_falas
+    )?;
+    if !r.avisos.is_empty() {
+        writeln!(saida, "Avisos:")?;
+        for aviso in &r.avisos {
+            writeln!(saida, "  - {aviso}")?;
+        }
     }
     Ok(())
 }
