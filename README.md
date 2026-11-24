@@ -130,6 +130,8 @@ Guia rápido das telas (menu lateral e Ribbon):
 - **Acordes e escalas**: nome do acorde ao vivo, dicionário com inversões, escalas, campo harmônico e desafio de acordes (inclui o modo de ouvido).
 - **Ritmos**: metrônomo de 40 a 220 bpm, compassos 2/4, 3/4, 4/4, 6/8 e 12/8, subdivisões, contagem inicial e tap tempo; bateria de 16 passos com 11 padrões prontos; 8 pads nas teclas 1 a 8; exercício "toque no pulso".
 - **Sons e timbres**: SoundFont, timbres favoritos, divisão e camada do teclado, transposição, reverb e chorus. As preferências são salvas automaticamente.
+- **Perfil** (Início > Perfil): as preferências ficam no banco `~/.local/share/piano-tutor/piano-tutor.sqlite`, por perfil. "De fábrica" devolve tudo ao padrão e nunca muda; mexer em algo com ele ativo cria "Meu perfil" ([ADR-0010](docs/decisoes/ADR-0010-preferencias-em-sqlite-com-perfis.md)).
+- **Conexão automática**: depois da calibração, o app conecta sozinho no teclado ao abrir e quando ele é plugado no USB.
 - **Pânico (Ctrl+.)**: corta todo o som na hora, de qualquer tela.
 
 Gravação e Exercícios estão em andamento.

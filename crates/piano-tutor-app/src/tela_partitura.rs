@@ -10,7 +10,7 @@ use crate::partitura_visual::{
     Destaque, EstadoVisual, Mao, MapaResultados, Marcas, ModoRolagem, OpcoesVisuais, ResultadoNota,
     ZOOM_MAX, ZOOM_MIN, desenhar_partitura,
 };
-use crate::preferencias::{ARQUIVO_PREFERENCIAS_PARTITURA, PreferenciasPartitura};
+use crate::preferencias::PreferenciasPartitura;
 use crate::som::{EstadoSom, ServicoSom};
 use bancada_casca::egui::{self, Button, ComboBox, Key, RichText, Slider, TextEdit, Ui};
 use piano_tutor_core::NotaMidi;
@@ -265,8 +265,10 @@ pub struct EstadoPartitura {
     /// Papel branco com tinta escura mesmo no tema Noite.
     pub papel_branco: bool,
     /// Arquivo onde as preferências de exibição são gravadas (sem pasta de dados, não grava).
-    arquivo_preferencias: Option<PathBuf>,
+    /// Últimas preferências entregues ao app (ele as grava no perfil ativo).
     preferencias_gravadas: PreferenciasPartitura,
+    /// Preferências mudadas esperando o app gravar ([`EstadoPartitura::tomar_preferencias_mudadas`]).
+    preferencias_mudadas: Option<PreferenciasPartitura>,
     visual: EstadoVisual,
     compasso_inicial: Option<usize>,
     reproducao: Option<Reproducao>,
@@ -324,13 +326,8 @@ impl EstadoPartitura {
                 indice_embutida: i,
             })
             .collect();
-        let arquivo_preferencias = pasta_assets
-            .as_ref()
-            .map(|p| p.join(ARQUIVO_PREFERENCIAS_PARTITURA));
-        let prefs = arquivo_preferencias
-            .as_deref()
-            .and_then(PreferenciasPartitura::ler)
-            .unwrap_or_default();
+        // As preferências vêm do perfil ativo (o app chama `definir_preferencias`).
+        let prefs = PreferenciasPartitura::default();
         if let Some(pasta) = pasta_assets {
             let alvo = if pasta.join("partituras").is_dir() {
                 pasta.join("partituras")
@@ -382,8 +379,8 @@ impl EstadoPartitura {
             seguir: prefs.seguir,
             modo_rolagem: prefs.modo,
             papel_branco: prefs.papel_branco,
-            arquivo_preferencias,
             preferencias_gravadas: prefs,
+            preferencias_mudadas: None,
             visual: EstadoVisual::default(),
             compasso_inicial: None,
             reproducao: None,
@@ -436,16 +433,30 @@ impl EstadoPartitura {
         }
     }
 
-    /// Grava as preferências de exibição quando mudam (sem pasta de dados, não grava).
+    /// Marca as preferências de exibição para gravar quando mudam.
     fn salvar_preferencias(&mut self) {
         let atual = self.preferencias_visuais();
         if atual == self.preferencias_gravadas {
             return;
         }
-        if let Some(c) = &self.arquivo_preferencias {
-            let _ = atual.gravar(c);
-        }
+        self.preferencias_mudadas = Some(atual);
         self.preferencias_gravadas = atual;
+    }
+
+    /// Preferências que mudaram desde a última chamada, para o app gravar no perfil.
+    pub fn tomar_preferencias_mudadas(&mut self) -> Option<PreferenciasPartitura> {
+        self.preferencias_mudadas.take()
+    }
+
+    /// Aplica as preferências do perfil (ao abrir e ao trocar de perfil), sem marcar mudança.
+    pub fn definir_preferencias(&mut self, p: PreferenciasPartitura) {
+        self.zoom = p.zoom;
+        self.seguir = p.seguir;
+        self.modo_rolagem = p.modo;
+        self.papel_branco = p.papel_branco;
+        self.preferencias_gravadas = p;
+        self.preferencias_mudadas = None;
+        self.visual.invalidar();
     }
 
     /// Escolhe uma fonte da lista (para a reprodução, se houver).

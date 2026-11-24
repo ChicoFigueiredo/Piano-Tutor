@@ -27,7 +27,8 @@ use crate::estado::{
 use crate::exercicios::EstadoExercicios;
 use crate::gravacao::EstadoGravacao;
 use crate::monitor::{EstadoMonitor, pasta_de_sessoes_do_ambiente};
-use crate::preferencias::{ARQUIVO_PREFERENCIAS_EXIBICAO, PreferenciasExibicao, PreferenciasSom};
+use crate::perfis::{ARQUIVO_BANCO, BancoPreferencias, Gravacao, Perfil, secoes};
+use crate::preferencias::{PreferenciasExibicao, PreferenciasPartitura, PreferenciasSom};
 use crate::ritmo::EstadoRitmo;
 use crate::seletor_instrumento::{self, EstadoSeletor};
 use crate::som::{EstadoSom, ServicoSom, abridor_cpal, carregador_arquivo, sf2_encontrado};
@@ -136,6 +137,13 @@ pub struct AppPianoTutor {
     mensagem_calibracao: Option<String>,
     pasta_dados: Option<PathBuf>,
     prefs_pendentes: Option<PreferenciasSom>,
+    /// Perfis de preferências (SQLite, ADR-0010).
+    banco: BancoPreferencias,
+    /// Campo de nome do seletor de perfil e o último aviso dele.
+    nome_perfil: String,
+    aviso_perfil: Option<String>,
+    /// A casca avisa o tema na abertura; só as trocas seguintes são gravadas no perfil.
+    tema_sincronizado: bool,
     rota_atual: String,
     relogio: Arc<dyn Relogio>,
     ultimo_quadro: Option<u64>,
@@ -196,18 +204,19 @@ impl AppPianoTutor {
             Some(t) => EstadoEspelho::calibrado(t),
             None => EstadoEspelho::novo(),
         };
-        let exibicao = pasta_dados
-            .as_ref()
-            .and_then(|p| PreferenciasExibicao::ler(&p.join(ARQUIVO_PREFERENCIAS_EXIBICAO)))
-            .unwrap_or_default();
+        let banco = abrir_banco(pasta_dados.as_deref());
+        let exibicao = PreferenciasExibicao::de_texto(&ler_secao(&banco, secoes::EXIBICAO));
         let mut estado = EstadoApp::novo();
         estado.definir_nomenclatura_dedos(exibicao.dedos);
         let mut espelho = espelho;
         espelho.nomenclatura = exibicao.dedos;
         espelho.mapa_dedos = exibicao.mapa_dedos;
-        let prefs_pendentes = pasta_dados
-            .as_ref()
-            .and_then(|p| PreferenciasSom::ler(&p.join(ARQUIVO_PREFERENCIAS)));
+        let prefs_pendentes = Some(PreferenciasSom::de_texto(&ler_secao(&banco, secoes::SOM)));
+        let mut partitura = EstadoPartitura::novo(pasta_dados.clone());
+        partitura.definir_preferencias(PreferenciasPartitura::de_texto(&ler_secao(
+            &banco,
+            secoes::PARTITURA,
+        )));
         let mut monitor =
             EstadoMonitor::novo(d.fonte_midi, Arc::clone(&d.relogio), d.pasta_sessoes);
         monitor.definir_porta_automatica(perfil.as_ref().map(|p| p.dispositivo.clone()));
@@ -222,12 +231,16 @@ impl AppPianoTutor {
             acordes: EstadoAcordes::default(),
             exercicios: EstadoExercicios::novo(pasta_dados.clone()),
             gravacao: EstadoGravacao::novo(pasta_dados.clone()),
-            partitura: EstadoPartitura::novo(pasta_dados.clone()),
+            partitura,
             calibracao: Calibracao::default(),
             perfil,
             mensagem_calibracao: None,
             pasta_dados,
             prefs_pendentes,
+            banco,
+            nome_perfil: String::new(),
+            aviso_perfil: None,
+            tema_sincronizado: false,
             rota_atual: String::new(),
             relogio: d.relogio,
             ultimo_quadro: None,
@@ -266,26 +279,201 @@ impl AppPianoTutor {
         self.gravar_exibicao();
     }
 
-    fn gravar_exibicao(&self) {
-        if let Some(pasta) = self.pasta_dados.as_ref() {
-            let p = PreferenciasExibicao {
-                dedos: self.espelho.nomenclatura,
-                mapa_dedos: self.espelho.mapa_dedos,
-            };
-            let _ = p.gravar(&pasta.join(ARQUIVO_PREFERENCIAS_EXIBICAO));
+    fn gravar_exibicao(&mut self) {
+        let p = PreferenciasExibicao {
+            dedos: self.espelho.nomenclatura,
+            mapa_dedos: self.espelho.mapa_dedos,
+        };
+        self.gravar_secao(secoes::EXIBICAO, &p.para_texto());
+    }
+
+    /// Grava uma seção no perfil ativo; sobre o de fábrica, avisa que criou "Meu perfil".
+    fn gravar_secao(&mut self, secao: &str, texto: &str) {
+        match self.banco.gravar(secao, texto) {
+            Ok(Gravacao::CriouPessoal) => {
+                self.aviso_perfil = Some(format!(
+                    "O perfil de fábrica não muda: suas preferências agora ficam em \"{}\".",
+                    crate::perfis::NOME_PESSOAL
+                ));
+            }
+            Ok(_) => {}
+            Err(e) => self.aviso_perfil = Some(e),
+        }
+    }
+
+    /// Grava as preferências da Partitura quando a tela as muda.
+    fn gravar_preferencias_da_partitura(&mut self) {
+        if let Some(p) = self.partitura.tomar_preferencias_mudadas() {
+            self.gravar_secao(secoes::PARTITURA, &p.para_texto());
+        }
+    }
+
+    /// Seletor de perfil: escolher, criar (cópia do atual), renomear e apagar. Devolve o tema a
+    /// pedir à casca quando a troca de perfil muda o tema.
+    fn desenhar_seletor_perfil(&mut self, ui: &mut egui::Ui, compacto: bool) -> Option<String> {
+        let (perfis, ativo) = self.perfis();
+        let ativo_id = ativo.as_ref().map(|p| p.id);
+        let fabrica = ativo.as_ref().is_some_and(|p| p.de_fabrica);
+        let nome_ativo = ativo.map(|p| p.nome).unwrap_or_default();
+        let mut escolhido = None;
+        let mut criar = false;
+        let mut renomear = false;
+        let mut apagar = false;
+        ui.vertical(|ui| {
+            egui::ComboBox::from_id_salt("piano.seletor-perfil")
+                .width(if compacto { 110.0 } else { 140.0 })
+                .selected_text(&nome_ativo)
+                .show_ui(ui, |ui| {
+                    for p in &perfis {
+                        let r = ui.selectable_label(Some(p.id) == ativo_id, &p.nome);
+                        let r = if p.de_fabrica {
+                            r.on_hover_text(
+                                "Os padrões do app. Não muda: mexer em algo com ele \
+                                             ativo cria \"Meu perfil\".",
+                            )
+                        } else {
+                            r
+                        };
+                        if r.clicked() && Some(p.id) != ativo_id {
+                            escolhido = Some(p.id);
+                        }
+                    }
+                    ui.separator();
+                    ui.add(
+                        egui::TextEdit::singleline(&mut self.nome_perfil)
+                            .hint_text("nome do perfil")
+                            .desired_width(150.0),
+                    );
+                    ui.horizontal(|ui| {
+                        criar = ui
+                            .button("Novo")
+                            .on_hover_text(
+                                "Cria um perfil com as preferências atuais e passa a usá-lo",
+                            )
+                            .clicked();
+                        renomear = ui
+                            .add_enabled(!fabrica, egui::Button::new("Renomear"))
+                            .clicked();
+                    });
+                    apagar = ui
+                        .add_enabled(!fabrica, egui::Button::new("Apagar este perfil"))
+                        .on_hover_text("Apaga o perfil em uso e volta ao de fábrica")
+                        .clicked();
+                })
+                .response
+                .on_hover_text(
+                    "Perfil de preferências (som, dedilhado, partitura e tema), guardado no \
+                     computador. \"De fábrica\" devolve tudo ao padrão.",
+                );
+            if !compacto && let Some(a) = &self.aviso_perfil {
+                ui.label(egui::RichText::new(a).small().weak());
+            }
+        });
+        let nome = self.nome_perfil.clone();
+        if criar {
+            self.criar_perfil(&nome);
+        }
+        if renomear {
+            self.renomear_perfil(&nome);
+        }
+        if apagar {
+            return self.apagar_perfil();
+        }
+        escolhido.and_then(|id| self.trocar_perfil(id))
+    }
+
+    /// Perfis para o seletor do Ribbon e o ativo.
+    pub fn perfis(&self) -> (Vec<Perfil>, Option<Perfil>) {
+        (
+            self.banco.perfis().unwrap_or_default(),
+            self.banco.ativo().ok(),
+        )
+    }
+
+    /// Ativa um perfil e aplica tudo o que ele guarda (som, exibição, partitura); devolve o
+    /// tema do perfil, se houver, para a casca trocar.
+    pub fn trocar_perfil(&mut self, id: i64) -> Option<String> {
+        if let Err(e) = self.banco.ativar(id) {
+            self.aviso_perfil = Some(e);
+            return None;
+        }
+        self.aviso_perfil = None;
+        let exibicao = PreferenciasExibicao::de_texto(&ler_secao(&self.banco, secoes::EXIBICAO));
+        self.estado.definir_nomenclatura_dedos(exibicao.dedos);
+        self.espelho.nomenclatura = exibicao.dedos;
+        self.espelho.mapa_dedos = exibicao.mapa_dedos;
+        self.prefs_pendentes = Some(PreferenciasSom::de_texto(&ler_secao(
+            &self.banco,
+            secoes::SOM,
+        )));
+        self.aplicar_preferencias();
+        self.partitura
+            .definir_preferencias(PreferenciasPartitura::de_texto(&ler_secao(
+                &self.banco,
+                secoes::PARTITURA,
+            )));
+        let tema = self.banco.ler(secoes::TEMA).ok().flatten();
+        tema.or_else(|| {
+            self.banco
+                .ativo()
+                .ok()
+                .filter(|p| p.de_fabrica)
+                .map(|_| TEMAS[0].id.to_owned())
+        })
+    }
+
+    /// Cria um perfil com as preferências do ativo e passa a usá-lo.
+    pub fn criar_perfil(&mut self, nome: &str) {
+        let resultado = self
+            .banco
+            .ativo()
+            .and_then(|a| self.banco.criar(nome, a.id))
+            .and_then(|p| self.banco.ativar(p.id));
+        match resultado {
+            Ok(p) => {
+                self.aviso_perfil = Some(format!("Perfil \"{}\" criado e em uso.", p.nome));
+                self.nome_perfil.clear();
+            }
+            Err(e) => self.aviso_perfil = Some(e),
+        }
+    }
+
+    pub fn renomear_perfil(&mut self, nome: &str) {
+        let r = self
+            .banco
+            .ativo()
+            .and_then(|a| self.banco.renomear(a.id, nome));
+        match r {
+            Ok(()) => {
+                self.aviso_perfil = None;
+                self.nome_perfil.clear();
+            }
+            Err(e) => self.aviso_perfil = Some(e),
+        }
+    }
+
+    /// Apaga o perfil ativo (nunca o de fábrica) e volta ao de fábrica; devolve o tema dele.
+    pub fn apagar_perfil(&mut self) -> Option<String> {
+        let r = self.banco.ativo().and_then(|a| self.banco.apagar(a.id));
+        match r {
+            Ok(()) => {
+                let f = self.banco.ativo().ok()?;
+                self.trocar_perfil(f.id)
+            }
+            Err(e) => {
+                self.aviso_perfil = Some(e);
+                None
+            }
         }
     }
 
     fn salvar_preferencias(&mut self) {
-        let Some(pasta) = self.pasta_dados.as_ref() else {
-            return;
-        };
         let p = PreferenciasSom {
             timbre: self.som.timbre(),
             volume: self.som.volume(),
             teclado: self.som.config_teclado(),
         };
-        let _ = p.gravar(&pasta.join(ARQUIVO_PREFERENCIAS));
+        self.gravar_secao(secoes::SOM, &p.para_texto());
     }
 
     /// Executa os pedidos da tela Calibração.
@@ -380,6 +568,7 @@ impl AppPianoTutor {
         }
         self.tick();
         self.atualizar_roda_bend(ctx);
+        self.gravar_preferencias_da_partitura();
         let mut proximo = self.monitor.proxima_varredura_em();
         if self.som.carregando().is_some()
             || self
@@ -733,6 +922,31 @@ fn seletor_dedos(
     (escolhida != atual).then_some(escolhida)
 }
 
+/// Abre o banco de perfis na pasta de dados (importando os `.txt` antigos na primeira vez);
+/// sem pasta ou com erro, um banco na memória (o app funciona, só não guarda).
+fn abrir_banco(pasta: Option<&Path>) -> BancoPreferencias {
+    let aberto = pasta.map(|p| {
+        BancoPreferencias::abrir(&p.join(ARQUIVO_BANCO)).and_then(|b| {
+            b.importar_legado(p)?;
+            Ok(b)
+        })
+    });
+    match aberto {
+        Some(Ok(b)) => b,
+        other => {
+            if let Some(Err(e)) = other {
+                eprintln!("Piano Tutor: {e}; preferências só nesta sessão.");
+            }
+            BancoPreferencias::em_memoria().expect("SQLite em memória")
+        }
+    }
+}
+
+/// Texto de uma seção no perfil ativo (vazio = padrão).
+fn ler_secao(banco: &BancoPreferencias, secao: &str) -> String {
+    banco.ler(secao).ok().flatten().unwrap_or_default()
+}
+
 /// "Dedos em todas as teclas" (mapa para decorar) e a tônica da escala maior usada. Devolve a
 /// escolha nova quando muda.
 fn seletor_mapa_dedos(ui: &mut egui::Ui, atual: Option<u8>) -> Option<Option<u8>> {
@@ -942,6 +1156,12 @@ impl AppCasca for AppPianoTutor {
     }
 
     fn desenhar_controle_ribbon(&mut self, ui: &mut egui::Ui, id: &str, compacto: bool) {
+        if id == acoes::CONTROLE_PERFIL {
+            if let Some(tema) = self.desenhar_seletor_perfil(ui, compacto) {
+                pedir(ui.ctx(), Pedido::Tema(tema));
+            }
+            return;
+        }
         if id == acoes::CONTROLE_DEDOS {
             let atual = self.estado.nomenclatura_dedos();
             if let Some(n) = seletor_dedos(ui, atual, compacto) {
@@ -1066,6 +1286,17 @@ impl AppCasca for AppPianoTutor {
             &preferencias.tema,
             preferencias.modo_ribbon == ModoRibbon::Recolhido,
         );
+        if self.tema_sincronizado {
+            let atual = self.banco.ler(secoes::TEMA).ok().flatten();
+            let fabrica = self.banco.ativo().is_ok_and(|p| p.de_fabrica);
+            // No de fábrica, o tema padrão não é mudança.
+            let padrao = fabrica && atual.is_none() && preferencias.tema == TEMAS[0].id;
+            if !padrao && atual.as_deref() != Some(preferencias.tema.as_str()) {
+                let tema = preferencias.tema.clone();
+                self.gravar_secao(secoes::TEMA, &tema);
+            }
+        }
+        self.tema_sincronizado = true;
     }
 }
 
@@ -1126,6 +1357,33 @@ mod testes {
         fonte: FonteFalsa,
         relogio: RelogioManual,
         motor: MotorDeTeste,
+    }
+
+    #[test]
+    fn perfis_guardam_e_trocam_dedilhado_e_partitura_e_o_de_fabrica_volta_ao_padrao() {
+        let mut b = bancada();
+        let (_, ativo) = b.app.perfis();
+        let fabrica = ativo.expect("ativo");
+        assert!(fabrica.de_fabrica);
+        b.app.trocar_dedos(NomenclaturaDedos::LetrasPt);
+        b.app.trocar_mapa_dedos(Some(7));
+        let (perfis, ativo) = b.app.perfis();
+        let meu = ativo.expect("ativo");
+        assert_eq!(meu.nome, crate::perfis::NOME_PESSOAL, "mudança sobre o de fábrica");
+        assert_eq!(perfis.len(), 2);
+        b.app.trocar_perfil(fabrica.id);
+        assert_eq!(b.app.espelho.nomenclatura, NomenclaturaDedos::Numeros);
+        assert_eq!(b.app.espelho.mapa_dedos, None);
+        b.app.trocar_perfil(meu.id);
+        assert_eq!(b.app.espelho.nomenclatura, NomenclaturaDedos::LetrasPt);
+        assert_eq!(b.app.espelho.mapa_dedos, Some(7));
+        b.app.criar_perfil("Aula");
+        let (_, ativo) = b.app.perfis();
+        assert_eq!(ativo.expect("ativo").nome, "Aula");
+        assert_eq!(b.app.espelho.mapa_dedos, Some(7), "cópia do atual");
+        b.app.apagar_perfil();
+        assert!(b.app.perfis().1.expect("ativo").de_fabrica);
+        assert_eq!(b.app.espelho.mapa_dedos, None);
     }
 
     fn bancada() -> Bancada {

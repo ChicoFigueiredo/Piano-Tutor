@@ -11,6 +11,9 @@ pub const CONTROLE_INSTRUMENTO: &str = "piano.seletor-instrumento";
 /// Id do seletor da nomenclatura dos dedos (números ou letras) desenhado pelo app no Ribbon.
 pub const CONTROLE_DEDOS: &str = "piano.seletor-dedos";
 
+/// Id do seletor de perfil de preferências (com "De fábrica"), desenhado pelo app no Ribbon.
+pub const CONTROLE_PERFIL: &str = "piano.seletor-perfil";
+
 /// Atalho do Pânico: Ctrl+. (Esc já é da casca: fecha paleta, bastidores e KeyTips). Com Ctrl,
 /// dispara mesmo com um campo de texto em foco.
 pub const ATALHO_PANICO: Atalho = Atalho::ctrl(Key::Period);
@@ -107,6 +110,7 @@ pub fn abas() -> Vec<Aba> {
                 &[ids::PARTITURA, ids::GRAVACAO],
             ))
             .grupo(Grupo::novo("dedos", "Dedilhado", &[]).com_controle(CONTROLE_DEDOS))
+            .grupo(Grupo::novo("perfil", "Perfil", &[]).com_controle(CONTROLE_PERFIL))
             .grupo(Grupo::novo("ajuda", "Ajuda", &[ids::SOBRE])),
         Aba::nova("exibir", "Exibir", "E")
             .grupo(Grupo::novo("tema", "Tema", &grupo_tema))

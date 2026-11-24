@@ -30,6 +30,7 @@ pub mod icones;
 pub mod licoes;
 pub mod monitor;
 pub mod partitura_visual;
+pub mod perfis;
 pub mod preferencias;
 pub mod ritmo;
 pub mod roda_bend;
