@@ -615,7 +615,10 @@ mod testes {
         // 61 teclas de Dó a Dó: 5 oitavas × 7 brancas + o Dó final = 36 teclas de Dó maior.
         assert_eq!(m.len(), 36);
         assert!(m.contains(&(n(60), 1)), "Dó central: polegar da direita");
-        assert!(m.iter().all(|(x, _)| !matches!(x.numero() % 12, 1 | 3 | 6 | 8 | 10)));
+        assert!(
+            m.iter()
+                .all(|(x, _)| !matches!(x.numero() % 12, 1 | 3 | 6 | 8 | 10))
+        );
     }
 
     fn padrao() -> Teclado61 {

@@ -208,10 +208,13 @@ impl AppPianoTutor {
         let prefs_pendentes = pasta_dados
             .as_ref()
             .and_then(|p| PreferenciasSom::ler(&p.join(ARQUIVO_PREFERENCIAS)));
+        let mut monitor =
+            EstadoMonitor::novo(d.fonte_midi, Arc::clone(&d.relogio), d.pasta_sessoes);
+        monitor.definir_porta_automatica(perfil.as_ref().map(|p| p.dispositivo.clone()));
         Self {
             estado,
             espelho,
-            monitor: EstadoMonitor::novo(d.fonte_midi, Arc::clone(&d.relogio), d.pasta_sessoes),
+            monitor,
             som: d.som,
             baixador_sf2: d.baixador_sf2,
             timbres: EstadoTimbres::default(),
@@ -325,6 +328,8 @@ impl AppPianoTutor {
         let Some(perfil) = self.calibracao.perfil() else {
             return;
         };
+        self.monitor
+            .definir_porta_automatica(Some(perfil.dispositivo.clone()));
         let mut msg = String::from("Perfil em uso no Espelho.");
         if let Some(pasta) = self.pasta_dados.clone() {
             let r = std::fs::create_dir_all(&pasta)
