@@ -170,6 +170,7 @@ pub fn alinhar_esperados(
         esperados,
         &croma_part,
         &caminho,
+        m,
         &onsets,
         &custo,
         &cfg.mapeamento,

@@ -37,21 +37,34 @@ pub struct NotaAlinhada {
 pub struct ConfigMapeamento {
     /// Distância máxima entre o tempo do caminho e o onset adotado.
     pub janela_onset_s: f64,
+    /// Idem para a nota que vem depois de silêncio (ou a primeira): o caminho anda num platô
+    /// de custo baixo e localiza pior o início dela, então a janela é maior.
+    pub janela_onset_apos_silencio_s: f64,
     /// Só os primeiros segundos de cada nota entram no custo local (o resto é cauda).
     pub trecho_confianca_s: f64,
     /// Custo médio do croma a partir do qual a qualidade vira zero.
     pub custo_ruim: f32,
     /// Multiplicador da confiança quando não há onset.
     pub fator_sem_onset: f32,
+    /// Custo do croma abaixo do qual o áudio "já é" a nota (usado para achar o início do som).
+    pub custo_som: f32,
+    /// Quanto o início de uma nota após silêncio pode recuar (s) até o começo do som.
+    pub recuo_max_s: f64,
+    /// Quanto pode avançar (s) quando o caminho começa antes de a nota soar.
+    pub avanco_max_s: f64,
 }
 
 impl Default for ConfigMapeamento {
     fn default() -> Self {
         Self {
             janela_onset_s: 0.08,
+            janela_onset_apos_silencio_s: 0.2,
             trecho_confianca_s: 0.4,
             custo_ruim: 0.8,
             fator_sem_onset: 0.5,
+            custo_som: 0.5,
+            recuo_max_s: 0.25,
+            avanco_max_s: 0.5,
         }
     }
 }
@@ -65,13 +78,15 @@ struct Grupo {
 
 /// Mapeia as notas esperadas para instantes do áudio.
 ///
-/// `croma_partitura` e o caminho usam a mesma taxa de quadros (`quadro_s`); `onsets` e os
+/// `croma_partitura` e o caminho usam a mesma taxa de quadros (`quadro_s`); `colunas_audio` é o
+/// número de quadros do áudio analisado; `onsets` e os
 /// instantes de saída estão na base de tempo do áudio analisado. `custo(i, j)` é o custo local
 /// usado no DTW.
 pub fn mapear_notas(
     esperados: &[EventoEsperado],
     croma_partitura: &Croma,
     caminho: &CaminhoDtw,
+    colunas_audio: usize,
     onsets: &[Onset],
     custo: &dyn Fn(usize, usize) -> f32,
     cfg: &ConfigMapeamento,
@@ -107,14 +122,29 @@ pub fn mapear_notas(
         grupos[g - 1].linha_seguinte = grupos[g].linha.max(grupos[g - 1].linha + 1);
     }
 
-    // 2. Tempo pelo caminho.
-    let t_caminho: Vec<f64> = grupos
-        .iter()
-        .map(|g| primeira[g.linha] as f64 * quadro_s)
-        .collect();
+    // 2. Tempo pelo caminho. Numa nota que vem depois de silêncio (ou a primeira), o caminho
+    // anda num platô de custo quase zero e o instante exato em que ela entra é arbitrário;
+    // então o tempo vai para o começo do som que casa com a nota.
+    let mut t_caminho: Vec<f64> = Vec::with_capacity(grupos.len());
+    let mut janelas: Vec<f64> = Vec::with_capacity(grupos.len());
+    for g in &grupos {
+        let j = primeira[g.linha];
+        let depois_de_silencio = g.linha == 0
+            || croma_partitura.quadros[g.linha - 1]
+                .iter()
+                .all(|v| *v == 0.0);
+        if depois_de_silencio {
+            let j = inicio_do_som(g.linha, j, colunas_audio, quadro_s, custo, cfg);
+            t_caminho.push(j as f64 * quadro_s);
+            janelas.push(cfg.janela_onset_apos_silencio_s.max(cfg.janela_onset_s));
+        } else {
+            t_caminho.push(j as f64 * quadro_s);
+            janelas.push(cfg.janela_onset_s);
+        }
+    }
 
     // 3. Atribuição monótona de onsets.
-    let atribuicao = atribuir_onsets(&t_caminho, onsets, cfg.janela_onset_s);
+    let atribuicao = atribuir_onsets(&t_caminho, onsets, &janelas);
 
     // 4. Custo local por linha do caminho, e confiança.
     let mut soma = vec![0.0_f64; n];
@@ -157,7 +187,7 @@ pub fn mapear_notas(
         let (t, com_onset, fator) = match atribuicao[gi] {
             Some(k) => {
                 let dt = (onsets[k].t_s - t_caminho[gi]).abs();
-                let f = 1.0 - 0.3 * (dt / cfg.janela_onset_s).min(1.0) as f32;
+                let f = 1.0 - 0.3 * (dt / janelas[gi]).min(1.0) as f32;
                 (onsets[k].t_s, true, f)
             }
             None => (t_caminho[gi], false, cfg.fator_sem_onset),
@@ -180,17 +210,46 @@ pub fn mapear_notas(
     saida
 }
 
+/// Procura o começo do som da nota da linha `i` perto da coluna `j` do caminho: volta enquanto
+/// o croma do áudio ainda casa com a nota; se em `j` ainda não casa, avança até casar.
+fn inicio_do_som(
+    i: usize,
+    j: usize,
+    colunas: usize,
+    quadro_s: f64,
+    custo: &dyn Fn(usize, usize) -> f32,
+    cfg: &ConfigMapeamento,
+) -> usize {
+    let recuo = (cfg.recuo_max_s / quadro_s).round() as usize;
+    let avanco = (cfg.avanco_max_s / quadro_s).round() as usize;
+    let casa = |c: usize| c < colunas && custo(i, c) < cfg.custo_som;
+    let mut j = j;
+    if !casa(j) {
+        match (j + 1..=j + avanco).find(|c| casa(*c)) {
+            Some(c) => j = c,
+            None => return j,
+        }
+    }
+    let mut voltou = 0;
+    while j > 0 && voltou < recuo && casa(j - 1) {
+        j -= 1;
+        voltou += 1;
+    }
+    j
+}
+
 /// Liga cada tempo de `alvos` (crescente) a no máximo um onset (crescente), dentro de
-/// ±`janela`, minimizando a soma das distâncias mais `janela` por alvo sem onset.
+/// ±`janelas[a]`, minimizando a soma das distâncias mais `janelas[a]` por alvo sem onset.
 /// Devolve, por alvo, o índice do onset em `onsets`.
-fn atribuir_onsets(alvos: &[f64], onsets: &[Onset], janela: f64) -> Vec<Option<usize>> {
+fn atribuir_onsets(alvos: &[f64], onsets: &[Onset], janelas: &[f64]) -> Vec<Option<usize>> {
     let g = alvos.len();
     let mut resultado = vec![None; g];
     if g == 0 || onsets.is_empty() {
         return resultado;
     }
-    let primeiro = alvos.iter().copied().fold(f64::INFINITY, f64::min) - janela;
-    let ultimo = alvos.iter().copied().fold(f64::NEG_INFINITY, f64::max) + janela;
+    let folga = janelas.iter().copied().fold(0.0, f64::max);
+    let primeiro = alvos.iter().copied().fold(f64::INFINITY, f64::min) - folga;
+    let ultimo = alvos.iter().copied().fold(f64::NEG_INFINITY, f64::max) + folga;
     let candidatos: Vec<usize> = (0..onsets.len())
         .filter(|k| onsets[*k].t_s >= primeiro && onsets[*k].t_s <= ultimo)
         .collect();
@@ -203,18 +262,18 @@ fn atribuir_onsets(alvos: &[f64], onsets: &[Onset], janela: f64) -> Vec<Option<u
     let mut f = vec![0.0_f64; (g + 1) * largura];
     let mut escolha = vec![0_u8; (g + 1) * largura]; // 0 pula onset, 1 alvo sem onset, 2 casa
     for a in 1..=g {
-        f[a * largura] = a as f64 * janela;
+        f[a * largura] = f[(a - 1) * largura] + janelas[a - 1];
         escolha[a * largura] = 1;
         for k in 1..=o {
             let dist = (onsets[candidatos[k - 1]].t_s - alvos[a - 1]).abs();
-            let mut melhor = f[(a - 1) * largura + k] + janela;
+            let mut melhor = f[(a - 1) * largura + k] + janelas[a - 1];
             let mut e = 1;
             let pula = f[a * largura + k - 1];
             if pula < melhor {
                 melhor = pula;
                 e = 0;
             }
-            if dist <= janela {
+            if dist <= janelas[a - 1] {
                 let casa = f[(a - 1) * largura + k - 1] + dist;
                 if casa < melhor {
                     melhor = casa;
@@ -286,27 +345,40 @@ mod testes {
 
     #[test]
     fn atribuicao_casa_o_mais_proximo() {
-        let r = atribuir_onsets(&[1.0, 2.0, 3.0], &[on(1.02), on(1.97), on(3.05)], 0.08);
+        let r = atribuir_onsets(
+            &[1.0, 2.0, 3.0],
+            &[on(1.02), on(1.97), on(3.05)],
+            &[0.08; 3],
+        );
         assert_eq!(r, vec![Some(0), Some(1), Some(2)]);
     }
 
     #[test]
     fn atribuicao_deixa_o_alvo_sem_onset_quando_ninguem_esta_perto() {
-        let r = atribuir_onsets(&[1.0, 2.0, 3.0], &[on(1.0), on(3.0)], 0.08);
+        let r = atribuir_onsets(&[1.0, 2.0, 3.0], &[on(1.0), on(3.0)], &[0.08; 3]);
         assert_eq!(r, vec![Some(0), None, Some(1)]);
     }
 
     #[test]
     fn dois_alvos_nao_dividem_o_mesmo_onset() {
         // O alvo 1 (1.95) está a 0,05 do onset 2.0; o alvo 2 (2.01) está a 0,01: só o segundo leva.
-        let r = atribuir_onsets(&[1.95, 2.01], &[on(2.0)], 0.08);
+        let r = atribuir_onsets(&[1.95, 2.01], &[on(2.0)], &[0.08; 2]);
         assert_eq!(r, vec![None, Some(0)]);
     }
 
     #[test]
+    fn janela_maior_so_para_quem_tem_janela_maior() {
+        // O onset está a 0,15 s de cada alvo; só o alvo com janela de 0,2 s o aceita.
+        let r = atribuir_onsets(&[1.0], &[on(1.15)], &[0.08]);
+        assert_eq!(r, vec![None]);
+        let r = atribuir_onsets(&[1.0], &[on(1.15)], &[0.2]);
+        assert_eq!(r, vec![Some(0)]);
+    }
+
+    #[test]
     fn atribuicao_vazia() {
-        assert_eq!(atribuir_onsets(&[1.0], &[], 0.08), vec![None]);
-        assert!(atribuir_onsets(&[], &[on(1.0)], 0.08).is_empty());
+        assert_eq!(atribuir_onsets(&[1.0], &[], &[0.08]), vec![None]);
+        assert!(atribuir_onsets(&[], &[on(1.0)], &[]).is_empty());
     }
 
     fn nota(t_part: f64, t_aud: f64, dur: f64) -> NotaAlinhada {

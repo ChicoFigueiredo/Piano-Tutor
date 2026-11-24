@@ -40,6 +40,10 @@ pub struct ConfigCroma {
     pub janela_s: f64,
     /// Passo entre quadros, em segundos.
     pub hop_s: f64,
+    /// Janela curta (s) usada só para decidir o que é silêncio. A janela do croma é longa
+    /// (resolução em frequência) e borra o começo das notas; a janela curta liga o croma só
+    /// quando o som realmente começou.
+    pub janela_energia_s: f64,
     pub fmin_hz: f64,
     pub fmax_hz: f64,
     /// `ln(1 + compressao * magnitude)`; menor = mais linear.
@@ -55,6 +59,7 @@ impl Default for ConfigCroma {
         Self {
             janela_s: 0.186,
             hop_s: 0.0232,
+            janela_energia_s: 0.046,
             fmin_hz: 150.0,
             fmax_hz: 3500.0,
             compressao: 10.0,
@@ -102,16 +107,22 @@ pub fn croma_do_audio(audio: &Audio, cfg: &ConfigCroma) -> Croma {
 
     let total = numero_de_quadros(audio.amostras.len(), hop);
     let mut quadros: Vec<Quadro> = Vec::with_capacity(total);
-    let mut energias: Vec<f32> = Vec::with_capacity(total);
     para_cada_quadro(&audio.amostras, n_fft, hop, |_, mag| {
         let mut q = [0.0_f32; CLASSES];
-        let mut energia = 0.0_f32;
         for k in k0..=k1 {
-            energia += mag[k];
             q[classes[k]] += (1.0 + cfg.compressao * mag[k]).ln();
         }
         quadros.push(q);
-        energias.push(energia);
+    });
+
+    // Energia por quadro numa janela curta (mesmos instantes de quadro).
+    let n_curto = proxima_potencia_de_dois((cfg.janela_energia_s * taxa).round() as usize);
+    let bin_curto = taxa / n_curto as f64;
+    let c0 = ((cfg.fmin_hz / bin_curto).ceil() as usize).max(1);
+    let c1 = ((cfg.fmax_hz / bin_curto).floor() as usize).min(n_curto / 2);
+    let mut energias: Vec<f32> = Vec::with_capacity(total);
+    para_cada_quadro(&audio.amostras, n_curto, hop, |_, mag| {
+        energias.push(mag[c0..=c1].iter().sum());
     });
     let maxima = energias.iter().copied().fold(0.0_f32, f32::max);
     let limiar = (cfg.limiar_silencio_rel * maxima).max(cfg.limiar_silencio_abs);

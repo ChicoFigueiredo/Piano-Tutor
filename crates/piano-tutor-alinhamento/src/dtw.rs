@@ -10,6 +10,8 @@
 //! - passo vertical `(i-1, j) -> (i, j)` (a partitura avança, o áudio não): `peso_vertical`;
 //! - passo horizontal `(i, j-1) -> (i, j)` (o áudio avança, a partitura não): `peso_horizontal`.
 //!
+//! Os passos vertical e horizontal ainda somam `penalidade_lateral` cada um.
+//!
 //! Modo global: o caminho vai de `(0, 0)` a `(n-1, m-1)`. Modo subsequência: o caminho começa
 //! em qualquer coluna da linha 0 e termina na coluna de menor custo da última linha; assim a
 //! partitura inteira é encontrada **dentro** de um áudio maior (fala antes, silêncio depois).
@@ -26,6 +28,10 @@ pub struct ConfigDtw {
     pub peso_diagonal: f32,
     pub peso_vertical: f32,
     pub peso_horizontal: f32,
+    /// Penalidade somada a cada passo vertical ou horizontal. Em trechos de custo quase zero
+    /// (nota sustentada) ela faz o caminho andar na diagonal em vez de ficar parado numa
+    /// coluna, o que deixaria o instante do início da nota arbitrário.
+    pub penalidade_lateral: f32,
     /// Banda de Sakoe-Chiba em colunas em torno da diagonal `i * (m-1)/(n-1)`; só no modo global.
     pub banda: Option<usize>,
     /// Início e fim livres na sequência longa.
@@ -40,6 +46,7 @@ impl Default for ConfigDtw {
             peso_diagonal: 2.0,
             peso_vertical: 1.2,
             peso_horizontal: 1.2,
+            penalidade_lateral: 0.05,
             banda: None,
             subsequencia: false,
         }
@@ -156,7 +163,7 @@ pub fn dtw(
                         d = DIAG;
                     }
                     if anterior[j].is_finite() {
-                        let v = anterior[j] + cfg.peso_vertical * c;
+                        let v = anterior[j] + cfg.peso_vertical * c + cfg.penalidade_lateral;
                         if v < melhor {
                             melhor = v;
                             d = VERT;
@@ -164,7 +171,7 @@ pub fn dtw(
                     }
                 }
                 if j > 0 && atual[j - 1].is_finite() {
-                    let v = atual[j - 1] + cfg.peso_horizontal * c;
+                    let v = atual[j - 1] + cfg.peso_horizontal * c + cfg.penalidade_lateral;
                     if v < melhor {
                         melhor = v;
                         d = HORIZ;
@@ -226,6 +233,7 @@ mod testes {
             peso_diagonal: 1.0,
             peso_vertical: 1.0,
             peso_horizontal: 1.0,
+            penalidade_lateral: 0.0,
             banda: None,
             subsequencia: false,
         }
