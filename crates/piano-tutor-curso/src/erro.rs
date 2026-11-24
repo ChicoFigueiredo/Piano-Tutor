@@ -48,6 +48,8 @@ pub enum ErroPacote {
     ChaveInvalida(String),
     /// O curso já instalado foi assinado por outra chave.
     AutorDiferente { curso: String },
+    /// Plano ou oficina não permitem gerar a pasta-origem (ver `importacao`).
+    Importacao(String),
 }
 
 impl fmt::Display for ErroPacote {
@@ -106,6 +108,7 @@ impl fmt::Display for ErroPacote {
                 f,
                 "o curso {curso:?} já está instalado e foi assinado por outra chave; remova o curso instalado antes de trocar de autor"
             ),
+            Self::Importacao(m) => write!(f, "importação: {m}"),
         }
     }
 }
