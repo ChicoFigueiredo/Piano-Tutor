@@ -109,3 +109,15 @@ Versões fixadas com `=` em `crates/piano-tutor-curso/Cargo.toml`; licenças con
 
 O crate não faz rede e as fixtures dos testes são sintéticas (nenhum conteúdo de curso real no repositório). Transitivas não listadas não foram auditadas uma a uma: **NÃO VERIFICADO** (usar `cargo deny` na CI). Chaves privadas de autor nunca entram no repositório.
 
+## Dependências do `piano-tutor-alinhamento` (M4, etapa 4)
+
+Versões fixadas com `=` em `crates/piano-tutor-alinhamento/Cargo.toml`; licenças conferidas em `cargo info` (2026-11-24).
+
+| Crate | Versão | Licença | Uso |
+| --- | --- | --- | --- |
+| `hound` | 3.5.1 | Apache-2.0 | leitura de WAV PCM/float (sem dependências) |
+| `serde_json` | 1.0.154 | MIT OR Apache-2.0 | saída `alinhamentos/<id>.json` (mesma versão do `piano-tutor-midi`) |
+
+A FFT (radix-2) é código próprio, conferido contra a DFT direta, para não trazer `rustfft` e suas transitivas (`num-complex`, `primal-check`, `strength_reduce`, `transpose` etc.). Transitivas de `serde_json` (`itoa`, `memchr`, `zmij`, `serde_core`, `indexmap` etc.) não auditadas uma a uma: **NÃO VERIFICADO**.
+
+Os testes usam apenas áudio **sintético** gerado em memória (senoides, harmônicos e ruído); nenhum áudio de curso é lido ou versionado. O áudio real da Aula só existe no cerebro, fora do repositório.
