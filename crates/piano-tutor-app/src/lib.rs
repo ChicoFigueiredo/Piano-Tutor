@@ -27,6 +27,7 @@ pub mod exercicios;
 pub mod gravacao;
 pub mod icones;
 pub mod monitor;
+pub mod mpv;
 pub mod partitura_visual;
 pub mod preferencias;
 pub mod professor_falante;

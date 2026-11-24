@@ -2857,7 +2857,9 @@ dependencies = [
  "piano-tutor-core",
  "piano-tutor-curso",
  "piano-tutor-midi",
+ "serde_json",
  "sha2 0.11.1",
+ "tempfile",
  "ureq",
 ]
 
