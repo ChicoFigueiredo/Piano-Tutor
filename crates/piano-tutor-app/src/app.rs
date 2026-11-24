@@ -1369,7 +1369,11 @@ mod testes {
         b.app.trocar_mapa_dedos(Some(7));
         let (perfis, ativo) = b.app.perfis();
         let meu = ativo.expect("ativo");
-        assert_eq!(meu.nome, crate::perfis::NOME_PESSOAL, "mudança sobre o de fábrica");
+        assert_eq!(
+            meu.nome,
+            crate::perfis::NOME_PESSOAL,
+            "mudança sobre o de fábrica"
+        );
         assert_eq!(perfis.len(), 2);
         b.app.trocar_perfil(fabrica.id);
         assert_eq!(b.app.espelho.nomenclatura, NomenclaturaDedos::Numeros);

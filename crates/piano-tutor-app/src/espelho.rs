@@ -241,6 +241,9 @@ pub struct EstadoEspelho {
     /// Mapa para decorar: com `Some(tônica)`, toda tecla da escala maior mostra o dedo, mesmo
     /// sem guia (ver [`crate::dedos::mapa_de_escala`]). Vem das preferências de exibição.
     pub mapa_dedos: Option<u8>,
+    /// Último dedo indicado para cada nota por uma guia (Lição, acorde, escala). Continua valendo
+    /// depois que a guia some, como referência para a tecla tocada.
+    dedos_recentes: Vec<(NotaMidi, u8)>,
 }
 
 impl Default for EstadoEspelho {
@@ -283,6 +286,7 @@ impl EstadoEspelho {
             roda_bend: RodaBend::nova(),
             bend_fisico: 0,
             mapa_dedos: None,
+            dedos_recentes: Vec::new(),
         }
     }
 
@@ -291,6 +295,31 @@ impl EstadoEspelho {
     pub fn definir_guias(&mut self, guias: Vec<NotaMidi>, dedos_informados: Vec<(NotaMidi, u8)>) {
         self.guias = guias;
         self.dedos = dedos_informados;
+        for (nota, dedo) in self.dedos_das_guias(self.divisao) {
+            match self.dedos_recentes.iter_mut().find(|(n, _)| *n == nota) {
+                Some(x) => x.1 = dedo,
+                None => self.dedos_recentes.push((nota, dedo)),
+            }
+        }
+    }
+
+    /// Dedo indicado para uma tecla, para mostrar sempre na tecla tocada: o da guia atual; senão o
+    /// último que uma guia indicou para essa nota; senão o da escala maior do mapa (Dó maior se
+    /// o mapa estiver desligado), com as teclas pretas fora da escala no 3 (convenção da escala
+    /// cromática).
+    pub fn dedo_de_referencia(&self, nota: NotaMidi, divisao: Option<u8>) -> Option<u8> {
+        let achar = |v: &[(NotaMidi, u8)]| v.iter().find(|(n, _)| *n == nota).map(|(_, d)| *d);
+        if let Some(d) = achar(&self.dedos_das_guias(divisao)) {
+            return Some(d);
+        }
+        if let Some(d) = achar(&self.dedos_recentes) {
+            return Some(d);
+        }
+        let tonica = self.mapa_dedos.unwrap_or(0);
+        let t = self.teclas.teclado();
+        let notas = (0..TECLAS).filter_map(|i| t.nota_de(i));
+        let mapa = crate::dedos::mapa_de_escala(tonica, notas, divisao.unwrap_or(60));
+        achar(&mapa).or(t.indice_de(nota).map(|_| 3))
     }
 
     /// Bend a mostrar no indicador, de -1,0 a 1,0 do curso, e se veio do teclado físico. A roda
@@ -619,6 +648,22 @@ mod testes {
             m.iter()
                 .all(|(x, _)| !matches!(x.numero() % 12, 1 | 3 | 6 | 8 | 10))
         );
+    }
+
+    #[test]
+    fn tecla_tocada_sempre_tem_dedo_de_referencia() {
+        let mut e = EstadoEspelho::novo();
+        // Sem guia nem mapa: Dó maior (Dó central = polegar) e preta no 3.
+        assert_eq!(e.dedo_de_referencia(n(60), None), Some(1));
+        assert_eq!(e.dedo_de_referencia(n(64), None), Some(3));
+        assert_eq!(e.dedo_de_referencia(n(61), None), Some(3));
+        // A Lição indicou o 2 no Dó: vale enquanto a guia está e depois que ela some.
+        e.definir_guias(vec![n(60)], vec![(n(60), 2)]);
+        assert_eq!(e.dedo_de_referencia(n(60), None), Some(2));
+        e.limpar_guias();
+        assert_eq!(e.dedo_de_referencia(n(60), None), Some(2));
+        // Fora do teclado, nada.
+        assert_eq!(e.dedo_de_referencia(n(20), None), None);
     }
 
     fn padrao() -> Teclado61 {

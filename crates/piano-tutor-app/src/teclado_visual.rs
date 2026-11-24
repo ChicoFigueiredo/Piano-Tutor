@@ -366,7 +366,15 @@ pub fn pintar_teclado(
         esquerda: estilo.eh_mao_esquerda(g.nota),
         mao: estilo.cor_da_mao(g.nota),
         tom: opacidade_do_tom(estilo.velocidade_de(g.nota)),
-        dedo: dedo_de(g.nota),
+        // A tecla tocada sempre mostra o dedo indicado, para conferir se o dedo usado é o certo.
+        dedo: dedo_de(g.nota).or_else(|| {
+            if ligadas.contains(&g.indice) {
+                e.dedo_de_referencia(g.nota, estilo.divisao)
+                    .and_then(|d| e.nomenclatura.rotulo(d))
+            } else {
+                None
+            }
+        }),
     };
 
     pintar_caixa(p, area, w, estilo);
