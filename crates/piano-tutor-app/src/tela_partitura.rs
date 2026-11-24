@@ -903,6 +903,36 @@ pub fn desenhar_tela(ui: &mut Ui, e: &mut EstadoPartitura, som: &mut ServicoSom)
     }
 }
 
+/// Só a vista da partitura (pautas, cursor e rolagem), sem a barra de comandos, para telas que
+/// a embutem (a de revisão do tutor). Quem chama cuida de `atualizar` e dos botões.
+pub fn desenhar_vista(ui: &mut Ui, e: &mut EstadoPartitura, som: &ServicoSom) {
+    let destaque = e.destaque(som.agora_ns());
+    let Some(p) = e.partitura.take() else {
+        ui.label(RichText::new("Nenhuma partitura carregada.").weak());
+        return;
+    };
+    desenhar_partitura(
+        ui,
+        &p,
+        &mut e.visual,
+        OpcoesVisuais {
+            zoom: e.zoom,
+            seguir: e.seguir,
+            modo: e.modo_rolagem,
+            papel_branco: e.papel_branco,
+        },
+        Marcas {
+            destaque,
+            selecionado: None,
+            resultados: None,
+        },
+    );
+    e.partitura = Some(p);
+    if e.tocando() {
+        ui.ctx().request_repaint();
+    }
+}
+
 /// Texto do resumo da prática.
 fn texto_do_resumo(r: &Resumo) -> String {
     let mut t = format!(
