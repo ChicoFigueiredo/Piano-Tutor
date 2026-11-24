@@ -30,6 +30,7 @@ pub mod monitor;
 pub mod mpv;
 pub mod partitura_visual;
 pub mod preferencias;
+pub mod professor;
 pub mod professor_falante;
 pub mod ritmo;
 pub mod roda_bend;
