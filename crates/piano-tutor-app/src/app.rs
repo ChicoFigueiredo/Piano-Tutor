@@ -462,6 +462,9 @@ impl AppPianoTutor {
             match s {
                 SaidaMidi::Evento(ev) => {
                     self.gravacao.evento(&ev);
+                    if let EventoMidi::PitchBend { valor, .. } = ev {
+                        self.espelho.bend_fisico = valor;
+                    }
                     if self.rota_atual == ROTA_CALIBRACAO {
                         self.calibracao.evento(&ev);
                     }
@@ -514,6 +517,7 @@ impl AppPianoTutor {
                 }
                 SaidaMidi::LimparNotas => {
                     self.espelho.roda_bend.zerar();
+                    self.espelho.bend_fisico = 0;
                     self.espelho.limpar_tudo();
                     self.som.limpar_notas();
                 }
@@ -1285,6 +1289,10 @@ mod testes {
         let novos = bends(&b.motor.registro())[antes..].to_vec();
         // 0x60 << 7 = 12288 - 8192 = 4096 em cada canal do teclado.
         assert_eq!(novos, vec![(0, 4096), (1, 4096), (2, 4096)]);
+        // O indicador da tela acompanha a roda do teclado físico.
+        assert_eq!(b.app.espelho.bend_fisico, 4096);
+        let (fracao, fisico) = b.app.espelho.bend_exibido();
+        assert!(fisico && (fracao - 0.5).abs() < 0.01, "{fracao}");
     }
 
     #[test]

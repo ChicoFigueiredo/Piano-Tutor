@@ -8,7 +8,7 @@
 use crate::espelho::{
     EstadoEspelho, ResumoDesenho, ZOOM_MAX, ZOOM_MIN, geometria, texto_frequencia,
 };
-use crate::roda_bend::{PONTOS_POR_ENTALHE, texto_bend};
+use crate::roda_bend::{BEND_MAX, PONTOS_POR_ENTALHE, UNIDADES_POR_SEMITOM, texto_bend};
 use crate::teclado_visual::{
     EstiloTeclado, Rotulos, area_das_teclas, fase_do_pulso, largura_branca_ajustada,
     pintar_teclado, tamanho_do_teclado, tecla_no_ponto,
@@ -284,10 +284,16 @@ fn girar_roda_bend(ui: &Ui, e: &mut EstadoEspelho, rect: egui::Rect) {
 
 /// Indicador discreto do bend: texto pequeno e uma barra fina com o marcador do centro.
 fn desenhar_indicador_bend(ui: &mut Ui, e: &EstadoEspelho) {
-    let r = &e.roda_bend;
-    let ativo = !r.centrada();
+    let (fracao, fisico) = e.bend_exibido();
+    let ativo = fracao != 0.0;
+    let semitons = fracao * BEND_MAX / UNIDADES_POR_SEMITOM;
     ui.horizontal(|ui| {
-        let texto = RichText::new(texto_bend(r.semitons())).small();
+        let rotulo = if fisico {
+            format!("{} (teclado)", texto_bend(semitons))
+        } else {
+            texto_bend(semitons)
+        };
+        let texto = RichText::new(rotulo).small();
         let texto = if ativo { texto.strong() } else { texto.weak() };
         let resposta = ui.label(texto);
         let (barra, _) = ui.allocate_exact_size(egui::vec2(96.0, 8.0), Sense::hover());
@@ -299,7 +305,7 @@ fn desenhar_indicador_bend(ui: &mut Ui, e: &EstadoEspelho) {
             2.0,
             cor.gamma_multiply(0.18),
         );
-        let ponta = meio.x + r.fracao() * barra.width() * 0.5;
+        let ponta = meio.x + fracao * barra.width() * 0.5;
         let cheio = egui::Rect::from_two_pos(
             egui::pos2(meio.x, barra.top() + 2.0),
             egui::pos2(ponta, barra.bottom() - 2.0),
@@ -314,7 +320,8 @@ fn desenhar_indicador_bend(ui: &mut Ui, e: &EstadoEspelho) {
         );
         resposta.on_hover_text(
             "Role a roda do mouse sobre o teclado para curvar a afinação (±2 semitons), \
-             como a roda de pitch bend. Ela volta ao centro sozinha. Shift + roda move o \
+             como a roda de pitch bend. Ela volta ao centro sozinha. A roda de pitch do \
+             teclado físico também aparece aqui. Shift + roda move o \
              teclado quando ele está ampliado.",
         );
     });

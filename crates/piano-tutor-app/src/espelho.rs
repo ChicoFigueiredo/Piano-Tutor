@@ -235,6 +235,9 @@ pub struct EstadoEspelho {
     pub divisao: Option<u8>,
     /// Roda de pitch bend virtual (roda do mouse sobre o teclado). O app a leva ao som.
     pub roda_bend: RodaBend,
+    /// Último pitch bend recebido do teclado físico (`-8192..=8191`, 0 = centro), só para o
+    /// indicador da tela; o som já recebe o bend direto do MIDI.
+    pub bend_fisico: i16,
 }
 
 impl Default for EstadoEspelho {
@@ -275,6 +278,7 @@ impl EstadoEspelho {
             nomenclatura: NomenclaturaDedos::default(),
             divisao: None,
             roda_bend: RodaBend::nova(),
+            bend_fisico: 0,
         }
     }
 
@@ -283,6 +287,17 @@ impl EstadoEspelho {
     pub fn definir_guias(&mut self, guias: Vec<NotaMidi>, dedos_informados: Vec<(NotaMidi, u8)>) {
         self.guias = guias;
         self.dedos = dedos_informados;
+    }
+
+    /// Bend a mostrar no indicador, de -1,0 a 1,0 do curso, e se veio do teclado físico. A roda
+    /// do mouse tem prioridade enquanto está fora do centro.
+    pub fn bend_exibido(&self) -> (f32, bool) {
+        if self.roda_bend.centrada() && self.bend_fisico != 0 {
+            let f = f32::from(self.bend_fisico) / crate::roda_bend::BEND_MAX;
+            (f.clamp(-1.0, 1.0), true)
+        } else {
+            (self.roda_bend.fracao(), false)
+        }
     }
 
     /// Tira as guias e o dedilhado.
