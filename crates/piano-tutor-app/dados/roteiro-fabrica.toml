@@ -1,0 +1,329 @@
+# Roteiro do Curso de fábrica (formato: docs/specs/FORMATO-PACOTE-DE-CURSO.md, roteiro.toml).
+#
+# Falas do professor para os 10 exercícios de fábrica (crates/piano-tutor-app/src/exercicios.rs).
+# Todas nascem como "hipotese" e só viram voz depois que o Chico trocar para "aprovada"
+# (a voz só diz falas aprovadas). Sem "#" nem "b" no texto: a voz lê por extenso.
+#
+# licao = "fabrica"; exercicio = "exNN", com NN o id do exercício (01 a 10).
+
+formato_versao = 1
+
+[[falas]]
+id = "fabrica-ex01-antes"
+licao = "fabrica"
+exercicio = "ex01"
+momento = "antes"
+texto = "Vamos começar achando o Dó central: a tecla branca à esquerda das duas pretas, no meio do teclado."
+estado = "hipotese"
+
+[[falas]]
+id = "fabrica-ex01-acerto"
+licao = "fabrica"
+exercicio = "ex01"
+momento = "acerto"
+texto = "Isso! Esse é o Dó central."
+estado = "hipotese"
+
+[[falas]]
+id = "fabrica-ex01-erro"
+licao = "fabrica"
+exercicio = "ex01"
+momento = "erro"
+texto = "Quase. Procure o grupo de duas teclas pretas e toque a branca à esquerda dele."
+estado = "hipotese"
+
+[[falas]]
+id = "fabrica-ex01-depois"
+licao = "fabrica"
+exercicio = "ex01"
+momento = "depois"
+texto = "Muito bem. As outras notas a gente conta a partir do Dó central."
+estado = "hipotese"
+
+[[falas]]
+id = "fabrica-ex02-antes"
+licao = "fabrica"
+exercicio = "ex02"
+momento = "antes"
+texto = "Agora toque Dó, Ré, Mi, Fá e Sol, subindo, e depois desça de volta, uma nota de cada vez."
+estado = "hipotese"
+
+[[falas]]
+id = "fabrica-ex02-acerto"
+licao = "fabrica"
+exercicio = "ex02"
+momento = "acerto"
+texto = "Isso mesmo, pode seguir."
+estado = "hipotese"
+
+[[falas]]
+id = "fabrica-ex02-erro"
+licao = "fabrica"
+exercicio = "ex02"
+momento = "erro"
+texto = "Sem pressa. Olhe a tecla marcada e toque ela; a anterior continua valendo."
+estado = "hipotese"
+
+[[falas]]
+id = "fabrica-ex02-depois"
+licao = "fabrica"
+exercicio = "ex02"
+momento = "depois"
+texto = "Dez notas na ordem certa. Você já domina as cinco notas, de Dó a Sol."
+estado = "hipotese"
+
+[[falas]]
+id = "fabrica-ex03-antes"
+licao = "fabrica"
+exercicio = "ex03"
+momento = "antes"
+texto = "Toque três notas na ordem: Mi, Dó e Sol."
+estado = "hipotese"
+
+[[falas]]
+id = "fabrica-ex03-acerto"
+licao = "fabrica"
+exercicio = "ex03"
+momento = "acerto"
+texto = "Certo, essa veio na ordem pedida."
+estado = "hipotese"
+
+[[falas]]
+id = "fabrica-ex03-erro"
+licao = "fabrica"
+exercicio = "ex03"
+momento = "erro"
+texto = "A ordem é Mi, Dó, Sol. Tente a nota marcada."
+estado = "hipotese"
+
+[[falas]]
+id = "fabrica-ex03-depois"
+licao = "fabrica"
+exercicio = "ex03"
+momento = "depois"
+texto = "Três notas na ordem certa. Muito bem."
+estado = "hipotese"
+
+[[falas]]
+id = "fabrica-ex04-antes"
+licao = "fabrica"
+exercicio = "ex04"
+momento = "antes"
+texto = "Agora as teclas pretas. Toque Dó sustenido, Mi bemol, Fá sustenido, Si bemol e Sol sustenido."
+estado = "hipotese"
+
+[[falas]]
+id = "fabrica-ex04-acerto"
+licao = "fabrica"
+exercicio = "ex04"
+momento = "acerto"
+texto = "Tecla preta certa."
+estado = "hipotese"
+
+[[falas]]
+id = "fabrica-ex04-erro"
+licao = "fabrica"
+exercicio = "ex04"
+momento = "erro"
+texto = "Sustenido fica à direita da branca; bemol, à esquerda da próxima. Tente de novo."
+estado = "hipotese"
+
+[[falas]]
+id = "fabrica-ex04-depois"
+licao = "fabrica"
+exercicio = "ex04"
+momento = "depois"
+texto = "Cinco teclas pretas encontradas. Ótimo."
+estado = "hipotese"
+
+[[falas]]
+id = "fabrica-ex05-antes"
+licao = "fabrica"
+exercicio = "ex05"
+momento = "antes"
+texto = "Vamos tocar duas notas ao mesmo tempo: terças e quintas, num golpe só."
+estado = "hipotese"
+
+[[falas]]
+id = "fabrica-ex05-acerto"
+licao = "fabrica"
+exercicio = "ex05"
+momento = "acerto"
+texto = "Intervalo certo, as duas notas juntas."
+estado = "hipotese"
+
+[[falas]]
+id = "fabrica-ex05-erro"
+licao = "fabrica"
+exercicio = "ex05"
+momento = "erro"
+texto = "Toque só as duas notas marcadas, juntas, num golpe só."
+estado = "hipotese"
+
+[[falas]]
+id = "fabrica-ex05-depois"
+licao = "fabrica"
+exercicio = "ex05"
+momento = "depois"
+texto = "Quatro intervalos tocados juntos. Seu ouvido já vai reconhecendo terças e quintas."
+estado = "hipotese"
+
+[[falas]]
+id = "fabrica-ex06-antes"
+licao = "fabrica"
+exercicio = "ex06"
+momento = "antes"
+texto = "Hora da escala de Dó maior. Suba de Dó a Dó, uma tecla branca de cada vez."
+estado = "hipotese"
+
+[[falas]]
+id = "fabrica-ex06-acerto"
+licao = "fabrica"
+exercicio = "ex06"
+momento = "acerto"
+texto = "Mais um degrau da escala."
+estado = "hipotese"
+
+[[falas]]
+id = "fabrica-ex06-erro"
+licao = "fabrica"
+exercicio = "ex06"
+momento = "erro"
+texto = "Aqui só teclas brancas. Toque a próxima marcada."
+estado = "hipotese"
+
+[[falas]]
+id = "fabrica-ex06-depois"
+licao = "fabrica"
+exercicio = "ex06"
+momento = "depois"
+texto = "Escala de Dó maior completa. Parabéns."
+estado = "hipotese"
+
+[[falas]]
+id = "fabrica-ex07-antes"
+licao = "fabrica"
+exercicio = "ex07"
+momento = "antes"
+texto = "Agora um acorde: Dó, Mi e Sol, todos juntos. Vale qualquer posição."
+estado = "hipotese"
+
+[[falas]]
+id = "fabrica-ex07-acerto"
+licao = "fabrica"
+exercicio = "ex07"
+momento = "acerto"
+texto = "Acorde completo, as notas soaram juntas."
+estado = "hipotese"
+
+[[falas]]
+id = "fabrica-ex07-erro"
+licao = "fabrica"
+exercicio = "ex07"
+momento = "erro"
+texto = "Dó maior é só Dó, Mi e Sol, ao mesmo tempo, sem nota a mais."
+estado = "hipotese"
+
+[[falas]]
+id = "fabrica-ex07-depois"
+licao = "fabrica"
+exercicio = "ex07"
+momento = "depois"
+texto = "Acorde de Dó maior em três posições. Muito bom."
+estado = "hipotese"
+
+[[falas]]
+id = "fabrica-ex08-antes"
+licao = "fabrica"
+exercicio = "ex08"
+momento = "antes"
+texto = "Vamos diferenciar acordes maiores e menores. Escute a diferença enquanto toca."
+estado = "hipotese"
+
+[[falas]]
+id = "fabrica-ex08-acerto"
+licao = "fabrica"
+exercicio = "ex08"
+momento = "acerto"
+texto = "Acorde certo."
+estado = "hipotese"
+
+[[falas]]
+id = "fabrica-ex08-erro"
+licao = "fabrica"
+exercicio = "ex08"
+momento = "erro"
+texto = "Confira a nota do meio: no acorde maior a terça é maior; no menor, ela é menor."
+estado = "hipotese"
+
+[[falas]]
+id = "fabrica-ex08-depois"
+licao = "fabrica"
+exercicio = "ex08"
+momento = "depois"
+texto = "Seis acordes tocados. Você já distingue o maior do menor."
+estado = "hipotese"
+
+[[falas]]
+id = "fabrica-ex09-antes"
+licao = "fabrica"
+exercicio = "ex09"
+momento = "antes"
+texto = "Agora o arpejo: as notas do acorde de Dó, uma de cada vez, subindo e descendo."
+estado = "hipotese"
+
+[[falas]]
+id = "fabrica-ex09-acerto"
+licao = "fabrica"
+exercicio = "ex09"
+momento = "acerto"
+texto = "Nota certa do arpejo."
+estado = "hipotese"
+
+[[falas]]
+id = "fabrica-ex09-erro"
+licao = "fabrica"
+exercicio = "ex09"
+momento = "erro"
+texto = "No arpejo a ordem importa. Toque a nota marcada, uma de cada vez."
+estado = "hipotese"
+
+[[falas]]
+id = "fabrica-ex09-depois"
+licao = "fabrica"
+exercicio = "ex09"
+momento = "depois"
+texto = "Arpejo de Dó maior completo. Parabéns."
+estado = "hipotese"
+
+[[falas]]
+id = "fabrica-ex10-antes"
+licao = "fabrica"
+exercicio = "ex10"
+momento = "antes"
+texto = "Agora é de ouvido. Escute a frase e tente repetir sem olhar as teclas."
+estado = "hipotese"
+
+[[falas]]
+id = "fabrica-ex10-acerto"
+licao = "fabrica"
+exercicio = "ex10"
+momento = "acerto"
+texto = "Você ouviu e acertou."
+estado = "hipotese"
+
+[[falas]]
+id = "fabrica-ex10-erro"
+licao = "fabrica"
+exercicio = "ex10"
+momento = "erro"
+texto = "Essa não é a nota da frase. Escute de novo e tente outra."
+estado = "hipotese"
+
+[[falas]]
+id = "fabrica-ex10-depois"
+licao = "fabrica"
+exercicio = "ex10"
+momento = "depois"
+texto = "Frase repetida de ouvido. Isso é música!"
+estado = "hipotese"

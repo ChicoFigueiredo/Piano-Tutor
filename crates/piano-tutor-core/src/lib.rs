@@ -16,6 +16,8 @@ pub mod partitura;
 
 pub mod mxl;
 
+pub mod chamada_resposta;
+
 pub mod comparador;
 
 pub mod pratica;

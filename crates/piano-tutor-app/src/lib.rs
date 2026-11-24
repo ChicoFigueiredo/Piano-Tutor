@@ -29,6 +29,7 @@ pub mod icones;
 pub mod monitor;
 pub mod partitura_visual;
 pub mod preferencias;
+pub mod professor_falante;
 pub mod ritmo;
 pub mod roda_bend;
 pub mod seletor_instrumento;
