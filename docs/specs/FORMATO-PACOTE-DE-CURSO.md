@@ -18,7 +18,7 @@ Um Pacote de Curso é **só dados**: o app nunca executa nada que venha dele. Es
 | `alinhamentos/<id>.json` | opcional | Alinhamento por nota (abaixo) |
 | `roteiro.toml` | opcional | falas do professor (abaixo) |
 
-Qualquer arquivo no zip que não esteja listado em `[[arquivos]]` do manifesto, ou cujo SHA-256 não confira, **invalida** o pacote. Limites de leitura: 200 MB por pacote, 50 MB por arquivo, 2000 arquivos.
+Qualquer arquivo no zip que não esteja listado em `[[arquivos]]` do manifesto, ou cujo SHA-256 não confira, **invalida** o pacote. Limites de leitura: 200 MB por pacote, 50 MB por arquivo, 2000 arquivos e 8 MB por documento de texto (manifesto, Roteiro, Alinhamento). Entradas de pasta no zip são ignoradas; nome de entrada repetido, link simbólico ou nome que não seja UTF-8 invalidam o pacote.
 
 ## Assinatura e confiança
 
@@ -80,6 +80,7 @@ bytes = 4210
 ```
 
 Regras do leitor:
+- A ordem de verificação é: zip seguro → `formato_versao` → assinatura (sobre os bytes exatos do manifesto, antes de interpretar o resto) → estrutura → arquivos (nenhum a mais, nenhum a menos, tamanho e SHA-256) → Roteiro e Alinhamentos.
 - `formato_versao` maior que o suportado → erro claro ("pacote feito para versão mais nova do app").
 - Só Exercício `aprovada` vira Gabarito. `hipotese`/`em_revisao` aparecem apenas na tela de revisão (modo tutor); `rejeitada` nunca aparece para o aluno.
 - Lição `assistir` não tem Exercícios.
@@ -125,3 +126,36 @@ O Curso de fábrica usa o mesmo `roteiro.toml` (embutido no app, falas já aprov
 - Instalar = verificar tudo e extrair para `<dados>/cursos/<id>/` (substitui versão anterior só se a nova verificar).
 - Progresso do Curso de tutor: `<dados>/cursos/progresso/<id>.txt`, separado do progresso do Curso de fábrica.
 - Oficina do tutor (fora do pacote, só no cerebro): `~/.local/share/piano-tutor/fontes/<tutor>/` com PDFs renderizados, Hipóteses, áudio extraído e estados de revisão.
+
+## Regras de validação (leitor v1)
+
+Decisões que o contrato deixava em aberto, fixadas na implementação (`crates/piano-tutor-curso`):
+
+- **Identificadores** (`id` do Curso, da Seção, da Lição, do Exercício e da fala): `[a-z0-9.-]`, começando por letra minúscula ou número, até 100 caracteres, únicos no pacote dentro de cada tipo. O `id` do Curso vira nome de pasta, por isso `chaves-confiaveis` e `progresso` (pastas reservadas de `<dados>/cursos/`) são proibidos.
+- **Caminhos** (em `[[arquivos]]`, `partitura`, `audio`, `alinhamento` e nas entradas do zip): relativos, separados por `/`, sem componente vazio, `.` ou `..`, sem `\`, sem `:` e sem caracteres de controle, até 240 caracteres. `manifesto.toml` e `assinatura.ed25519` nunca constam em `[[arquivos]]`.
+- `partitura`, `audio` e `alinhamento` de cada Exercício precisam constar em `[[arquivos]]`; `sha256` é hexadecimal minúsculo de 64 dígitos.
+- Lição `assistir` não pode ter Exercícios. `aula.nome_arquivo` é só o nome do arquivo (sem `/` nem `\`). `bpm` fica entre 1 e 1000; `trecho_aula` exige `0 <= inicio_s < fim_s`.
+- **Roteiro**: `licao` precisa existir; `exercicio`, se houver, precisa pertencer a essa Lição; `passo` é obrigatório com `momento = "passo"` e proibido nos outros; `texto` não pode ser vazio.
+- **Alinhamento**: `exercicio` e `audio` precisam bater com o Exercício que o cita; `indice` estritamente crescente; `midi` em 0..=127; `confianca` em 0..=1; tempos finitos e não negativos.
+- **Estados**: só `aprovada` serve de Gabarito (`Exercicio::serve_de_gabarito`); `exercicios_para_aluno` exclui `hipotese`, `em_revisao` e `rejeitada`. O mesmo vale para as falas do Roteiro (`falas_aprovadas`).
+- **Empacotador**: lê `manifesto.toml` da pasta de origem (sem `[assinatura]` nem `[[arquivos]]`), inclui todos os arquivos da pasta exceto o manifesto, `assinatura.ed25519` e nomes que começam por ponto, grava a chave pública da chave privada em `[assinatura]`, regrava o manifesto (comentários e formatação da origem se perdem; esses bytes é que são assinados) e valida tudo antes de assinar. A saída é determinística para a mesma origem e chave.
+- **Instalação**: extrai para uma pasta temporária oculta ao lado e troca por `rename`; se o curso já instalado estiver íntegro e tiver sido assinado por **outra chave**, a instalação é recusada (um autor não sobrescreve o curso de outro; para trocar de autor, remova a pasta do curso).
+- **Chaves confiáveis**: lista embutida no app (vazia por enquanto) mais `<dados>/cursos/chaves-confiaveis/*.pub`; arquivos `.pub` ilegíveis são ignorados.
+
+## Uso da CLI
+
+```
+piano-tutor-curso chave-gerar <pasta-saida>
+piano-tutor-curso empacotar <pasta-origem> --chave <arquivo> -o <saida.ptcurso>
+piano-tutor-curso verificar <arquivo.ptcurso> [--confiaveis <pasta>] [--dados <pasta>]
+piano-tutor-curso instalar <arquivo.ptcurso> [--dados <pasta>]
+piano-tutor-curso listar [--dados <pasta>]
+```
+
+- `chave-gerar` grava `curso.chave` (privada, hexadecimal, permissão 0600 no Unix, nunca sobrescreve) e `curso.pub` (pública). Guarde a privada fora do repositório (no cerebro: `~/.config/piano-tutor/chaves/`).
+- `empacotar` usa a pasta de origem descrita acima e grava o `.ptcurso`.
+- `verificar` confere assinatura, estrutura e hashes e imprime curso, autor, licenciado, chave curta (`abcd…1234`), confiança (confiável ou desconhecida) e a contagem de Seções, Lições e Exercícios por estado. Sem `--confiaveis`, usa as chaves de `<dados>/cursos/chaves-confiaveis/`.
+- `instalar` verifica e extrai para `<dados>/cursos/<id>/`; avisa se a chave não for confiável (a instalação é feita mesmo assim, pois autenticidade não é confiança).
+- `listar` mostra os cursos instalados, com a chave e se ela é confiável.
+- `--dados` padrão: `<pasta de dados do usuário>/piano-tutor` (no Linux, `~/.local/share/piano-tutor`).
+- Códigos de saída: 0 sucesso, 1 falha (pacote inválido, arquivo ilegível), 2 uso incorreto.
