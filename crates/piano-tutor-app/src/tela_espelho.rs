@@ -143,7 +143,7 @@ fn desenhar_opcoes(ui: &mut Ui, e: &mut EstadoEspelho) {
         ui.selectable_value(&mut e.nomes.convencao, ConvencaoOitava::Do4, "C4 (MIDI 60)");
         ui.selectable_value(&mut e.nomes.convencao, ConvencaoOitava::Do3, "C3 (MIDI 60)");
     });
-    let mut opcoes = opcoes_visuais(ui.ctx());
+    let mut opcoes = e.opcoes_tela;
     ui.horizontal_wrapped(|ui| {
         ui.spacing_mut().slider_width = 160.0;
         ui.add_enabled_ui(!opcoes.ajustar_a_largura, |ui| {
@@ -165,7 +165,7 @@ fn desenhar_opcoes(ui: &mut Ui, e: &mut EstadoEspelho) {
         ui.selectable_value(&mut opcoes.rotulos, Rotulos::Nenhum, "Nenhum");
         ui.checkbox(&mut opcoes.pulso, "Pulso da guia");
     });
-    guardar_opcoes(ui.ctx(), opcoes);
+    e.opcoes_tela = opcoes;
 }
 
 // ---------------------------------------------------------------------------------------------
@@ -180,10 +180,10 @@ pub fn desenhar_teclado_embutido(ui: &mut Ui, e: &mut EstadoEspelho) {
 /// Preferências visuais do teclado, guardadas na memória temporária do egui (valem para todas
 /// as telas que desenham o teclado).
 #[derive(Clone, Copy, Debug, PartialEq)]
-struct OpcoesVisuais {
-    ajustar_a_largura: bool,
-    rotulos: Rotulos,
-    pulso: bool,
+pub struct OpcoesVisuais {
+    pub ajustar_a_largura: bool,
+    pub rotulos: Rotulos,
+    pub pulso: bool,
 }
 
 impl Default for OpcoesVisuais {
@@ -196,22 +196,9 @@ impl Default for OpcoesVisuais {
     }
 }
 
-fn id_opcoes() -> egui::Id {
-    egui::Id::new("piano-tutor-teclado-opcoes")
-}
-
-fn opcoes_visuais(ctx: &egui::Context) -> OpcoesVisuais {
-    ctx.data(|d| d.get_temp::<OpcoesVisuais>(id_opcoes()))
-        .unwrap_or_default()
-}
-
-fn guardar_opcoes(ctx: &egui::Context, o: OpcoesVisuais) {
-    ctx.data_mut(|d| d.insert_temp(id_opcoes(), o));
-}
-
 fn desenhar_teclado(ui: &mut Ui, e: &mut EstadoEspelho, aviso_simulacao_visivel: bool) {
     let geo = geometria(e.teclado());
-    let opcoes = opcoes_visuais(ui.ctx());
+    let opcoes = e.opcoes_tela;
     let mut estilo = EstiloTeclado::para_visuals(ui.visuals());
     estilo.divisao = e.divisao;
     estilo.rotulos = opcoes.rotulos;

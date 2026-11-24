@@ -244,6 +244,8 @@ pub struct EstadoEspelho {
     /// Último dedo indicado para cada nota por uma guia (Lição, acorde, escala). Continua valendo
     /// depois que a guia some, como referência para a tecla tocada.
     dedos_recentes: Vec<(NotaMidi, u8)>,
+    /// Opções da tela Teclado (ajustar à largura, nomes nas teclas, pulso da guia).
+    pub opcoes_tela: crate::tela_espelho::OpcoesVisuais,
 }
 
 impl Default for EstadoEspelho {
@@ -287,6 +289,7 @@ impl EstadoEspelho {
             bend_fisico: 0,
             mapa_dedos: None,
             dedos_recentes: Vec::new(),
+            opcoes_tela: crate::tela_espelho::OpcoesVisuais::default(),
         }
     }
 

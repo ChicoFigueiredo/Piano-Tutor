@@ -30,6 +30,7 @@ dirs = "=7.0.0"    # MIT OR Apache-2.0
 serde = { version = "1.0.229", features = ["derive"] }  # MIT OR Apache-2.0
 toml = { version = "=1.1.6", default-features = false, features = ["parse", "serde", "std"] }  # MIT OR Apache-2.0
 # Preferências e perfis em SQLite (ADR-0010); SQLite embutido, sem lib do sistema no .deb.
+serde_json = "=1.0.154"  # MIT OR Apache-2.0; preferências da janela (casca) no perfil
 rusqlite = { version = "=0.43.0", features = ["bundled"] }  # MIT; SQLite é domínio público
 bancada-casca = { git = "https://github.com/ChicoFigueiredo/bancada", rev = "94818fd95dc74b5a42a7757b1d258ed17822ed06" }
 

@@ -99,6 +99,9 @@ pub struct EstadoRitmo {
     pub mudo: [bool; INSTRUMENTOS.len()],
     /// Peças em solo: havendo alguma, só elas soam (o solo vence o mudo).
     pub solo: [bool; INSTRUMENTOS.len()],
+    /// Tolerância e compensação do exercício de pulso, lembradas para a próxima vez que ele é
+    /// ligado (vão para o perfil).
+    pub pulso_salvo: (u32, i32),
     agendador: Option<Agendador>,
     tap: TapTempo,
     buffer: Vec<(u64, EventoRitmo)>,
@@ -130,6 +133,7 @@ impl EstadoRitmo {
             mensagem: None,
             aviso_andamento: None,
             pasta,
+            pulso_salvo: (50, 0),
             mudo: [false; INSTRUMENTOS.len()],
             solo: [false; INSTRUMENTOS.len()],
             agendador: None,

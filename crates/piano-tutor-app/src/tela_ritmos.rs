@@ -396,7 +396,15 @@ fn desenhar_exercicio(ui: &mut Ui, r: &mut EstadoRitmo) {
         )
         .changed()
     {
-        r.exercicio = ativo.then(ExercicioPulso::default);
+        let (tolerancia_ms, compensacao_ms) = r.pulso_salvo;
+        r.exercicio = ativo.then(|| {
+            let mut e = ExercicioPulso {
+                compensacao_ms,
+                ..ExercicioPulso::default()
+            };
+            e.definir_tolerancia_ms(tolerancia_ms);
+            e
+        });
     }
     let Some(e) = r.exercicio.as_mut() else {
         return;

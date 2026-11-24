@@ -29,6 +29,8 @@ pub mod secoes {
     pub const EXIBICAO: &str = "exibicao";
     pub const PARTITURA: &str = "partitura";
     pub const TEMA: &str = "tema";
+    /// Preferências da janela (tema, densidade, escala, Ribbon, painéis, tela cheia), em JSON.
+    pub const CASCA: &str = "casca";
 }
 
 /// Arquivos de texto antigos importados na primeira abertura: (seção, arquivo).
