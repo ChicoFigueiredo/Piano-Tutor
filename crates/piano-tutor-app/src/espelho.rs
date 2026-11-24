@@ -13,7 +13,7 @@ use bancada_casca::egui::{Key, Rect};
 use piano_tutor_core::NotaMidi;
 use piano_tutor_core::teclado::{
     AcaoTecla, ConfigNomes, CorTecla, ErroTeclado, EstadoTeclas, EventoTecla, FonteEventos, Idioma,
-    ModoSimulacao, OrigemEventos, Teclado61, nome_sem_oitava, rotulo,
+    ModoSimulacao, OrigemEventos, TECLAS, Teclado61, nome_sem_oitava, rotulo,
 };
 
 /// Aviso permanente enquanto a fonte dos eventos for simulação.
@@ -238,6 +238,9 @@ pub struct EstadoEspelho {
     /// Último pitch bend recebido do teclado físico (`-8192..=8191`, 0 = centro), só para o
     /// indicador da tela; o som já recebe o bend direto do MIDI.
     pub bend_fisico: i16,
+    /// Mapa para decorar: com `Some(tônica)`, toda tecla da escala maior mostra o dedo, mesmo
+    /// sem guia (ver [`crate::dedos::mapa_de_escala`]). Vem das preferências de exibição.
+    pub mapa_dedos: Option<u8>,
 }
 
 impl Default for EstadoEspelho {
@@ -279,6 +282,7 @@ impl EstadoEspelho {
             divisao: None,
             roda_bend: RodaBend::nova(),
             bend_fisico: 0,
+            mapa_dedos: None,
         }
     }
 
@@ -315,6 +319,17 @@ impl EstadoEspelho {
         let esquerda = divisao
             .is_some_and(|d| !self.guias.is_empty() && self.guias.iter().all(|n| n.numero() < d));
         crate::dedos::inferir(&self.guias, esquerda)
+    }
+
+    /// Dedos do mapa para decorar em todas as teclas (vazio com o mapa desligado). Sem ponto de
+    /// divisão, a mão direita começa no Dó central.
+    pub fn dedos_do_mapa(&self, divisao: Option<u8>) -> Vec<(NotaMidi, u8)> {
+        let Some(tonica) = self.mapa_dedos else {
+            return Vec::new();
+        };
+        let t = self.teclas.teclado();
+        let notas = (0..TECLAS).filter_map(|i| t.nota_de(i));
+        crate::dedos::mapa_de_escala(tonica, notas, divisao.unwrap_or(60))
     }
 
     pub fn teclado(&self) -> Teclado61 {
@@ -589,6 +604,18 @@ mod testes {
         assert_eq!(e.dedos_das_guias(None), vec![(n(60), 2)]);
         e.limpar_guias();
         assert!(e.dedos_das_guias(None).is_empty());
+    }
+
+    #[test]
+    fn mapa_de_dedos_cobre_as_teclas_da_escala_so_quando_ligado() {
+        let mut e = EstadoEspelho::novo();
+        assert!(e.dedos_do_mapa(None).is_empty(), "desligado por padrão");
+        e.mapa_dedos = Some(0);
+        let m = e.dedos_do_mapa(None);
+        // 61 teclas de Dó a Dó: 5 oitavas × 7 brancas + o Dó final = 36 teclas de Dó maior.
+        assert_eq!(m.len(), 36);
+        assert!(m.contains(&(n(60), 1)), "Dó central: polegar da direita");
+        assert!(m.iter().all(|(x, _)| !matches!(x.numero() % 12, 1 | 3 | 6 | 8 | 10)));
     }
 
     fn padrao() -> Teclado61 {

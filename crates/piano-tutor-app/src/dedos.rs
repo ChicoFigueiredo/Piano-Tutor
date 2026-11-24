@@ -337,6 +337,49 @@ fn dedos_de_acorde(notas: &[NotaMidi], esquerda: bool) -> Option<Vec<u8>> {
     Some(v.to_vec())
 }
 
+/// Intervalos (semitons a partir da tônica) dos 7 graus da escala maior.
+const GRAUS_MAIOR: [u8; 7] = [0, 2, 4, 5, 7, 9, 11];
+
+/// Nomes das 12 tônicas maiores, por classe de altura (0 = Dó), para o seletor do mapa.
+pub const TONICAS_MAPA: [&str; 12] = [
+    "Dó", "Ré♭", "Ré", "Mi♭", "Mi", "Fá", "Fá♯", "Sol", "Lá♭", "Lá", "Si♭", "Si",
+];
+
+/// Mapa de dedos para decorar: o dedilhado da escala maior de `tonica` (classe de altura,
+/// 0 = Dó) em todas as teclas de `notas` que pertencem à escala. Abaixo de `divisao` vale a
+/// mão esquerda, a partir dela a direita, com o dedilhado contínuo de várias oitavas da tabela
+/// tradicional (na esquerda, a tônica mais grave usa o dedo de início da escala). Teclas fora
+/// da escala ficam sem dedo.
+pub fn mapa_de_escala(
+    tonica: u8,
+    notas: impl IntoIterator<Item = NotaMidi>,
+    divisao: u8,
+) -> Vec<(NotaMidi, u8)> {
+    let t = usize::from(tonica % 12);
+    let (direita, esquerda) = ESCALA_MAIOR[t];
+    let mut notas: Vec<NotaMidi> = notas.into_iter().collect();
+    notas.sort_by_key(|n| n.numero());
+    let primeira_tonica_esquerda = notas
+        .iter()
+        .find(|n| n.numero() < divisao && usize::from(n.numero() % 12) == t)
+        .copied();
+    notas
+        .into_iter()
+        .filter_map(|n| {
+            let rel = (n.numero() + 12 - tonica % 12) % 12;
+            let grau = GRAUS_MAIOR.iter().position(|&g| g == rel)?;
+            let dedo = if n.numero() >= divisao {
+                direita[grau]
+            } else if grau == 0 && Some(n) != primeira_tonica_esquerda {
+                esquerda[7]
+            } else {
+                esquerda[grau]
+            };
+            Some((n, dedo))
+        })
+        .collect()
+}
+
 /// Dedo de cada tecla-guia, resolvido pelo próprio teclado quando a tela não informa: escala de
 /// uma oitava (8 notas, ou 13 na cromática) pela tabela tradicional, ou acorde de até 5 notas
 /// numa oitava pela inversão. Nota sozinha ou desenho desconhecido fica sem dedo.
@@ -358,6 +401,29 @@ pub fn inferir(guias: &[NotaMidi], esquerda: bool) -> Vec<(NotaMidi, u8)> {
 
 #[cfg(test)]
 mod testes_provedor {
+
+    #[test]
+    fn mapa_de_do_maior_nas_duas_maos() {
+        let notas: Vec<NotaMidi> = (48..=72).filter_map(NotaMidi::nova).collect();
+        let m = mapa_de_escala(0, notas, 60);
+        let dedo = |x: u8| m.iter().find(|(n, _)| n.numero() == x).map(|(_, d)| *d);
+        // Direita a partir do Dó central: 1 2 3 1 2 3 4, e o Dó seguinte de novo 1.
+        let d: Vec<_> = [60, 62, 64, 65, 67, 69, 71, 72].map(dedo).to_vec();
+        assert_eq!(d, [1, 2, 3, 1, 2, 3, 4, 1].map(Some).to_vec());
+        // Esquerda: Dó3 é o começo (5), depois 4 3 2 1 3 2.
+        let e: Vec<_> = [48, 50, 52, 53, 55, 57, 59].map(dedo).to_vec();
+        assert_eq!(e, [5, 4, 3, 2, 1, 3, 2].map(Some).to_vec());
+        assert_eq!(dedo(61), None, "Dó♯ não é de Dó maior");
+    }
+
+    #[test]
+    fn mapa_de_fa_maior_usa_o_quarto_dedo_no_si_bemol() {
+        let notas: Vec<NotaMidi> = (60..=72).filter_map(NotaMidi::nova).collect();
+        let m = mapa_de_escala(5, notas, 0);
+        assert!(m.contains(&(NotaMidi::nova(70).expect("nota"), 4)));
+        assert!(m.iter().all(|(n, _)| n.numero() != 71), "Si natural fora");
+    }
+
     use super::*;
 
     fn ns(v: &[u8]) -> Vec<NotaMidi> {

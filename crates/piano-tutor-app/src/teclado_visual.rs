@@ -349,8 +349,14 @@ pub fn pintar_teclado(
     let geo = geometria(e.teclado());
     let ligadas: Vec<usize> = e.teclas().indices_ligados().collect();
     let dedos = e.dedos_das_guias(estilo.divisao);
+    // O mapa para decorar só aparece sem guias (com guias, vale o dedilhado delas).
+    let mapa = if e.guias.is_empty() {
+        e.dedos_do_mapa(estilo.divisao)
+    } else {
+        Vec::new()
+    };
     let dedo_de = |nota| {
-        let (_, d) = dedos.iter().find(|(n, _)| *n == nota)?;
+        let (_, d) = dedos.iter().chain(mapa.iter()).find(|(n, _)| *n == nota)?;
         e.nomenclatura.rotulo(*d)
     };
     let marca_de = |g: &GeometriaTecla| Marca {
@@ -570,6 +576,17 @@ fn pintar_branca(
     }
     if m.guia {
         pintar_ponto_guia(p, centro_ponto_guia_branca(r, w), w, m.mao, m.dedo, false);
+    } else if !m.ligada
+        && let Some(d) = m.dedo
+    {
+        // Mapa para decorar: só o dedo, sem bolinha, na cor da mão.
+        pintar_dedo(
+            p,
+            centro_ponto_guia_branca(r, w),
+            w,
+            d,
+            escurecer(m.mao, 0.35),
+        );
     }
     if w < LARGURA_MIN_ROTULO_PX {
         return;
@@ -731,6 +748,16 @@ fn pintar_preta(
             m.mao,
             m.dedo,
             true,
+        );
+    } else if !m.ligada
+        && let Some(d) = m.dedo
+    {
+        pintar_dedo(
+            p,
+            Pos2::new(centro_x, r.bottom() - 1.3 * w),
+            0.85 * w,
+            d,
+            m.mao,
         );
     }
     if w < LARGURA_MIN_ROTULO_PX || estilo.rotulos == Rotulos::Nenhum {

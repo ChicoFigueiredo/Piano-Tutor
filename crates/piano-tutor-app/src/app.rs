@@ -204,6 +204,7 @@ impl AppPianoTutor {
         estado.definir_nomenclatura_dedos(exibicao.dedos);
         let mut espelho = espelho;
         espelho.nomenclatura = exibicao.dedos;
+        espelho.mapa_dedos = exibicao.mapa_dedos;
         let prefs_pendentes = pasta_dados
             .as_ref()
             .and_then(|p| PreferenciasSom::ler(&p.join(ARQUIVO_PREFERENCIAS)));
@@ -253,8 +254,21 @@ impl AppPianoTutor {
     pub fn trocar_dedos(&mut self, n: NomenclaturaDedos) {
         self.estado.definir_nomenclatura_dedos(n);
         self.espelho.nomenclatura = n;
+        self.gravar_exibicao();
+    }
+
+    /// Liga, desliga ou troca a tônica do mapa de dedos em todas as teclas e grava.
+    pub fn trocar_mapa_dedos(&mut self, mapa: Option<u8>) {
+        self.espelho.mapa_dedos = mapa.map(|t| t % 12);
+        self.gravar_exibicao();
+    }
+
+    fn gravar_exibicao(&self) {
         if let Some(pasta) = self.pasta_dados.as_ref() {
-            let p = PreferenciasExibicao { dedos: n };
+            let p = PreferenciasExibicao {
+                dedos: self.espelho.nomenclatura,
+                mapa_dedos: self.espelho.mapa_dedos,
+            };
             let _ = p.gravar(&pasta.join(ARQUIVO_PREFERENCIAS_EXIBICAO));
         }
     }
@@ -290,10 +304,11 @@ impl AppPianoTutor {
     }
 
     fn trocar_faixa(&mut self, perfil: Option<&PerfilTeclado>) {
-        let (zoom, nomes, dedos) = (
+        let (zoom, nomes, dedos, mapa) = (
             self.espelho.zoom(),
             self.espelho.nomes,
             self.espelho.nomenclatura,
+            self.espelho.mapa_dedos,
         );
         self.panico();
         self.espelho = match perfil.and_then(PerfilTeclado::teclado) {
@@ -303,6 +318,7 @@ impl AppPianoTutor {
         self.espelho.definir_zoom(zoom);
         self.espelho.nomes = nomes;
         self.espelho.nomenclatura = dedos;
+        self.espelho.mapa_dedos = mapa;
     }
 
     fn salvar_calibracao(&mut self) {
@@ -712,6 +728,35 @@ fn seletor_dedos(
     (escolhida != atual).then_some(escolhida)
 }
 
+/// "Dedos em todas as teclas" (mapa para decorar) e a tônica da escala maior usada. Devolve a
+/// escolha nova quando muda.
+fn seletor_mapa_dedos(ui: &mut egui::Ui, atual: Option<u8>) -> Option<Option<u8>> {
+    let mut ligado = atual.is_some();
+    let mut tonica = atual.unwrap_or(0);
+    ui.horizontal(|ui| {
+        ui.checkbox(&mut ligado, "Em todas as teclas")
+            .on_hover_text(
+                "Mostra o dedo em todas as teclas da escala maior escolhida, para decorar o \
+             dedilhado (mão esquerda abaixo do ponto de divisão ou do Dó central). Quando a \
+             tela mostra um acorde, escala ou Lição, vale o dedilhado dela.",
+            );
+        if ligado {
+            egui::ComboBox::from_id_salt("piano.mapa-dedos")
+                .width(64.0)
+                .selected_text(crate::dedos::TONICAS_MAPA[usize::from(tonica % 12)])
+                .show_ui(ui, |ui| {
+                    for (i, nome) in crate::dedos::TONICAS_MAPA.iter().enumerate() {
+                        ui.selectable_value(&mut tonica, i as u8, format!("{nome} maior"));
+                    }
+                })
+                .response
+                .on_hover_text("Escala maior cujo dedilhado aparece nas teclas");
+        }
+    });
+    let nova = ligado.then_some(tonica);
+    (nova != atual).then_some(nova)
+}
+
 /// Configuração da casca: título, tokens, temas e tema inicial.
 pub fn config() -> ConfigCasca {
     let mut config = ConfigCasca::nova(TITULO, TOKENS_JSON, TEMAS_JSON);
@@ -896,6 +941,9 @@ impl AppCasca for AppPianoTutor {
             let atual = self.estado.nomenclatura_dedos();
             if let Some(n) = seletor_dedos(ui, atual, compacto) {
                 self.trocar_dedos(n);
+            }
+            if let Some(m) = seletor_mapa_dedos(ui, self.espelho.mapa_dedos) {
+                self.trocar_mapa_dedos(m);
             }
             return;
         }
