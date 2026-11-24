@@ -1,0 +1,20 @@
+[package]
+name = "piano-tutor-alinhamento"
+description = "Alinhamento de uma partitura ao áudio de uma Aula (DTW de croma), M4 etapa 4"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+publish = false
+
+[[bin]]
+name = "piano-tutor-alinhar"
+path = "src/main.rs"
+
+[dependencies]
+piano-tutor-core = { path = "../piano-tutor-core" }
+# Versões fixadas (=) e licenças conferidas: ver docs/seguranca/LICENCAS-E-DADOS.md
+hound = "=3.5.1"          # Apache-2.0, leitura de WAV PCM/float, sem dependências
+serde_json = "=1.0.154"   # MIT OR Apache-2.0, saída `alinhamentos/<id>.json`
+
+[lints]
+workspace = true

@@ -819,7 +819,11 @@ mod testes {
     fn sem_rotulo_quando_nao_ha_casamento() {
         assert_eq!(identificar_acorde(&ns(&[60])), None);
         assert_eq!(identificar_acorde(&ns(&[60, 72])), None);
-        assert_eq!(identificar_acorde(&ns(&[48, 55])), None, "duas notas não são acorde (C5)");
+        assert_eq!(
+            identificar_acorde(&ns(&[48, 55])),
+            None,
+            "duas notas não são acorde (C5)"
+        );
         assert_eq!(identificar_acorde(&ns(&[60, 61, 62])), None);
         assert_eq!(identificar_acorde(&[]), None);
     }

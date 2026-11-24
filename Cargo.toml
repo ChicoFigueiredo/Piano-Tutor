@@ -6,6 +6,7 @@ members = [
     "crates/piano-tutor-app",
     "crates/piano-tutor-midi",
     "crates/piano-tutor-audio",
+    "crates/piano-tutor-alinhamento",
 ]
 
 [workspace.package]
