@@ -5,7 +5,12 @@
 //!    e confiança.
 //! 2. O tempo de um grupo pelo caminho é a primeira coluna (quadro do áudio) em que o caminho
 //!    passa pela linha do início do grupo.
-//! 3. Os onsets do áudio dentro de ±`janela_onset_s` do tempo do caminho são candidatos; uma
+//!    Notas repetidas (mesma altura em sequência) têm croma idêntico e o caminho não as separa:
+//!    o tempo de cada uma é interpolado entre o início da sequência e o do grupo seguinte
+//!    (`regularizar_repetidas`). O caminho também costuma chegar ~75 ms antes do ataque com
+//!    piano real (`vies_caminho_s`, medido nas Aulas do piloto M4; sem viés nas fixtures
+//!    sintéticas, por isso só alarga a janela do lado tardio).
+//! 3. Os onsets do áudio perto do tempo do caminho (±`janela_onset_s`, mais o viés do lado tardio) são candidatos; uma
 //!    atribuição monótona (programação dinâmica) liga cada grupo a no máximo um onset, sem que
 //!    dois grupos dividam o mesmo onset. Quem fica sem onset mantém o tempo do caminho.
 //! 4. Confiança (0–1) = qualidade do custo local do croma × presença do onset.
@@ -52,6 +57,12 @@ pub struct ConfigMapeamento {
     pub recuo_max_s: f64,
     /// Quanto pode avançar (s) quando o caminho começa antes de a nota soar.
     pub avanco_max_s: f64,
+    /// Correção sistemática (s) somada ao tempo pelo caminho de uma nota que não vem depois de
+    /// silêncio: a janela longa do croma faz o caminho trocar de nota um pouco **antes** do
+    /// ataque (com piano real, ~75 ms).
+    pub vies_caminho_s: f64,
+    /// Janela (s) de uma nota repetida cujo tempo foi interpolado entre as vizinhas.
+    pub janela_onset_repetida_s: f64,
 }
 
 impl Default for ConfigMapeamento {
@@ -65,6 +76,8 @@ impl Default for ConfigMapeamento {
             custo_som: 0.5,
             recuo_max_s: 0.25,
             avanco_max_s: 0.5,
+            vies_caminho_s: 0.075,
+            janela_onset_repetida_s: 0.15,
         }
     }
 }
@@ -142,9 +155,40 @@ pub fn mapear_notas(
             janelas.push(cfg.janela_onset_s);
         }
     }
+    let mut usa_vies: Vec<bool> = janelas.iter().map(|w| *w <= cfg.janela_onset_s).collect();
+    regularizar_repetidas(
+        esperados,
+        &grupos,
+        &mut t_caminho,
+        &mut janelas,
+        &mut usa_vies,
+        cfg,
+    );
 
-    // 3. Atribuição monótona de onsets.
-    let atribuicao = atribuir_onsets(&t_caminho, onsets, &janelas);
+    // 3. Atribuição monótona de onsets. Como o caminho costuma chegar **antes** do ataque, a
+    // janela de quem usa o viés vai de `t - janela` a `t + janela + viés` (alvo no meio dela);
+    // o tempo de quem fica sem onset continua sendo o do caminho.
+    let alvos: Vec<f64> = (0..grupos.len())
+        .map(|g| {
+            t_caminho[g]
+                + if usa_vies[g] {
+                    cfg.vies_caminho_s / 2.0
+                } else {
+                    0.0
+                }
+        })
+        .collect();
+    let janelas_busca: Vec<f64> = (0..grupos.len())
+        .map(|g| {
+            janelas[g]
+                + if usa_vies[g] {
+                    cfg.vies_caminho_s / 2.0
+                } else {
+                    0.0
+                }
+        })
+        .collect();
+    let atribuicao = atribuir_onsets(&alvos, onsets, &janelas_busca);
 
     // 4. Custo local por linha do caminho, e confiança.
     let mut soma = vec![0.0_f64; n];
@@ -186,8 +230,8 @@ pub fn mapear_notas(
         let qualidade = (1.0 - custo_local / cfg.custo_ruim).clamp(0.0, 1.0);
         let (t, com_onset, fator) = match atribuicao[gi] {
             Some(k) => {
-                let dt = (onsets[k].t_s - t_caminho[gi]).abs();
-                let f = 1.0 - 0.3 * (dt / janelas[gi]).min(1.0) as f32;
+                let dt = (onsets[k].t_s - alvos[gi]).abs();
+                let f = 1.0 - 0.3 * (dt / janelas_busca[gi]).min(1.0) as f32;
                 (onsets[k].t_s, true, f)
             }
             None => (t_caminho[gi], false, cfg.fator_sem_onset),
@@ -208,6 +252,90 @@ pub fn mapear_notas(
         }
     }
     saida
+}
+
+/// Quantas sequências à frente entram na medida do andamento usada para extrapolar.
+const SEQUENCIAS_PARA_ANDAMENTO: usize = 8;
+
+/// Notas repetidas (mesma altura, uma após a outra): o croma é idêntico, então o caminho do DTW
+/// não distingue uma da outra (varia à toa dentro do platô e, no começo da peça, pode até
+/// começar tarde). Só a **troca** de altura é confiável. Aqui o tempo de cada nota de uma
+/// sequência repetida é interpolado, proporcionalmente à partitura, entre o início da sequência
+/// e o início do grupo seguinte; os onsets fazem o resto. Se o início da sequência não é
+/// confiável (primeira da peça ou depois de silêncio), ele é extrapolado com o andamento das
+/// sequências seguintes.
+fn regularizar_repetidas(
+    esperados: &[EventoEsperado],
+    grupos: &[Grupo],
+    t_caminho: &mut [f64],
+    janelas: &mut [f64],
+    usa_vies: &mut [bool],
+    cfg: &ConfigMapeamento,
+) {
+    let alturas = |g: &Grupo| {
+        let mut m: Vec<u8> = g.membros.iter().map(|k| esperados[*k].midi).collect();
+        m.sort_unstable();
+        m
+    };
+    let chaves: Vec<Vec<u8>> = grupos.iter().map(alturas).collect();
+    // Sequências: (primeiro grupo, número de grupos).
+    let mut sequencias: Vec<(usize, usize)> = Vec::new();
+    let mut i = 0;
+    while i < grupos.len() {
+        let mut j = i + 1;
+        while j < grupos.len() && chaves[j] == chaves[i] {
+            j += 1;
+        }
+        sequencias.push((i, j - i));
+        i = j;
+    }
+    if !sequencias.iter().any(|&(_, r)| r >= 2) {
+        return;
+    }
+    // Início confiável de cada sequência: ela não é a primeira nem vem logo após silêncio.
+    let confiavel =
+        |s: usize, indice_seq: usize| indice_seq > 0 && janelas[s] <= cfg.janela_onset_s;
+    let mut inicios: Vec<f64> = sequencias.iter().map(|&(s, _)| t_caminho[s]).collect();
+    let tp: Vec<f64> = sequencias
+        .iter()
+        .map(|&(s, _)| grupos[s].t_partitura_s)
+        .collect();
+    // Andamento local (s de áudio por s de partitura) entre inícios confiáveis vizinhos.
+    for q in 0..sequencias.len() {
+        let (s, _) = sequencias[q];
+        if confiavel(s, q) {
+            continue;
+        }
+        // Extrapola com o andamento medido entre a seguinte e a mais distante das próximas
+        // sequências confiáveis (até `SEQUENCIAS_PARA_ANDAMENTO`): um intervalo só é ruidoso.
+        let seguintes: Vec<usize> = ((q + 1)..sequencias.len())
+            .filter(|&k| confiavel(sequencias[k].0, k))
+            .take(SEQUENCIAS_PARA_ANDAMENTO)
+            .collect();
+        if let (Some(&k1), Some(&kn)) = (seguintes.first(), seguintes.last())
+            && k1 == q + 1
+            && tp[kn] > tp[k1]
+            && inicios[kn] > inicios[k1]
+        {
+            let ritmo = (inicios[kn] - inicios[k1]) / (tp[kn] - tp[k1]);
+            inicios[q] = inicios[k1] - (tp[k1] - tp[q]) * ritmo;
+        }
+    }
+    for (q, &(s, r)) in sequencias.iter().enumerate() {
+        if r < 2 || q + 1 >= sequencias.len() {
+            continue;
+        }
+        let (a, b) = (inicios[q], t_caminho[sequencias[q + 1].0]);
+        let (pa, pb) = (tp[q], tp[q + 1]);
+        if b <= a || pb <= pa {
+            continue;
+        }
+        for g in s..s + r {
+            t_caminho[g] = a + (b - a) * (grupos[g].t_partitura_s - pa) / (pb - pa);
+            janelas[g] = janelas[g].max(cfg.janela_onset_repetida_s);
+            usa_vies[g] = true;
+        }
+    }
 }
 
 /// Procura o começo do som da nota da linha `i` perto da coluna `j` do caminho: volta enquanto
