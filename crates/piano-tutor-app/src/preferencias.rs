@@ -42,6 +42,9 @@ impl PreferenciasSom {
         let _ = writeln!(s, "transposicao={}", c.transposicao);
         let _ = writeln!(s, "reverb={}", c.reverb);
         let _ = writeln!(s, "coro={}", c.coro);
+        if let Some(t) = c.timbre_demonstracao {
+            let _ = writeln!(s, "demonstracao={}", timbre_texto(t));
+        }
         s
     }
 
@@ -82,6 +85,7 @@ impl PreferenciasSom {
                     p.teclado.reverb = v.parse().map_or(p.teclado.reverb, |x: u8| x.min(127))
                 }
                 "coro" => p.teclado.coro = v.parse().map_or(p.teclado.coro, |x: u8| x.min(127)),
+                "demonstracao" => p.teclado.timbre_demonstracao = timbre_de(v),
                 _ => {}
             }
         }
@@ -277,6 +281,10 @@ mod testes {
                 transposicao: -2,
                 reverb: 60,
                 coro: 10,
+                timbre_demonstracao: Some(Timbre {
+                    banco: 0,
+                    programa: 21,
+                }),
                 ..ConfigTeclado::default()
             },
         };
@@ -288,6 +296,10 @@ mod testes {
         let p = PreferenciasSom::de_texto("timbre=x\nvolume=NaN\ntransposicao=99\nreverb=abc");
         assert_eq!(p.timbre, Timbre::PIANO);
         assert_eq!(p.teclado.transposicao, 0);
+        // Timbre das demonstrações: ausente ou inválido segue o principal.
+        assert_eq!(p.teclado.timbre_demonstracao, None);
+        let q = PreferenciasSom::de_texto("demonstracao=0:999");
+        assert_eq!(q.teclado.timbre_demonstracao, None);
     }
 
     #[test]

@@ -283,6 +283,24 @@ impl EstadoRevisao {
         self.partitura.bpm
     }
 
+    /// Zoom da partitura renderizada ao lado da página.
+    pub fn zoom_partitura(&self) -> f32 {
+        self.partitura.zoom
+    }
+
+    /// Define o zoom da partitura (dentro dos limites da vista; valor inválido = 1,0).
+    pub fn definir_zoom_partitura(&mut self, zoom: f32) {
+        let (min, max) = (
+            crate::partitura_visual::ZOOM_MIN,
+            crate::partitura_visual::ZOOM_MAX,
+        );
+        self.partitura.zoom = if zoom.is_finite() {
+            zoom.clamp(min, max)
+        } else {
+            1.0
+        };
+    }
+
     pub fn divergencias(&self) -> Option<&str> {
         self.divergencias.as_deref()
     }

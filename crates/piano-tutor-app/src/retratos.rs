@@ -2,19 +2,39 @@
 //! `aplicar_*` devolve um texto gravado ao estado. O app compara os retratos a cada quadro e
 //! grava na hora o que mudou.
 //!
-//! Já gravadas por conta própria: som e timbres (`som`), dedilhado (`exibicao`), partitura
-//! (`partitura`), tema/janela (`casca`), configuração dos exercícios (`progresso.txt`) e a
-//! calibração (`teclado.txt`).
+//! Cada tela tem a sua seção `tela.*`: Teclado, Acordes e escalas, Ritmos (e o padrão de
+//! bateria), Gravação, Partitura (modo de prática, tolerância e retomada), Player de Aula (modo,
+//! tolerância, retomada, divisão da tela e velocidade), Cursos (o Curso escolhido), Revisão do
+//! tutor (aba, filtros e zooms), Sons e timbres (a família do seletor de instrumento) e o app
+//! (a última tela aberta, `tela.app`).
+//!
+//! Já gravadas por conta própria: som e timbres (`som`, inclusive o timbre das demonstrações),
+//! dedilhado (`exibicao`), exibição da partitura (`partitura`: rolagem, papel branco, seguir e
+//! zoom), tema/janela (`casca`), configuração dos exercícios (`progresso.txt`) e a calibração
+//! (`teclado.txt`).
+//!
+//! Fica de fora, de propósito: estado de sessão (prática em andamento, gravação em curso, texto
+//! digitado, resultados, peças mudas e em solo do ritmo), a partitura aberta e o andamento dela
+//! (vêm do arquivo), a porta MIDI (a calibração do teclado a escolhe) e o SoundFont em uso.
 
 use crate::acordes::{Conjunto, EstadoAcordes, FonteTreino, Modo, tonalidades_disponiveis};
+use crate::cursos::EstadoCursos;
 use crate::espelho::EstadoEspelho;
 use crate::gravacao::EstadoGravacao;
 use crate::opcoes::Kv;
+use crate::player_aula::ModoAcompanhamento;
+use crate::revisao::{ESTADOS, Estado};
 use crate::ritmo::EstadoRitmo;
+use crate::seletor_instrumento::{EstadoSeletor, FAMILIAS};
 use crate::teclado_visual::Rotulos;
-use crate::tela_partitura::EstadoPartitura;
+use crate::tela_partitura::{
+    EstadoPartitura, TOLERANCIA_PRATICA_MAX_MS, TOLERANCIA_PRATICA_MIN_MS,
+    TOLERANCIA_PRATICA_PADRAO_MS,
+};
+use crate::tela_player_aula::OpcoesPlayer;
+use crate::tela_revisao::{AbaRevisao, EstadoRevisao};
 use crate::treino_andamento::Ordem;
-use piano_tutor_core::pratica::ModoPratica;
+use piano_tutor_core::pratica::{ModoPratica, Retomada};
 use piano_tutor_core::ritmo::{Padrao, Subdivisao};
 use piano_tutor_core::teclado::{Acidente, ConvencaoOitava, Idioma};
 use piano_tutor_core::teoria::{ClasseAltura, Qualidade, TipoEscala, Tonalidade};
@@ -27,7 +47,26 @@ pub mod secoes {
     pub const RITMOS_PADRAO: &str = "tela.ritmos.padrao";
     pub const GRAVACAO: &str = "tela.gravacao";
     pub const PARTITURA: &str = "tela.partitura";
-    pub const TODAS: [&str; 6] = [TECLADO, ACORDES, RITMOS, RITMOS_PADRAO, GRAVACAO, PARTITURA];
+    pub const PLAYER_AULA: &str = "tela.player_aula";
+    pub const CURSOS: &str = "tela.cursos";
+    pub const REVISAO: &str = "tela.revisao";
+    pub const TIMBRES: &str = "tela.timbres";
+    /// A última tela aberta. Fica por último: o app só a grava depois das outras, para que uma
+    /// mudança que cria "Meu perfil" já a leve junto.
+    pub const APP: &str = "tela.app";
+    pub const TODAS: [&str; 11] = [
+        TECLADO,
+        ACORDES,
+        RITMOS,
+        RITMOS_PADRAO,
+        GRAVACAO,
+        PARTITURA,
+        PLAYER_AULA,
+        CURSOS,
+        REVISAO,
+        TIMBRES,
+        APP,
+    ];
 }
 
 const ROTULOS: [Rotulos; 4] = [
@@ -238,7 +277,11 @@ pub fn aplicar_gravacao(g: &mut EstadoGravacao, t: &str) {
 }
 
 pub fn retrato_partitura(e: &EstadoPartitura) -> String {
-    Kv::novo().por("modo_pratica", e.modo_pratica.chave()).texto()
+    Kv::novo()
+        .por("modo_pratica", e.modo_pratica.chave())
+        .por("tolerancia_pratica_ms", e.tolerancia_pratica_ms)
+        .por("retomada_pratica", e.retomada_pratica.chave())
+        .texto()
 }
 
 pub fn aplicar_partitura(e: &mut EstadoPartitura, t: &str) {
@@ -248,4 +291,352 @@ pub fn aplicar_partitura(e: &mut EstadoPartitura, t: &str) {
         .ler::<String>("modo_pratica")
         .and_then(|v| ModoPratica::de_chave(&v))
         .unwrap_or(ModoPratica::NotaANota);
+    e.tolerancia_pratica_ms = kv
+        .ler::<f32>("tolerancia_pratica_ms")
+        .filter(|v| (TOLERANCIA_PRATICA_MIN_MS..=TOLERANCIA_PRATICA_MAX_MS).contains(v))
+        .unwrap_or(TOLERANCIA_PRATICA_PADRAO_MS);
+    e.retomada_pratica = kv
+        .ler::<String>("retomada_pratica")
+        .and_then(|v| Retomada::de_chave(&v))
+        .unwrap_or_default();
+}
+
+// --- Player de Aula --------------------------------------------------------------------------
+
+/// Retrato das escolhas do Player de Aula. Com um player aberto, a vista dele manda: as opções
+/// dele são copiadas para `opcoes_player` antes de tirar o texto (como o pulso do Ritmos).
+pub fn retrato_player_aula(c: &mut EstadoCursos) -> String {
+    if let Some(p) = &c.player {
+        c.opcoes_player = p.opcoes();
+    }
+    let o = c.opcoes_player;
+    Kv::novo()
+        .por("modo", o.modo.como_texto())
+        .por("tolerancia_ms", o.tolerancia_ms)
+        .por("retomada", o.retomada.chave())
+        .por("fracao_video", o.fracao_video)
+        .por("altura_topo", o.altura_topo)
+        .por("video_a_direita", o.video_a_direita)
+        .por("velocidade", o.velocidade)
+        .texto()
+}
+
+pub fn aplicar_player_aula(c: &mut EstadoCursos, t: &str) {
+    let kv = Kv::de_texto(t);
+    let p = OpcoesPlayer::default();
+    let o = OpcoesPlayer {
+        modo: kv
+            .ler::<String>("modo")
+            .and_then(|v| ModoAcompanhamento::de_texto(&v))
+            .unwrap_or(p.modo),
+        tolerancia_ms: kv
+            .ler::<f32>("tolerancia_ms")
+            .filter(|v| (20.0..=500.0).contains(v))
+            .unwrap_or(p.tolerancia_ms),
+        retomada: kv
+            .ler::<String>("retomada")
+            .and_then(|v| Retomada::de_chave(&v))
+            .unwrap_or(p.retomada),
+        fracao_video: kv
+            .ler::<f32>("fracao_video")
+            .filter(|v| (0.15..=0.85).contains(v))
+            .unwrap_or(p.fracao_video),
+        altura_topo: kv
+            .ler::<f32>("altura_topo")
+            .filter(|v| (0.0..=900.0).contains(v))
+            .unwrap_or(p.altura_topo),
+        video_a_direita: kv.ler("video_a_direita").unwrap_or(p.video_a_direita),
+        velocidade: kv
+            .ler::<f64>("velocidade")
+            .and_then(|v| {
+                crate::tela_player_aula::VELOCIDADES
+                    .into_iter()
+                    .find(|x| (x - v).abs() < 1e-9)
+            })
+            .unwrap_or(p.velocidade),
+    };
+    c.opcoes_player = o;
+    if let Some(player) = c.player.as_mut() {
+        player.aplicar_opcoes(o);
+    }
+}
+
+// --- Cursos ----------------------------------------------------------------------------------
+
+/// O Curso escolhido no seletor da tela Cursos (pelo `id`).
+pub fn retrato_cursos(c: &EstadoCursos) -> String {
+    Kv::novo().por("curso", &c.curso_selecionado().id).texto()
+}
+
+/// Volta ao Curso gravado; sem ele (ou se não estiver mais instalado), ao primeiro. Não mexe
+/// no Curso enquanto há Exercício ou Aula aberta.
+pub fn aplicar_cursos(c: &mut EstadoCursos, t: &str) {
+    if c.aberto.is_some() || c.player.is_some() {
+        return;
+    }
+    let kv = Kv::de_texto(t);
+    c.selecionar(0);
+    if let Some(id) = kv.ler::<String>("curso") {
+        c.selecionar_por_id(&id);
+    }
+}
+
+// --- Revisão do tutor ------------------------------------------------------------------------
+
+fn estados_com_todos() -> Vec<Option<Estado>> {
+    std::iter::once(None).chain(ESTADOS.map(Some)).collect()
+}
+
+pub fn retrato_revisao(e: &EstadoRevisao) -> String {
+    Kv::novo()
+        .por_enum("aba", e.aba)
+        .por_enum("filtro_partitura", e.filtro_de_partitura)
+        .por_enum("filtro_fala", e.filtro_de_fala)
+        .por("zoom_pagina", e.zoom_da_pagina)
+        .por("ajustar_pagina", e.ajustar_pagina)
+        .por("zoom_partitura", e.zoom_partitura())
+        .texto()
+}
+
+pub fn aplicar_revisao(e: &mut EstadoRevisao, t: &str) {
+    let kv = Kv::de_texto(t);
+    let filtros = estados_com_todos();
+    e.aba = kv
+        .ler_enum("aba", &[AbaRevisao::Partituras, AbaRevisao::Roteiro])
+        .unwrap_or(AbaRevisao::Partituras);
+    e.filtro_de_partitura = kv.ler_enum("filtro_partitura", &filtros).unwrap_or(None);
+    e.filtro_de_fala = kv.ler_enum("filtro_fala", &filtros).unwrap_or(None);
+    e.zoom_da_pagina = kv
+        .ler::<f32>("zoom_pagina")
+        .filter(|z| (0.1..=4.0).contains(z))
+        .unwrap_or(1.0);
+    e.ajustar_pagina = kv.ler("ajustar_pagina").unwrap_or(true);
+    e.definir_zoom_partitura(kv.ler("zoom_partitura").unwrap_or(1.0));
+}
+
+// --- Sons e timbres (seletor de instrumento do Ribbon) ---------------------------------------
+
+pub fn retrato_timbres(s: &EstadoSeletor) -> String {
+    Kv::novo()
+        .por(
+            "familia",
+            s.familia
+                .map_or_else(|| "todas".to_owned(), |f| f.to_string()),
+        )
+        .texto()
+}
+
+pub fn aplicar_timbres(s: &mut EstadoSeletor, t: &str) {
+    s.familia = Kv::de_texto(t)
+        .ler::<usize>("familia")
+        .filter(|f| *f < FAMILIAS.len());
+}
+
+// --- O app: a última tela aberta -------------------------------------------------------------
+
+pub fn retrato_app(rota: &str) -> String {
+    Kv::novo().por("rota", rota).texto()
+}
+
+/// A rota gravada no retrato do app, se houver.
+pub fn rota_gravada(t: &str) -> Option<String> {
+    Kv::de_texto(t)
+        .ler::<String>("rota")
+        .filter(|r| !r.is_empty())
+}
+
+#[cfg(test)]
+mod testes {
+    use super::*;
+    use crate::mpv::apoio_testes::midia_falsa;
+    use crate::tela_player_aula::EstadoPlayer;
+
+    fn cursos() -> EstadoCursos {
+        EstadoCursos::novo(None, midia_falsa().0)
+    }
+
+    #[test]
+    fn partitura_ida_e_volta_com_tolerancia_e_retomada() {
+        let mut e = EstadoPartitura::novo(None);
+        e.modo_pratica = ModoPratica::EsperaTocar;
+        e.tolerancia_pratica_ms = 210.0;
+        e.retomada_pratica = Retomada::Quatro;
+        let texto = retrato_partitura(&e);
+        let mut outro = EstadoPartitura::novo(None);
+        aplicar_partitura(&mut outro, &texto);
+        assert_eq!(outro.modo_pratica, ModoPratica::EsperaTocar);
+        assert_eq!(outro.tolerancia_pratica_ms, 210.0);
+        assert_eq!(outro.retomada_pratica, Retomada::Quatro);
+        assert_eq!(retrato_partitura(&outro), texto);
+        // Todas as retomadas e modos sobrevivem à ida e volta.
+        for r in Retomada::TODAS {
+            for m in ModoPratica::TODOS {
+                e.modo_pratica = m;
+                e.retomada_pratica = r;
+                aplicar_partitura(&mut outro, &retrato_partitura(&e));
+                assert_eq!((outro.modo_pratica, outro.retomada_pratica), (m, r));
+            }
+        }
+    }
+
+    #[test]
+    fn partitura_lixo_fora_de_faixa_e_nome_antigo() {
+        let mut e = EstadoPartitura::novo(None);
+        for lixo in [
+            "modo_pratica=xyz\ntolerancia_pratica_ms=abc\nretomada_pratica=9",
+            "tolerancia_pratica_ms=5",
+            "tolerancia_pratica_ms=99999",
+            "tolerancia_pratica_ms=NaN",
+            "",
+        ] {
+            e.modo_pratica = ModoPratica::Tempo;
+            e.tolerancia_pratica_ms = 77.0;
+            e.retomada_pratica = Retomada::Inicio;
+            aplicar_partitura(&mut e, lixo);
+            assert_eq!(e.modo_pratica, ModoPratica::NotaANota, "{lixo:?}");
+            assert_eq!(
+                e.tolerancia_pratica_ms, TOLERANCIA_PRATICA_PADRAO_MS,
+                "{lixo:?}"
+            );
+            assert_eq!(e.retomada_pratica, Retomada::Zero, "{lixo:?}");
+        }
+        // O nome antigo "Espera" é o Nota a nota.
+        e.modo_pratica = ModoPratica::Tempo;
+        aplicar_partitura(&mut e, "modo_pratica=Espera");
+        assert_eq!(e.modo_pratica, ModoPratica::NotaANota);
+        // Os limites da faixa valem.
+        aplicar_partitura(&mut e, "tolerancia_pratica_ms=30");
+        assert_eq!(e.tolerancia_pratica_ms, 30.0);
+        aplicar_partitura(&mut e, "tolerancia_pratica_ms=500");
+        assert_eq!(e.tolerancia_pratica_ms, 500.0);
+    }
+
+    #[test]
+    fn player_aula_ida_e_volta_e_lixo_volta_ao_padrao() {
+        let mut c = cursos();
+        c.opcoes_player = OpcoesPlayer {
+            modo: ModoAcompanhamento::ChamadaEResposta,
+            tolerancia_ms: 180.0,
+            retomada: Retomada::Duas,
+            fracao_video: 0.6,
+            altura_topo: 333.0,
+            video_a_direita: true,
+            velocidade: 0.75,
+        };
+        let texto = retrato_player_aula(&mut c);
+        let mut outro = cursos();
+        aplicar_player_aula(&mut outro, &texto);
+        assert_eq!(outro.opcoes_player, c.opcoes_player);
+        assert_eq!(retrato_player_aula(&mut outro), texto);
+
+        for lixo in [
+            "modo=xyz\ntolerancia_ms=1\nretomada=7\nfracao_video=2\naltura_topo=-3\nvelocidade=3\nvideo_a_direita=talvez",
+            "tolerancia_ms=501\nfracao_video=NaN\naltura_topo=9999\nvelocidade=0.8",
+            "",
+        ] {
+            aplicar_player_aula(&mut outro, lixo);
+            assert_eq!(outro.opcoes_player, OpcoesPlayer::default(), "{lixo:?}");
+        }
+        // O nome antigo do modo ("espera") é o Nota a nota.
+        aplicar_player_aula(&mut outro, "modo=espera");
+        assert_eq!(outro.opcoes_player.modo, ModoAcompanhamento::NotaANota);
+    }
+
+    #[test]
+    fn player_aula_aberto_manda_no_retrato_e_recebe_o_aplicado() {
+        let mut c = cursos();
+        let mut p = EstadoPlayer::abrir("licao", std::path::PathBuf::from("/x.mp4"), 0.0, vec![]);
+        let mut o = p.opcoes();
+        o.tolerancia_ms = 222.0;
+        o.video_a_direita = true;
+        o.velocidade = 1.25;
+        p.aplicar_opcoes(o);
+        c.player = Some(p);
+        let texto = retrato_player_aula(&mut c);
+        assert_eq!(c.opcoes_player.tolerancia_ms, 222.0, "copiou do player");
+        assert!(texto.contains("velocidade=1.25"));
+        aplicar_player_aula(&mut c, "tolerancia_ms=90\nvelocidade=0.5");
+        let visto = c.player.as_ref().expect("player").opcoes();
+        assert_eq!(visto.tolerancia_ms, 90.0);
+        assert_eq!(visto.velocidade, 0.5);
+        assert_eq!(c.opcoes_player, visto);
+    }
+
+    #[test]
+    fn cursos_ida_e_volta_e_curso_sumido_volta_ao_primeiro() {
+        let mut c = cursos();
+        let id = c.curso_selecionado().id.clone();
+        let texto = retrato_cursos(&c);
+        assert_eq!(texto, format!("curso={id}\n"));
+        aplicar_cursos(&mut c, &texto);
+        assert_eq!(c.indice_selecionado(), 0);
+        aplicar_cursos(&mut c, "curso=nao-existe");
+        assert_eq!(c.indice_selecionado(), 0);
+        aplicar_cursos(&mut c, "");
+        assert_eq!(c.indice_selecionado(), 0);
+    }
+
+    #[test]
+    fn revisao_ida_e_volta_e_lixo_volta_ao_padrao() {
+        let mut e = EstadoRevisao::novo(None);
+        e.aba = AbaRevisao::Roteiro;
+        e.filtro_de_partitura = Some(Estado::Aprovada);
+        e.filtro_de_fala = Some(Estado::EmRevisao);
+        e.zoom_da_pagina = 1.75;
+        e.ajustar_pagina = false;
+        e.definir_zoom_partitura(1.5);
+        let texto = retrato_revisao(&e);
+        let mut outro = EstadoRevisao::novo(None);
+        aplicar_revisao(&mut outro, &texto);
+        assert_eq!(outro.aba, AbaRevisao::Roteiro);
+        assert_eq!(outro.filtro_de_partitura, Some(Estado::Aprovada));
+        assert_eq!(outro.filtro_de_fala, Some(Estado::EmRevisao));
+        assert_eq!(outro.zoom_da_pagina, 1.75);
+        assert!(!outro.ajustar_pagina);
+        assert_eq!(outro.zoom_partitura(), 1.5);
+        assert_eq!(retrato_revisao(&outro), texto);
+
+        aplicar_revisao(
+            &mut outro,
+            "aba=Nenhuma\nfiltro_partitura=Roxo\nfiltro_fala=x\nzoom_pagina=99\najustar_pagina=talvez\nzoom_partitura=abc",
+        );
+        assert_eq!(outro.aba, AbaRevisao::Partituras);
+        assert_eq!(outro.filtro_de_partitura, None);
+        assert_eq!(outro.filtro_de_fala, None);
+        assert_eq!(outro.zoom_da_pagina, 1.0);
+        assert!(outro.ajustar_pagina);
+        assert_eq!(outro.zoom_partitura(), 1.0);
+    }
+
+    #[test]
+    fn timbres_familia_ida_e_volta_e_fora_da_lista_vira_todas() {
+        let mut s = EstadoSeletor {
+            familia: Some(3),
+            ..EstadoSeletor::default()
+        };
+        let texto = retrato_timbres(&s);
+        let mut outro = EstadoSeletor::default();
+        aplicar_timbres(&mut outro, &texto);
+        assert_eq!(outro.familia, Some(3));
+        assert_eq!(retrato_timbres(&outro), texto);
+        s.familia = None;
+        aplicar_timbres(&mut outro, &retrato_timbres(&s));
+        assert_eq!(outro.familia, None);
+        for lixo in ["familia=999", "familia=-1", "familia=abc", ""] {
+            outro.familia = Some(1);
+            aplicar_timbres(&mut outro, lixo);
+            assert_eq!(outro.familia, None, "{lixo:?}");
+        }
+    }
+
+    #[test]
+    fn app_rota_ida_e_volta() {
+        assert_eq!(
+            rota_gravada(&retrato_app("partitura")).as_deref(),
+            Some("partitura")
+        );
+        assert_eq!(rota_gravada(""), None);
+        assert_eq!(rota_gravada("rota="), None);
+        assert_eq!(rota_gravada("lixo"), None);
+    }
 }

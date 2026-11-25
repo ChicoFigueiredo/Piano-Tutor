@@ -36,7 +36,9 @@ use crate::professor::Professor;
 use crate::professor_falante::{VozMuda, voz_do_sistema};
 use crate::ritmo::EstadoRitmo;
 use crate::seletor_instrumento::{self, EstadoSeletor};
-use crate::som::{EstadoSom, ServicoSom, abridor_cpal, carregador_arquivo, sf2_encontrado};
+use crate::som::{
+    ConfigTeclado, EstadoSom, ServicoSom, abridor_cpal, carregador_arquivo, sf2_encontrado,
+};
 use crate::tela_calibracao::{AcaoCalibracao, ContextoCalibracao};
 use crate::tela_gravacao;
 use crate::tela_inicio::{self, Resumo};
@@ -64,6 +66,26 @@ mod cursos_app;
 
 const ROTA_INICIO: &str = "inicio";
 const ROTA_SOBRE: &str = "sobre";
+
+/// Telas que o app reabre na próxima abertura (a Calibração e o Sobre ficam de fora).
+const ROTAS_LEMBRADAS: [&str; 11] = [
+    ROTA_INICIO,
+    ROTA_TECLADO,
+    ROTA_MONITOR,
+    ROTA_TIMBRES,
+    ROTA_RITMOS,
+    ROTA_ACORDES,
+    ROTA_EXERCICIOS,
+    ROTA_PARTITURA,
+    ROTA_GRAVACAO,
+    ROTA_CURSOS,
+    ROTA_REVISAO,
+];
+
+/// A rota (de `ROTAS_LEMBRADAS`) que `texto` nomeia, se nomear alguma.
+fn rota_lembrada(texto: &str) -> Option<&'static str> {
+    ROTAS_LEMBRADAS.into_iter().find(|r| *r == texto)
+}
 
 /// Título da janela.
 pub const TITULO: &str = "Piano Tutor";
@@ -164,6 +186,9 @@ pub struct AppPianoTutor {
     tema_sincronizado: bool,
     /// Último texto gravado de cada retrato de tela ([`crate::retratos`]).
     retratos_gravados: Vec<(&'static str, String)>,
+    /// Configuração do teclado (divisão, camada, efeitos, timbre das demonstrações) como o app a
+    /// aplicou ou gravou por último: quando uma tela a muda sozinha, o app grava `som`.
+    config_som_vista: Option<ConfigTeclado>,
     rota_atual: String,
     relogio: Arc<dyn Relogio>,
     ultimo_quadro: Option<u64>,
@@ -279,6 +304,7 @@ impl AppPianoTutor {
             aviso_perfil: None,
             tema_sincronizado: false,
             retratos_gravados: Vec::new(),
+            config_som_vista: None,
             rota_atual: String::new(),
             relogio: d.relogio,
             ultimo_quadro: None,
@@ -300,6 +326,21 @@ impl AppPianoTutor {
             s::RITMOS_PADRAO => r::retrato_padrao(&self.ritmo),
             s::GRAVACAO => r::retrato_gravacao(&self.gravacao),
             s::PARTITURA => r::retrato_partitura(&self.partitura),
+            s::PLAYER_AULA => r::retrato_player_aula(&mut self.cursos),
+            s::CURSOS => r::retrato_cursos(&self.cursos),
+            s::REVISAO => r::retrato_revisao(&self.revisao),
+            s::TIMBRES => r::retrato_timbres(&self.seletor),
+            // Telas que não se lembram (Calibração, Sobre) e o quadro antes da primeira tela
+            // deixam valer a última rota gravada.
+            s::APP => match rota_lembrada(&self.rota_atual) {
+                Some(rota) => r::retrato_app(rota),
+                None => self
+                    .retratos_gravados
+                    .iter()
+                    .find(|(sec, _)| *sec == s::APP)
+                    .map(|(_, t)| t.clone())
+                    .unwrap_or_default(),
+            },
             _ => String::new(),
         }
     }
@@ -317,6 +358,15 @@ impl AppPianoTutor {
                 s::RITMOS_PADRAO => r::aplicar_padrao(&mut self.ritmo, &t),
                 s::GRAVACAO => r::aplicar_gravacao(&mut self.gravacao, &t),
                 s::PARTITURA => r::aplicar_partitura(&mut self.partitura, &t),
+                s::PLAYER_AULA => r::aplicar_player_aula(&mut self.cursos, &t),
+                s::CURSOS => r::aplicar_cursos(&mut self.cursos, &t),
+                s::REVISAO => r::aplicar_revisao(&mut self.revisao, &t),
+                s::TIMBRES => r::aplicar_timbres(&mut self.seletor, &t),
+                // A rota só vale na abertura (`rota_inicial`); trocar de perfil não muda de tela.
+                s::APP => {
+                    self.retratos_gravados.push((secao, t));
+                    continue;
+                }
                 _ => {}
             }
             let atual = self.retrato(secao);
@@ -326,13 +376,34 @@ impl AppPianoTutor {
 
     /// Grava na hora cada opção de tela que mudou (chamado a cada quadro, fora de arrasto).
     pub fn gravar_retratos(&mut self) {
+        self.gravar_som_se_mudou();
         for i in 0..self.retratos_gravados.len() {
             let secao = self.retratos_gravados[i].0;
             let atual = self.retrato(secao);
             if atual != self.retratos_gravados[i].1 {
-                self.gravar_secao(secao, &atual);
+                // Só navegar não cria "Meu perfil": o de fábrica não guarda a última tela.
+                let so_navegou_na_fabrica = secao == crate::retratos::secoes::APP
+                    && self.banco.ativo().is_ok_and(|p| p.de_fabrica);
+                if !so_navegou_na_fabrica {
+                    self.gravar_secao(secao, &atual);
+                }
                 self.retratos_gravados[i].1 = atual;
             }
+        }
+    }
+
+    /// Grava `som` quando uma tela mudou a configuração do teclado sem passar pelo pedido de
+    /// timbres (o timbre das demonstrações, na tela Gravação). Espera as preferências do perfil
+    /// serem aplicadas, para não gravar o padrão por cima delas.
+    fn gravar_som_se_mudou(&mut self) {
+        if self.prefs_pendentes.is_some() {
+            return;
+        }
+        let atual = self.som.config_teclado();
+        match self.config_som_vista {
+            Some(vista) if vista != atual => self.salvar_preferencias(),
+            Some(_) => {}
+            None => self.config_som_vista = Some(atual),
         }
     }
 
@@ -350,6 +421,7 @@ impl AppPianoTutor {
             .selecionar_timbre(p.timbre.banco, p.timbre.programa);
         self.som.definir_volume(p.volume);
         let _ = self.som.definir_config_teclado(p.teclado);
+        self.config_som_vista = Some(self.som.config_teclado());
     }
 
     /// Troca a nomenclatura dos dedos no teclado e grava nas preferências de exibição.
@@ -378,6 +450,14 @@ impl AppPianoTutor {
     fn gravar_secao(&mut self, secao: &str, texto: &str) {
         match self.banco.gravar(secao, texto) {
             Ok(Gravacao::CriouPessoal) => {
+                // O perfil novo ainda não sabe em que tela o aluno está: regrava a rota.
+                if let Some((_, t)) = self
+                    .retratos_gravados
+                    .iter_mut()
+                    .find(|(sec, _)| *sec == crate::retratos::secoes::APP)
+                {
+                    t.clear();
+                }
                 self.aviso_perfil = Some(format!(
                     "O perfil de fábrica não muda: suas preferências agora ficam em \"{}\".",
                     crate::perfis::NOME_PESSOAL
@@ -449,8 +529,8 @@ impl AppPianoTutor {
                 })
                 .response
                 .on_hover_text(
-                    "Perfil de preferências (som, dedilhado, partitura e tema), guardado no \
-                     computador. \"De fábrica\" devolve tudo ao padrão.",
+                    "Perfil de preferências (som, dedilhado, tema e as opções de cada tela, mais a última \
+                     tela aberta), guardado no computador. \"De fábrica\" devolve tudo ao padrão.",
                 );
             if !compacto && let Some(a) = &self.aviso_perfil {
                 ui.label(egui::RichText::new(a).small().weak());
@@ -566,6 +646,7 @@ impl AppPianoTutor {
             volume: self.som.volume(),
             teclado: self.som.config_teclado(),
         };
+        self.config_som_vista = Some(p.teclado);
         self.gravar_secao(secoes::SOM, &p.para_texto());
     }
 
@@ -1153,26 +1234,23 @@ impl AppCasca for AppPianoTutor {
         ]
     }
 
-    /// Início, ou a rota de `PIANO_TUTOR_ROTA` (por exemplo `exercicios`) para abrir direto numa
-    /// tela (capturas e demonstração). Valor desconhecido volta ao Início.
+    /// A rota de `PIANO_TUTOR_ROTA` (por exemplo `exercicios`, para capturas e demonstração); sem
+    /// ela, a última tela aberta no perfil; sem nenhuma das duas, o Início. Valor desconhecido
+    /// vale como ausente.
     fn rota_inicial(&self) -> Rota {
         let pedida = std::env::var("PIANO_TUTOR_ROTA").unwrap_or_default();
-        let conhecidas = [
-            ROTA_TECLADO,
-            ROTA_MONITOR,
-            ROTA_TIMBRES,
-            ROTA_CALIBRACAO,
-            ROTA_RITMOS,
-            ROTA_ACORDES,
-            ROTA_EXERCICIOS,
-            ROTA_PARTITURA,
-            ROTA_GRAVACAO,
-            ROTA_CURSOS,
-        ];
-        match conhecidas.into_iter().find(|r| *r == pedida) {
-            Some(r) => Rota::nova(r),
-            None => Rota::nova(ROTA_INICIO),
-        }
+        let gravada =
+            crate::retratos::rota_gravada(&ler_secao(&self.banco, crate::retratos::secoes::APP))
+                .unwrap_or_default();
+        // A Calibração só abre por pedido explícito (demonstração), nunca pela lembrança.
+        let pedida = if pedida == ROTA_CALIBRACAO {
+            Some(ROTA_CALIBRACAO)
+        } else {
+            rota_lembrada(&pedida)
+        };
+        pedida
+            .or_else(|| rota_lembrada(&gravada))
+            .map_or_else(|| Rota::nova(ROTA_INICIO), Rota::nova)
     }
 
     fn trilha(&self, rota: &Rota) -> Vec<Elo> {
@@ -1586,6 +1664,120 @@ mod testes {
         b.app.apagar_perfil();
         assert!(b.app.perfis().1.expect("ativo").de_fabrica);
         assert_eq!(b.app.espelho.mapa_dedos, None);
+    }
+
+    #[test]
+    fn opcoes_do_player_cursos_revisao_partitura_e_timbres_voltam_com_o_perfil() {
+        use piano_tutor_core::pratica::Retomada;
+        let mut b = bancada();
+        let fabrica = b.app.perfis().1.expect("ativo");
+        b.app.partitura.tolerancia_pratica_ms = 222.0;
+        b.app.partitura.retomada_pratica = Retomada::Duas;
+        b.app.cursos.opcoes_player.velocidade = 0.75;
+        b.app.cursos.opcoes_player.video_a_direita = true;
+        b.app.cursos.opcoes_player.modo = crate::player_aula::ModoAcompanhamento::SegueNoTempo;
+        b.app.revisao.aba = crate::tela_revisao::AbaRevisao::Roteiro;
+        b.app.revisao.ajustar_pagina = false;
+        b.app.seletor.familia = Some(2);
+        b.app.gravar_retratos();
+        let meu = b.app.perfis().1.expect("ativo");
+        assert!(!meu.de_fabrica);
+
+        b.app.trocar_perfil(fabrica.id);
+        assert_eq!(b.app.partitura.retomada_pratica, Retomada::Zero);
+        assert_eq!(b.app.cursos.opcoes_player.velocidade, 1.0);
+        assert!(!b.app.cursos.opcoes_player.video_a_direita);
+        assert_eq!(
+            b.app.revisao.aba,
+            crate::tela_revisao::AbaRevisao::Partituras
+        );
+        assert!(b.app.revisao.ajustar_pagina);
+        assert_eq!(b.app.seletor.familia, None);
+
+        b.app.trocar_perfil(meu.id);
+        assert_eq!(b.app.partitura.tolerancia_pratica_ms, 222.0);
+        assert_eq!(b.app.partitura.retomada_pratica, Retomada::Duas);
+        assert_eq!(b.app.cursos.opcoes_player.velocidade, 0.75);
+        assert!(b.app.cursos.opcoes_player.video_a_direita);
+        assert_eq!(
+            b.app.cursos.opcoes_player.modo,
+            crate::player_aula::ModoAcompanhamento::SegueNoTempo
+        );
+        assert_eq!(b.app.revisao.aba, crate::tela_revisao::AbaRevisao::Roteiro);
+        assert!(!b.app.revisao.ajustar_pagina);
+        assert_eq!(b.app.seletor.familia, Some(2));
+    }
+
+    #[test]
+    fn a_ultima_tela_aberta_e_lembrada_no_perfil_e_o_de_fabrica_nao_muda() {
+        let mut b = bancada();
+        let fabrica = b.app.perfis().1.expect("ativo");
+        // Perfil vazio: abre no Início (e, com o de fábrica, navegar não cria perfil).
+        assert_eq!(b.app.rota_inicial().como_texto(), ROTA_INICIO);
+        b.app.rota_atual = ROTA_PARTITURA.to_owned();
+        b.app.gravar_retratos();
+        assert!(
+            b.app.perfis().1.expect("ativo").de_fabrica,
+            "só navegar não cria Meu perfil"
+        );
+        assert_eq!(b.app.rota_inicial().como_texto(), ROTA_INICIO);
+
+        // Com um perfil pessoal (uma opção mudou), a tela em que estava vai junto.
+        b.app.acordes.de_ouvido = true;
+        b.app.gravar_retratos();
+        let meu = b.app.perfis().1.expect("ativo");
+        assert!(!meu.de_fabrica);
+        assert_eq!(b.app.rota_inicial().como_texto(), ROTA_PARTITURA);
+
+        // Cada navegação seguinte é gravada na hora; Calibração e Sobre não são lembradas.
+        b.app.rota_atual = ROTA_REVISAO.to_owned();
+        b.app.gravar_retratos();
+        assert_eq!(b.app.rota_inicial().como_texto(), ROTA_REVISAO);
+        b.app.rota_atual = ROTA_CALIBRACAO.to_owned();
+        b.app.gravar_retratos();
+        assert_eq!(b.app.rota_inicial().como_texto(), ROTA_REVISAO);
+        b.app.rota_atual = ROTA_SOBRE.to_owned();
+        b.app.gravar_retratos();
+        assert_eq!(b.app.rota_inicial().como_texto(), ROTA_REVISAO);
+        b.app.rota_atual = ROTA_CURSOS.to_owned();
+        b.app.gravar_retratos();
+        assert_eq!(b.app.rota_inicial().como_texto(), ROTA_CURSOS);
+
+        // Cada perfil tem a sua; trocar de perfil não muda a tela aberta.
+        b.app.trocar_perfil(fabrica.id);
+        assert_eq!(b.app.rota_inicial().como_texto(), ROTA_INICIO);
+        assert_eq!(b.app.rota_atual, ROTA_CURSOS);
+        b.app.trocar_perfil(meu.id);
+        assert_eq!(b.app.rota_inicial().como_texto(), ROTA_CURSOS);
+
+        // Rota desconhecida no banco: Início.
+        b.app
+            .gravar_secao(crate::retratos::secoes::APP, "rota=nao-existe\n");
+        assert_eq!(b.app.rota_inicial().como_texto(), ROTA_INICIO);
+    }
+
+    #[test]
+    fn o_timbre_das_demonstracoes_mudado_pela_tela_e_gravado_no_perfil() {
+        use piano_tutor_audio::sf2_sintetico::PROGRAMA_QUADRADA;
+        let mut b = bancada();
+        // Primeiro quadro: o app aplica as preferências do perfil e anota a configuração, sem
+        // gravar nada.
+        b.app.aplicar_preferencias();
+        b.app.gravar_retratos();
+        assert!(b.app.perfis().1.expect("ativo").de_fabrica);
+        // A tela Gravação muda o timbre das demonstrações direto no som.
+        let quadrada = crate::som::Timbre {
+            banco: 0,
+            programa: PROGRAMA_QUADRADA,
+        };
+        let mut c = b.app.som.config_teclado();
+        c.timbre_esquerda = quadrada;
+        c.timbre_demonstracao = Some(quadrada);
+        b.app.som.definir_config_teclado(c).expect("preset do SF2");
+        b.app.gravar_retratos();
+        assert!(!b.app.perfis().1.expect("ativo").de_fabrica);
+        let gravado = PreferenciasSom::de_texto(&ler_secao(&b.app.banco, secoes::SOM));
+        assert_eq!(gravado.teclado.timbre_demonstracao, c.timbre_demonstracao);
     }
 
     #[test]
