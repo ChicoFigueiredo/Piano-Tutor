@@ -19,6 +19,10 @@
 //! * [`importar`]: plano de importação + pasta da oficina → pasta-origem para `empacotar`.
 //! * [`Exercicio::serve_de_gabarito`] e [`Manifesto::exercicios_para_aluno`]: só Exercício
 //!   `aprovada` é Gabarito; `hipotese`, `em_revisao` e `rejeitada` nunca chegam ao aluno.
+//! * [`Exercicio::utilizavel`], [`Manifesto::exercicios_para_aluno_com`] e
+//!   [`Roteiro::falas_utilizaveis`]: uso pessoal do licenciado. Com `permitir_nao_revisado`,
+//!   `hipotese` e `em_revisao` também podem ser usados (o app põe o selo "não revisado");
+//!   `rejeitada` nunca. O Gabarito oficial continua sendo só o aprovado.
 //!
 //! ```no_run
 //! use piano_tutor_curso::{chaves_confiaveis, instalar, ler_pacote_de_arquivo, Confianca};

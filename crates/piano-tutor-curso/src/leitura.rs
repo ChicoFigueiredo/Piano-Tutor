@@ -65,6 +65,16 @@ impl PacoteVerificado {
         self.manifesto.exercicios_para_aluno()
     }
 
+    /// Como [`exercicios_para_aluno`](Self::exercicios_para_aluno), permitindo também
+    /// `hipotese` e `em_revisao` quando `permitir_nao_revisado` (nunca `rejeitada`).
+    pub fn exercicios_para_aluno_com(
+        &self,
+        permitir_nao_revisado: bool,
+    ) -> impl Iterator<Item = ExercicioNoCurso<'_>> {
+        self.manifesto
+            .exercicios_para_aluno_com(permitir_nao_revisado)
+    }
+
     pub fn contagem(&self) -> Contagem {
         self.manifesto.contagem()
     }

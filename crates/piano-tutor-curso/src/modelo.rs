@@ -34,6 +34,19 @@ impl EstadoConteudo {
         }
     }
 
+    /// Conteúdo que ainda não passou pela revisão do tutor (`hipotese` ou `em_revisao`).
+    /// `aprovada` já foi revista; `rejeitada` foi recusada e nunca é usada.
+    pub fn nao_revisado(self) -> bool {
+        matches!(self, Self::Hipotese | Self::EmRevisao)
+    }
+
+    /// Pode ser usado com o interruptor "usar conteúdo não revisado" (uso pessoal do
+    /// licenciado): `aprovada` sempre; `hipotese` e `em_revisao` só se `permitir_nao_revisado`;
+    /// `rejeitada` nunca.
+    pub fn utilizavel(self, permitir_nao_revisado: bool) -> bool {
+        self == Self::Aprovada || (permitir_nao_revisado && self.nao_revisado())
+    }
+
     fn posicao(self) -> usize {
         match self {
             Self::Hipotese => 0,
@@ -143,6 +156,19 @@ impl Exercicio {
     pub fn serve_de_gabarito(&self) -> bool {
         self.estado == EstadoConteudo::Aprovada
     }
+
+    /// Pode ser aberto pelo aluno: sempre se `aprovada`; `hipotese` e `em_revisao` só com
+    /// `permitir_nao_revisado` (uso pessoal do licenciado, mostrado com o selo "não revisado");
+    /// `rejeitada` nunca. Não muda o [`serve_de_gabarito`](Self::serve_de_gabarito): o Gabarito
+    /// oficial continua sendo só o aprovado.
+    pub fn utilizavel(&self, permitir_nao_revisado: bool) -> bool {
+        self.estado.utilizavel(permitir_nao_revisado)
+    }
+
+    /// Ainda não revisado pelo tutor (`hipotese` ou `em_revisao`).
+    pub fn nao_revisado(&self) -> bool {
+        self.estado.nao_revisado()
+    }
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
@@ -245,6 +271,17 @@ impl Manifesto {
             .filter(|e| e.exercicio.serve_de_gabarito())
     }
 
+    /// Como [`exercicios_para_aluno`](Self::exercicios_para_aluno), mas com
+    /// `permitir_nao_revisado` inclui também `hipotese` e `em_revisao` (o app mostra o selo
+    /// "não revisado"). `rejeitada` nunca entra. Com `false` é igual à versão estrita.
+    pub fn exercicios_para_aluno_com(
+        &self,
+        permitir_nao_revisado: bool,
+    ) -> impl Iterator<Item = ExercicioNoCurso<'_>> {
+        self.exercicios()
+            .filter(move |e| e.exercicio.utilizavel(permitir_nao_revisado))
+    }
+
     pub fn contagem(&self) -> Contagem {
         let mut c = Contagem {
             secoes: self.secoes.len(),
@@ -339,7 +376,16 @@ pub struct Fala {
     pub origem: Option<OrigemFala>,
 }
 
-/// `roteiro.toml`: falas do professor. Só as `aprovada` são ditas.
+impl Fala {
+    /// Pode ser dita: `aprovada` sempre; `hipotese` e `em_revisao` só com
+    /// `permitir_nao_revisado`; `rejeitada` nunca.
+    pub fn utilizavel(&self, permitir_nao_revisado: bool) -> bool {
+        self.estado.utilizavel(permitir_nao_revisado)
+    }
+}
+
+/// `roteiro.toml`: falas do professor. Por padrão só as `aprovada` são ditas; o app pode
+/// permitir também as não revisadas ([`Roteiro::falas_utilizaveis`]).
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct Roteiro {
     pub formato_versao: u32,
@@ -364,5 +410,15 @@ impl Roteiro {
         self.falas
             .iter()
             .filter(|f| f.estado == EstadoConteudo::Aprovada)
+    }
+
+    /// Falas que o professor pode dizer. Com `permitir_nao_revisado`, `hipotese` e `em_revisao`
+    /// também entram (na ordem do arquivo); `rejeitada` nunca. Com `false`, igual a
+    /// [`falas_aprovadas`](Self::falas_aprovadas). Quem escolhe a fala deve dar prioridade às
+    /// aprovadas quando houver várias para o mesmo momento.
+    pub fn falas_utilizaveis(&self, permitir_nao_revisado: bool) -> impl Iterator<Item = &Fala> {
+        self.falas
+            .iter()
+            .filter(move |f| f.utilizavel(permitir_nao_revisado))
     }
 }

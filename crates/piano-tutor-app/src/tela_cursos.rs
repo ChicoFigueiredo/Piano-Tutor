@@ -7,7 +7,7 @@
 //! sempre juntos: nunca só cor.
 
 use crate::chamada_app::{ChamadaAtiva, FeedbackVisual};
-use crate::cursos::{CursoListado, EstadoCursos, LicaoNaArvore, Mensagem, Selo, formatar_instante};
+use crate::cursos::{EstadoCursos, LicaoNaArvore, Mensagem, Selo, formatar_instante};
 use crate::espelho::EstadoEspelho;
 use crate::exercicios::EstadoExercicios;
 use crate::professor::Professor;
@@ -33,6 +33,8 @@ pub enum AcaoCursos {
     IniciarChamadaFabrica,
     PararChamada,
     ProfessorFala(bool),
+    /// Preferência "Usar conteúdo não revisado" mudou (o app grava e fecha o que ficou sem uso).
+    UsarNaoRevisado(bool),
     /// Abrir o exercício de fábrica de índice `i` na tela Exercícios.
     IrParaFabrica(usize),
 }
@@ -151,7 +153,9 @@ fn desenhar_detalhe(
     ctx: &ContextoCursos<'_>,
     acoes: &mut Vec<AcaoCursos>,
 ) {
-    let curso = e.curso_selecionado().clone();
+    // Sem clonar o Curso: com ~150 Lições a cópia por quadro pesaria.
+    let idx = e.indice_selecionado();
+    let curso = &e.cursos[idx];
     ui.group(|ui| {
         ui.label(RichText::new(&curso.titulo).size(20.0).strong());
         ui.label(format!("Autor: {}", curso.autor));
@@ -180,7 +184,7 @@ fn desenhar_detalhe(
     if curso.e_fabrica() {
         desenhar_fabrica(ui, ctx.fabrica, acoes);
     } else {
-        desenhar_tutor(ui, e, &curso, acoes);
+        desenhar_tutor(ui, e, idx, acoes);
     }
 }
 
@@ -224,44 +228,58 @@ fn desenhar_fabrica(ui: &mut Ui, fabrica: &EstadoExercicios, acoes: &mut Vec<Aca
     }
 }
 
-fn desenhar_tutor(
-    ui: &mut Ui,
-    e: &mut EstadoCursos,
-    curso: &CursoListado,
-    acoes: &mut Vec<AcaoCursos>,
-) {
-    let (feitos, total) = e.resumo_de_progresso(curso);
+/// Cursos com mais Seções que isto abrem só a primeira (a árvore de ~18 Seções e ~150 Lições
+/// fica recolhida e leve; o aluno abre a Seção que quer).
+const SECOES_ABERTAS_ATE: usize = 3;
+
+fn desenhar_tutor(ui: &mut Ui, e: &mut EstadoCursos, idx: usize, acoes: &mut Vec<AcaoCursos>) {
+    let permitir = e.usar_nao_revisado;
+    let (feitos, total) = e.resumo_de_progresso(&e.cursos[idx]);
+    let (curso_id, aguardando) = (e.cursos[idx].id.clone(), e.cursos[idx].aguardando);
     ui.label(
         RichText::new(format!(
             "Seu progresso: {feitos} de {total} exercício(s) concluído(s)"
         ))
         .strong(),
     );
-    if curso.aguardando > 0 {
+    let mut usar = permitir;
+    if ui
+        .checkbox(&mut usar, "Usar conteúdo não revisado")
+        .on_hover_text(
+            "Ligado: exercícios e falas do professor que o tutor ainda não revisou (hipótese ou \
+             em revisão) abrem e tocam normalmente, marcados «não revisado». Desligado: só o \
+             conteúdo aprovado. Conteúdo rejeitado nunca é usado. Fica salvo.",
+        )
+        .changed()
+    {
+        acoes.push(AcaoCursos::UsarNaoRevisado(usar));
+    }
+    if !permitir && aguardando > 0 {
         ui.label(
             RichText::new(format!(
                 "[!] {} aguardando revisão do tutor (ainda não aparecem para praticar).",
-                exercicios_aguardando(curso.aguardando)
+                exercicios_aguardando(aguardando)
             ))
             .color(AMARELO),
         );
     }
     desenhar_pasta_de_videos(ui, e);
     ui.add_space(4.0);
-    if curso.arvore.is_empty() {
+    if e.cursos[idx].arvore.is_empty() {
         ui.label("Este Curso não tem Seções para mostrar.");
         return;
     }
-    let progresso = e.progresso(&curso.id);
+    let progresso = e.progresso(&curso_id);
     let mut abrir: Option<(String, String)> = None;
     let mut video: Option<String> = None;
-    for s in &curso.arvore {
+    let secoes = e.cursos[idx].arvore.len();
+    for (n, s) in e.cursos[idx].arvore.iter().enumerate() {
         CollapsingHeader::new(RichText::new(format!("Seção {}: {}", s.numero, s.titulo)).strong())
-            .id_salt(format!("secao-{}-{}", curso.id, s.id))
-            .default_open(true)
+            .id_salt(format!("secao-{curso_id}-{}", s.id))
+            .default_open(secoes <= SECOES_ABERTAS_ATE || n == 0)
             .show(ui, |ui| {
                 for l in &s.licoes {
-                    desenhar_licao(ui, l, &progresso, &mut abrir, &mut video);
+                    desenhar_licao(ui, l, permitir, &progresso, &mut abrir, &mut video);
                 }
             });
     }
@@ -288,9 +306,30 @@ pub fn exercicios_aguardando(n: usize) -> String {
     }
 }
 
+/// O selo discreto dos Exercícios não revisados: símbolo e texto, nunca só cor.
+pub const SELO_NAO_REVISADO: &str = "[!] não revisado";
+
+/// "1 não revisado" / "3 não revisados".
+pub fn nao_revisados(n: usize) -> String {
+    if n == 1 {
+        "1 não revisado".to_owned()
+    } else {
+        format!("{n} não revisados")
+    }
+}
+
+fn selo_nao_revisado(ui: &mut Ui) {
+    ui.label(RichText::new(SELO_NAO_REVISADO).small().color(AMARELO))
+        .on_hover_text(
+            "O tutor ainda não revisou este conteúdo (hipótese ou em revisão). Pode conter \
+             erros; use por sua conta.",
+        );
+}
+
 fn desenhar_licao(
     ui: &mut Ui,
     l: &LicaoNaArvore,
+    permitir: bool,
     progresso: &crate::cursos::ProgressoCurso,
     abrir: &mut Option<(String, String)>,
     video: &mut Option<String>,
@@ -313,7 +352,9 @@ fn desenhar_licao(
         return;
     }
     ui.indent(format!("licao-{}", l.id), |ui| {
-        for x in &l.exercicios {
+        let mut mostrados = 0;
+        for x in l.visiveis(permitir) {
+            mostrados += 1;
             ui.horizontal_wrapped(|ui| {
                 let situacao = match progresso.item(&x.id) {
                     Some(i) if i.concluido => {
@@ -327,15 +368,21 @@ fn desenhar_licao(
                     Modo::ChamadaEResposta => "chamada e resposta",
                 };
                 ui.label(format!("{} ({modo}) · {situacao}", x.titulo));
+                if x.nao_revisado() {
+                    selo_nao_revisado(ui);
+                }
                 if ui.button("Abrir").clicked() {
                     *abrir = Some((l.id.clone(), x.id.clone()));
                 }
             });
         }
-        if l.exercicios.is_empty() && l.aguardando == 0 {
+        if mostrados == 0 && l.aguardando == 0 {
             ui.label(RichText::new("Sem exercícios nesta Lição.").weak());
         }
-        if l.aguardando > 0 {
+        if permitir && l.aguardando > 0 {
+            ui.label(RichText::new(nao_revisados(l.aguardando)).small().weak());
+        }
+        if !permitir && l.aguardando > 0 {
             ui.label(
                 RichText::new(format!(
                     "[!] {} aguardando revisão do tutor",
@@ -389,19 +436,24 @@ pub fn desenhar_professor(ui: &mut Ui, professor: &Professor) -> Option<AcaoCurs
     if professor.ligado() {
         if let Some(t) = professor.legenda() {
             ui.group(|ui| {
-                ui.label(RichText::new(format!("Professor: «{t}»")).size(16.0));
+                ui.horizontal_wrapped(|ui| {
+                    ui.label(RichText::new(format!("Professor: «{t}»")).size(16.0));
+                    if professor.legenda_nao_revisada() {
+                        selo_nao_revisado(ui);
+                    }
+                });
             });
         }
         if let Some(a) = professor.aviso_de_voz() {
             ui.label(RichText::new(format!("[!] {a}")).weak());
         }
-        if !professor.tem_falas_aprovadas() {
-            ui.label(
-                RichText::new(
-                    "Este exercício ainda não tem falas aprovadas: o professor fica em silêncio.",
-                )
-                .weak(),
-            );
+        if !professor.tem_falas_para_dizer() {
+            let aviso = if professor.usar_nao_revisado() {
+                "Este exercício não tem falas no Roteiro: o professor fica em silêncio."
+            } else {
+                "Este exercício ainda não tem falas aprovadas: o professor fica em silêncio."
+            };
+            ui.label(RichText::new(aviso).weak());
         }
     }
     acao
@@ -454,11 +506,16 @@ fn desenhar_exercicio(
     let Some(a) = e.aberto.clone() else {
         return;
     };
-    ui.label(
-        RichText::new(format!("Exercício: {}", a.exercicio.titulo))
-            .size(22.0)
-            .strong(),
-    );
+    ui.horizontal_wrapped(|ui| {
+        ui.label(
+            RichText::new(format!("Exercício: {}", a.exercicio.titulo))
+                .size(22.0)
+                .strong(),
+        );
+        if a.exercicio.nao_revisado() {
+            selo_nao_revisado(ui);
+        }
+    });
     ui.label(
         RichText::new(format!(
             "{} · Aula {}: {}",

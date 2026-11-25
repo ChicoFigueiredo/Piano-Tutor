@@ -735,18 +735,38 @@ pub fn falas_para_dizer<'a>(
     momento: Momento,
     passo: Option<usize>,
 ) -> Vec<&'a Fala> {
-    roteiro
-        .falas
-        .iter()
+    falas_para_dizer_com(roteiro, licao, exercicio, momento, passo, false)
+}
+
+/// Como [`falas_para_dizer`], mas com `permitir_nao_revisado` aceita também falas `hipotese` e
+/// `em_revisao` (uso pessoal do licenciado). `rejeitada` nunca. **As aprovadas têm prioridade**:
+/// havendo alguma aprovada para o momento, só as aprovadas entram; as não revisadas só valem
+/// quando não há aprovada.
+pub fn falas_para_dizer_com<'a>(
+    roteiro: &'a Roteiro,
+    licao: &str,
+    exercicio: Option<&str>,
+    momento: Momento,
+    passo: Option<usize>,
+    permitir_nao_revisado: bool,
+) -> Vec<&'a Fala> {
+    let mut candidatas: Vec<&Fala> = roteiro
+        .falas_utilizaveis(permitir_nao_revisado)
         .filter(|f| {
-            f.estado == EstadoConteudo::Aprovada
-                && f.licao == licao
+            f.licao == licao
                 && f.momento == momento
                 && f.exercicio.as_deref().is_none_or(|e| Some(e) == exercicio)
                 && (momento != Momento::Passo
                     || passo.is_some_and(|p| f.passo.map(|x| x as usize) == Some(p)))
         })
-        .collect()
+        .collect();
+    if candidatas
+        .iter()
+        .any(|f| f.estado == EstadoConteudo::Aprovada)
+    {
+        candidatas.retain(|f| f.estado == EstadoConteudo::Aprovada);
+    }
+    candidatas
 }
 
 #[cfg(test)]
@@ -1115,6 +1135,36 @@ estado = "aprovada"
         // Lição diferente.
         let outra = falas_para_dizer(&r, "s03-a15", None, Momento::Acerto, None);
         assert_eq!(ids(&outra), ["f"]);
+    }
+
+    #[test]
+    fn nao_revisadas_so_com_permissao_aprovadas_tem_prioridade_e_rejeitada_nunca() {
+        let mut r = ler_roteiro(ROTEIRO_DE_TESTE).expect("parseia");
+        let dizer = |r: &Roteiro, m, p, permitir| {
+            ids(&falas_para_dizer_com(
+                r,
+                "s03-a14",
+                Some("cinco-notas"),
+                m,
+                p,
+                permitir,
+            ))
+        };
+        // "antes" tem a aprovada "a" e a hipótese "b": a aprovada tem prioridade.
+        assert_eq!(dizer(&r, Momento::Antes, None, true), ["a"]);
+        assert_eq!(dizer(&r, Momento::Antes, None, false), ["a"]);
+        // Rejeitada nunca, nem com a permissão.
+        assert!(dizer(&r, Momento::Erro, None, true).is_empty());
+        // Sem aprovada no momento, a hipótese passa só com a permissão.
+        r.falas[0].estado = EstadoConteudo::Rejeitada;
+        assert_eq!(dizer(&r, Momento::Antes, None, true), ["b"]);
+        assert!(dizer(&r, Momento::Antes, None, false).is_empty());
+        r.falas[1].estado = EstadoConteudo::EmRevisao;
+        assert_eq!(dizer(&r, Momento::Antes, None, true), ["b"]);
+        // A versão estrita não muda de significado.
+        assert!(
+            falas_para_dizer(&r, "s03-a14", Some("cinco-notas"), Momento::Antes, None).is_empty()
+        );
     }
 
     #[test]

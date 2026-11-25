@@ -4,8 +4,10 @@
 //!   instalados em `<dados>/cursos/<id>/`, cada um com título, autor, licenciado, chave curta
 //!   e o selo "confiável", "chave desconhecida" ou "assinatura inválida" (nunca só cor);
 //! - a **árvore** Seções → Lições: Lição `assistir` leva ao vídeo; Lição `exercicio` lista só os
-//!   Exercícios que servem de Gabarito (`aprovada`) e conta os que **aguardam revisão do tutor**
-//!   (`hipotese` e `em_revisao`; `rejeitada` nunca aparece para o aluno);
+//!   Exercícios `aprovada` e os **não revisados** (`hipotese` e `em_revisao`), estes só com a
+//!   preferência "Usar conteúdo não revisado" (padrão: ligada; uso pessoal do licenciado, com o
+//!   selo "não revisado"). Desligada, só os aprovados aparecem e os demais viram contagem
+//!   ("aguardando revisão do tutor"). `rejeitada` nunca aparece para o aluno;
 //! - o **progresso** separado por Curso, em `<dados>/cursos/progresso/<id>.txt`;
 //! - o **Exercício de Curso** aberto: partitura (a do modo Praticar existente), áudio do
 //!   professor com cursor ([`indice_da_nota_no_instante`]) e vídeo da Aula (`mpv --start`);
@@ -239,7 +241,7 @@ impl Selo {
     }
 }
 
-/// Exercício que o aluno pode abrir, com a Lição e a Seção a que pertence.
+/// Uma Lição na árvore do aluno.
 #[derive(Clone, Debug, PartialEq)]
 pub struct LicaoNaArvore {
     pub id: String,
@@ -247,10 +249,22 @@ pub struct LicaoNaArvore {
     pub titulo: String,
     pub tipo: TipoLicao,
     pub aula: Option<Aula>,
-    /// Só os Exercícios `aprovada` (os que servem de Gabarito).
+    /// Os Exercícios que o aluno pode vir a abrir, na ordem do autor: `aprovada` e também os
+    /// não revisados (`hipotese` e `em_revisao`). `rejeitada` nunca entra. Use
+    /// [`LicaoNaArvore::visiveis`] para respeitar a preferência "Usar conteúdo não revisado".
     pub exercicios: Vec<Exercicio>,
-    /// Exercícios ainda em `hipotese` ou `em_revisao`: o aluno só vê quantos são.
+    /// Quantos de `exercicios` ainda não foram revistos (`hipotese` ou `em_revisao`).
     pub aguardando: usize,
+}
+
+impl LicaoNaArvore {
+    /// Exercícios que o aluno vê agora: só os aprovados, ou também os não revisados se
+    /// `permitir_nao_revisado`.
+    pub fn visiveis(&self, permitir_nao_revisado: bool) -> impl Iterator<Item = &Exercicio> {
+        self.exercicios
+            .iter()
+            .filter(move |e| e.utilizavel(permitir_nao_revisado))
+    }
 }
 
 #[derive(Clone, Debug, PartialEq)]
@@ -261,9 +275,9 @@ pub struct SecaoNaArvore {
     pub licoes: Vec<LicaoNaArvore>,
 }
 
-/// Seções → Lições para o aluno: Exercícios só se aprovados, o resto vira contagem.
+/// Seções → Lições para o aluno: Exercícios `aprovada` e não revisados (estes contados em
+/// `aguardando`); `rejeitada` fica de fora. Quem desenha filtra com [`LicaoNaArvore::visiveis`].
 pub fn arvore_para_aluno(m: &Manifesto) -> Vec<SecaoNaArvore> {
-    use piano_tutor_curso::EstadoConteudo::{EmRevisao, Hipotese};
     m.secoes
         .iter()
         .map(|s| SecaoNaArvore {
@@ -282,14 +296,10 @@ pub fn arvore_para_aluno(m: &Manifesto) -> Vec<SecaoNaArvore> {
                     exercicios: l
                         .exercicios
                         .iter()
-                        .filter(|e| e.serve_de_gabarito())
+                        .filter(|e| e.utilizavel(true))
                         .cloned()
                         .collect(),
-                    aguardando: l
-                        .exercicios
-                        .iter()
-                        .filter(|e| matches!(e.estado, Hipotese | EmRevisao))
-                        .count(),
+                    aguardando: l.exercicios.iter().filter(|e| e.nao_revisado()).count(),
                 })
                 .collect(),
         })
@@ -312,15 +322,26 @@ pub struct CursoListado {
     pub pasta: Option<PathBuf>,
     pub manifesto: Option<Manifesto>,
     pub arvore: Vec<SecaoNaArvore>,
-    /// Exercícios que o aluno pode praticar.
+    /// Exercícios aprovados.
     pub aprovados: usize,
-    /// Exercícios que aguardam revisão do tutor.
+    /// Exercícios que aguardam revisão do tutor (`hipotese` e `em_revisao`).
     pub aguardando: usize,
 }
 
 impl CursoListado {
     pub fn e_fabrica(&self) -> bool {
         self.id == ID_FABRICA
+    }
+
+    /// Quantos Exercícios o aluno pode abrir: os aprovados e, com `permitir_nao_revisado`, os
+    /// não revisados.
+    pub fn praticaveis(&self, permitir_nao_revisado: bool) -> usize {
+        self.aprovados
+            + if permitir_nao_revisado {
+                self.aguardando
+            } else {
+                0
+            }
     }
 
     /// O Curso de fábrica: os dez exercícios guiados, que fazem parte do app.
@@ -385,7 +406,7 @@ pub fn listar_cursos(dados: Option<&Path>) -> (Vec<CursoListado>, Option<String>
         let aprovados = arvore
             .iter()
             .flat_map(|s| &s.licoes)
-            .map(|l| l.exercicios.len())
+            .map(|l| l.exercicios.len() - l.aguardando)
             .sum();
         let aguardando = arvore
             .iter()
@@ -612,11 +633,14 @@ fn texto_utf8(bytes: Vec<u8>, caminho: &str) -> Result<String, String> {
 }
 
 /// Carrega o Exercício `exercicio_id` da Lição `licao_id` de um Curso de tutor instalado.
-/// Recusa o que não serve de Gabarito (só `aprovada`) e o Curso com assinatura inválida.
+/// Recusa o `rejeitada`, o não revisado (`hipotese`, `em_revisao`) quando
+/// `permitir_nao_revisado` é falso, e o Curso com assinatura inválida. O Exercício aberto
+/// guarda o estado: a tela põe o selo "não revisado".
 pub fn carregar_exercicio(
     curso: &CursoListado,
     licao_id: &str,
     exercicio_id: &str,
+    permitir_nao_revisado: bool,
 ) -> Result<ExercicioAberto, String> {
     let (Some(m), Some(pasta)) = (curso.manifesto.as_ref(), curso.pasta.as_ref()) else {
         return Err("Este Curso não tem pacote instalado.".to_owned());
@@ -635,8 +659,15 @@ pub fn carregar_exercicio(
         .iter()
         .find(|e| e.id == exercicio_id)
         .ok_or_else(|| format!("Exercício {exercicio_id} não existe nesta Lição."))?;
-    if !ex.serve_de_gabarito() {
-        return Err("Este exercício ainda aguarda a revisão do tutor.".to_owned());
+    if ex.estado == piano_tutor_curso::EstadoConteudo::Rejeitada {
+        return Err("Este exercício foi rejeitado na revisão e não pode ser usado.".to_owned());
+    }
+    if !ex.utilizavel(permitir_nao_revisado) {
+        return Err(
+            "Este exercício ainda aguarda a revisão do tutor. Ligue «Usar conteúdo não revisado» \
+             para praticá-lo."
+                .to_owned(),
+        );
     }
     let xml = texto_utf8(ler_conferido(pasta, m, &ex.partitura)?, &ex.partitura)?;
     let alinhamento = match &ex.alinhamento {
@@ -944,6 +975,9 @@ pub struct EstadoCursos {
     pub aviso_video: Option<Mensagem>,
     cursor_audio: Option<Destaque>,
     observador: ObservadorPratica,
+    /// Preferência "Usar conteúdo não revisado" (a do app; padrão ligada). O app a mantém em
+    /// dia com a do professor, que é quem a grava.
+    pub usar_nao_revisado: bool,
 }
 
 impl std::fmt::Debug for EstadoCursos {
@@ -974,6 +1008,7 @@ impl EstadoCursos {
             aviso_video: None,
             cursor_audio: None,
             observador: ObservadorPratica::default(),
+            usar_nao_revisado: true,
         };
         e.recarregar();
         e
@@ -1039,19 +1074,20 @@ impl EstadoCursos {
         self.progressos.get(curso).cloned().unwrap_or_default()
     }
 
-    /// `(concluídos, aprovados)` do Curso de tutor `curso`.
+    /// `(concluídos, praticáveis)` do Curso de tutor `curso`: os praticáveis são os aprovados e,
+    /// com `usar_nao_revisado`, os não revisados.
     pub fn resumo_de_progresso(&self, curso: &CursoListado) -> (usize, usize) {
         let ids: Vec<&str> = curso
             .arvore
             .iter()
             .flat_map(|s| &s.licoes)
-            .flat_map(|l| l.exercicios.iter().map(|e| e.id.as_str()))
+            .flat_map(|l| l.visiveis(self.usar_nao_revisado).map(|e| e.id.as_str()))
             .collect();
         let feitos = self
             .progressos
             .get(&curso.id)
             .map_or(0, |p| p.concluidos_entre(ids.iter().copied()));
-        (feitos, curso.aprovados)
+        (feitos, curso.praticaveis(self.usar_nao_revisado))
     }
 
     // --- instalação ---
@@ -1121,8 +1157,9 @@ impl EstadoCursos {
 
     /// Abre o Exercício na partitura (com Praticar). Erros viram `mensagem` e a devolução.
     pub fn abrir_exercicio(&mut self, licao_id: &str, exercicio_id: &str) -> Result<(), String> {
-        let r =
-            carregar_exercicio(self.curso_selecionado(), licao_id, exercicio_id).and_then(|a| {
+        let permitir = self.usar_nao_revisado;
+        let r = carregar_exercicio(self.curso_selecionado(), licao_id, exercicio_id, permitir)
+            .and_then(|a| {
                 self.partitura
                     .abrir_xml(&a.exercicio.titulo, a.xml.clone())?;
                 Ok(a)
@@ -1699,7 +1736,7 @@ mod testes {
     }
 
     #[test]
-    fn arvore_so_traz_aprovados_e_conta_os_que_aguardam_revisao() {
+    fn arvore_traz_aprovados_e_nao_revisados_e_so_mostra_os_ultimos_com_a_preferencia() {
         let dados = tempfile::tempdir().expect("dados");
         instalar_sintetico(dados.path(), None);
         let (e, _) = estado(dados.path());
@@ -1716,11 +1753,23 @@ mod testes {
             Some("12 - Para assistir.mp4")
         );
         let ex = &s.licoes[1];
-        let ids: Vec<&str> = ex.exercicios.iter().map(|e| e.id.as_str()).collect();
-        assert_eq!(ids, ["cinco-notas", "ida-e-volta"], "só os aprovados");
+        let ids =
+            |permitir| -> Vec<&str> { ex.visiveis(permitir).map(|e| e.id.as_str()).collect() };
+        assert_eq!(
+            ids(false),
+            ["cinco-notas", "ida-e-volta"],
+            "só os aprovados"
+        );
+        assert_eq!(
+            ids(true),
+            ["cinco-notas", "ida-e-volta", "ainda-hipotese", "em-revisao"],
+            "com a preferência, também os não revisados; o rejeitado nunca"
+        );
         // hipótese e em revisão aguardam; rejeitado nem aparece na conta.
         assert_eq!(ex.aguardando, 2);
-        assert!(ex.exercicios.iter().all(Exercicio::serve_de_gabarito));
+        assert_eq!(ex.exercicios.len(), 4);
+        assert_eq!((c.aprovados, c.aguardando), (2, 2));
+        assert_eq!((c.praticaveis(false), c.praticaveis(true)), (2, 4));
     }
 
     #[test]
@@ -1729,9 +1778,19 @@ mod testes {
         instalar_sintetico(dados.path(), None);
         let (mut e, _) = estado(dados.path());
         e.selecionar(1);
-        for id in ["ainda-hipotese", "em-revisao", "rejeitado"] {
+        e.usar_nao_revisado = false;
+        for id in ["ainda-hipotese", "em-revisao"] {
             let erro = e.abrir_exercicio("s03-a14", id).expect_err(id);
             assert!(erro.contains("aguarda"), "{id}: {erro}");
+            assert!(e.aberto.is_none());
+        }
+        // Rejeitado nunca abre, com a preferência ligada ou desligada.
+        for permitir in [false, true] {
+            e.usar_nao_revisado = permitir;
+            let erro = e
+                .abrir_exercicio("s03-a14", "rejeitado")
+                .expect_err("rejeitado");
+            assert!(erro.contains("rejeitado"), "{erro}");
             assert!(e.aberto.is_none());
         }
         assert!(e.abrir_exercicio("s03-a14", "nao-existe").is_err());
@@ -1739,6 +1798,35 @@ mod testes {
         // O de fábrica não tem pacote.
         e.selecionar(0);
         assert!(e.abrir_exercicio("x", "y").is_err());
+    }
+
+    #[test]
+    fn com_a_preferencia_ligada_hipotese_e_em_revisao_abrem_com_o_estado_a_mostra() {
+        let dados = tempfile::tempdir().expect("dados");
+        instalar_sintetico(dados.path(), None);
+        let (mut e, _) = estado(dados.path());
+        e.selecionar(1);
+        assert!(e.usar_nao_revisado, "padrão: ligada");
+        for (id, estado) in [
+            (
+                "ainda-hipotese",
+                piano_tutor_curso::EstadoConteudo::Hipotese,
+            ),
+            ("em-revisao", piano_tutor_curso::EstadoConteudo::EmRevisao),
+        ] {
+            e.abrir_exercicio("s03-a14", id).expect(id);
+            let a = e.aberto.as_ref().expect("aberto");
+            assert_eq!(a.exercicio.estado, estado);
+            assert!(a.exercicio.nao_revisado(), "a tela põe o selo");
+            assert!(!a.exercicio.serve_de_gabarito(), "Gabarito segue estrito");
+        }
+        e.abrir_exercicio("s03-a14", "cinco-notas")
+            .expect("aprovado");
+        assert!(!e.aberto.as_ref().expect("aberto").exercicio.nao_revisado());
+        // Progresso conta os não revisados como praticáveis só com a preferência.
+        assert_eq!(e.resumo_de_progresso(&e.cursos[1]), (0, 4));
+        e.usar_nao_revisado = false;
+        assert_eq!(e.resumo_de_progresso(&e.cursos[1]), (0, 2));
     }
 
     #[test]
@@ -1801,7 +1889,10 @@ mod testes {
         let (e2, _) = estado(dados.path());
         assert_eq!(e2.progresso(ID_CURSO), p);
         let (feitos, total) = e2.resumo_de_progresso(&e2.cursos[1]);
-        assert_eq!((feitos, total), (1, 2));
+        assert_eq!((feitos, total), (1, 4), "padrão: com os não revisados");
+        let mut e2 = e2;
+        e2.usar_nao_revisado = false;
+        assert_eq!(e2.resumo_de_progresso(&e2.cursos[1]), (1, 2));
         // O Curso de fábrica não mistura com o de tutor.
         assert_eq!(e2.progresso(ID_FABRICA), ProgressoCurso::default());
     }

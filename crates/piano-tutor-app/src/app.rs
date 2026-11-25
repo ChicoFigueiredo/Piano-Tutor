@@ -141,7 +141,8 @@ pub struct AppPianoTutor {
     pub revisao: EstadoRevisao,
     /// Cursos (M4): seletor, árvore, Exercício de Curso, áudio do professor e vídeo.
     pub cursos: EstadoCursos,
-    /// O professor que fala as falas aprovadas do Roteiro.
+    /// O professor que fala as falas aprovadas do Roteiro (e as não revisadas, se a preferência
+    /// "Usar conteúdo não revisado" estiver ligada).
     pub professor: Professor,
     /// Chamada e resposta em andamento (Curso ou exercício de fábrica).
     pub chamada: Option<ChamadaAtiva>,
@@ -220,6 +221,12 @@ impl AppPianoTutor {
         let prefs_pendentes = pasta_dados
             .as_ref()
             .and_then(|p| PreferenciasSom::ler(&p.join(ARQUIVO_PREFERENCIAS)));
+        let professor = Professor::novo(Box::new(VozMuda::nova()), pasta_dados.as_deref());
+        let mut cursos = EstadoCursos::novo(
+            pasta_dados.clone(),
+            Midia::com(Box::new(ExecutorReal), None),
+        );
+        cursos.usar_nao_revisado = professor.usar_nao_revisado();
         Self {
             estado: EstadoApp::novo(),
             espelho,
@@ -233,11 +240,8 @@ impl AppPianoTutor {
             gravacao: EstadoGravacao::novo(pasta_dados.clone()),
             partitura: EstadoPartitura::novo(pasta_dados.clone()),
             revisao: EstadoRevisao::novo(pasta_dados.clone()),
-            cursos: EstadoCursos::novo(
-                pasta_dados.clone(),
-                Midia::com(Box::new(ExecutorReal), None),
-            ),
-            professor: Professor::novo(Box::new(VozMuda::nova()), pasta_dados.as_deref()),
+            cursos,
+            professor,
             chamada: None,
             observador_fabrica: ObservadorFabrica::default(),
             calibracao: Calibracao::default(),

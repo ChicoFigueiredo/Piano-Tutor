@@ -589,6 +589,72 @@ fn so_aprovada_serve_de_gabarito() {
 }
 
 #[test]
+fn utilizavel_com_permissao_aceita_nao_revisado_e_nunca_rejeitada() {
+    let mut m: Manifesto = toml_do_modelo();
+    let base = m.secoes[0].licoes[0].exercicios[0].clone();
+    m.secoes[0].licoes[1].exercicios.clear();
+    m.secoes[0].licoes[0].exercicios.clear();
+    for (i, estado) in EstadoConteudo::TODOS.into_iter().enumerate() {
+        let mut ex = base.clone();
+        ex.id = format!("ex-{i}");
+        ex.estado = estado;
+        // Estrito: a API antiga não muda de significado.
+        assert_eq!(ex.serve_de_gabarito(), estado == EstadoConteudo::Aprovada);
+        assert_eq!(ex.utilizavel(false), estado == EstadoConteudo::Aprovada);
+        assert_eq!(ex.utilizavel(true), estado != EstadoConteudo::Rejeitada);
+        assert_eq!(
+            ex.nao_revisado(),
+            matches!(estado, EstadoConteudo::Hipotese | EstadoConteudo::EmRevisao)
+        );
+        m.secoes[0].licoes[0].exercicios.push(ex);
+    }
+    let ids = |permitir| -> Vec<String> {
+        m.exercicios_para_aluno_com(permitir)
+            .map(|x| x.exercicio.id.clone())
+            .collect()
+    };
+    assert_eq!(ids(false), ["ex-2"]);
+    assert_eq!(
+        ids(true),
+        ["ex-0", "ex-1", "ex-2"],
+        "ordem do autor, sem a rejeitada"
+    );
+    let estrito: Vec<_> = m
+        .exercicios_para_aluno()
+        .map(|x| x.exercicio.id.clone())
+        .collect();
+    assert_eq!(estrito, ["ex-2"]);
+}
+
+#[test]
+fn falas_utilizaveis_seguem_a_mesma_regra() {
+    let mut r = ler_pacote(&pacote_sintetico(&chave()))
+        .unwrap()
+        .roteiro
+        .unwrap();
+    let base = r.falas[0].clone();
+    r.falas.clear();
+    for (i, estado) in EstadoConteudo::TODOS.into_iter().enumerate() {
+        let mut f = base.clone();
+        f.id = format!("f-{i}");
+        f.estado = estado;
+        r.falas.push(f);
+    }
+    let ids = |permitir| -> Vec<&str> {
+        r.falas_utilizaveis(permitir)
+            .map(|f| f.id.as_str())
+            .collect()
+    };
+    assert_eq!(ids(false), ["f-2"]);
+    assert_eq!(ids(true), ["f-0", "f-1", "f-2"]);
+    assert_eq!(
+        r.falas_aprovadas().count(),
+        1,
+        "a API antiga continua estrita"
+    );
+}
+
+#[test]
 fn contagem_por_estado() {
     let m = toml_do_modelo();
     let c = m.contagem();

@@ -82,7 +82,7 @@ bytes = 4210
 Regras do leitor:
 - A ordem de verificação é: zip seguro → `formato_versao` → assinatura (sobre os bytes exatos do manifesto, antes de interpretar o resto) → estrutura → arquivos (nenhum a mais, nenhum a menos, tamanho e SHA-256) → Roteiro e Alinhamentos.
 - `formato_versao` maior que o suportado → erro claro ("pacote feito para versão mais nova do app").
-- Só Exercício `aprovada` vira Gabarito. `hipotese`/`em_revisao` aparecem apenas na tela de revisão (modo tutor); `rejeitada` nunca aparece para o aluno.
+- Só Exercício `aprovada` vira Gabarito oficial. `hipotese`/`em_revisao` aparecem na tela de revisão (modo tutor) e, para o aluno, **só com a preferência "Usar conteúdo não revisado"** (ver "Uso pessoal de conteúdo não revisado" abaixo); `rejeitada` nunca aparece para o aluno.
 - Lição `assistir` não tem Exercícios.
 
 ## `alinhamentos/<id>.json`
@@ -127,7 +127,7 @@ O Curso de fábrica usa o mesmo `roteiro.toml` (embutido no app; suas falas nasc
 - **Exercício de fábrica**: a tentativa inteira, ao concluir (os exercícios têm de 1 a 10 passos; não há comentário intermediário).
 - **Chamada e resposta**: cada chamada é um trecho e já é avaliada ao fim dela.
 
-O professor não repete a mesma fala em seguida (havendo outra do mesmo momento) e só diz falas `aprovada`.
+O professor não repete a mesma fala em seguida (havendo outra do mesmo momento). Por padrão só diz falas `aprovada`; com "Usar conteúdo não revisado" também diz `hipotese` e `em_revisao` (nunca `rejeitada`), e havendo uma aprovada para o mesmo momento ela tem prioridade sobre as não revisadas.
 
 ## Instalação e progresso
 
@@ -145,7 +145,11 @@ Decisões que o contrato deixava em aberto, fixadas na implementação (`crates/
 - Lição `assistir` não pode ter Exercícios. `aula.nome_arquivo` é só o nome do arquivo (sem `/` nem `\`). `bpm` fica entre 1 e 1000; `trecho_aula` exige `0 <= inicio_s < fim_s`.
 - **Roteiro**: `licao` precisa existir; `exercicio`, se houver, precisa pertencer a essa Lição; `passo` é obrigatório com `momento = "passo"` e proibido nos outros; `texto` não pode ser vazio.
 - **Alinhamento**: `exercicio` e `audio` precisam bater com o Exercício que o cita; `indice` estritamente crescente; `midi` em 0..=127; `confianca` em 0..=1; tempos finitos e não negativos.
-- **Estados**: só `aprovada` serve de Gabarito (`Exercicio::serve_de_gabarito`); `exercicios_para_aluno` exclui `hipotese`, `em_revisao` e `rejeitada`. O mesmo vale para as falas do Roteiro (`falas_aprovadas`).
+- **Estados**: só `aprovada` serve de Gabarito (`Exercicio::serve_de_gabarito`); `exercicios_para_aluno` exclui `hipotese`, `em_revisao` e `rejeitada`. O mesmo vale para as falas do Roteiro (`falas_aprovadas`). Essas APIs são estritas e não mudam. Para o uso pessoal do licenciado há APIs explícitas: `Exercicio::utilizavel(permitir_nao_revisado)`, `Manifesto::exercicios_para_aluno_com(permitir)` (e a de `PacoteVerificado`), `Fala::utilizavel(permitir)` e `Roteiro::falas_utilizaveis(permitir)`; com `permitir = false` equivalem às estritas, com `true` aceitam também `hipotese` e `em_revisao`, nunca `rejeitada`.
+
+### Uso pessoal de conteúdo não revisado
+
+O app tem a preferência **"Usar conteúdo não revisado"** (padrão **ligada**; gravada em `preferencias-professor.txt`, chave `nao_revisado`, junto da de "Professor fala"). Ligada, o aluno vê e abre Exercícios `hipotese`/`em_revisao`, com o selo "[!] não revisado" (símbolo e texto, nunca só cor) ao lado do título, e o professor diz também as falas dessas etapas, com o mesmo selo na legenda. Cada Lição mostra "N não revisados". Desligada, vale o comportamento estrito (só `aprovada`) e a tela mostra "N exercício(s) aguardando revisão do tutor". A revisão continua como fila (Aprovar, Rejeitar, "Aprovar direto"); aprovar remove o selo. Isto não muda o Gabarito: **o Gabarito oficial continua sendo só o aprovado**.
 - **Empacotador**: lê `manifesto.toml` da pasta de origem (sem `[assinatura]` nem `[[arquivos]]`), inclui todos os arquivos da pasta exceto o manifesto, `assinatura.ed25519` e nomes que começam por ponto, grava a chave pública da chave privada em `[assinatura]`, regrava o manifesto (comentários e formatação da origem se perdem; esses bytes é que são assinados) e valida tudo antes de assinar. A saída é determinística para a mesma origem e chave.
 - **Instalação**: extrai para uma pasta temporária oculta ao lado e troca por `rename`; se o curso já instalado estiver íntegro e tiver sido assinado por **outra chave**, a instalação é recusada (um autor não sobrescreve o curso de outro; para trocar de autor, remova a pasta do curso).
 - **Chaves confiáveis**: lista embutida no app (vazia por enquanto) mais `<dados>/cursos/chaves-confiaveis/*.pub`; arquivos `.pub` ilegíveis são ignorados.

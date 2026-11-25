@@ -3,7 +3,7 @@
 //!
 //! - [`AppPianoTutor::atualizar_cursos`] roda a cada `tick` (sem janela): lê o `mpv`, a
 //!   instalação, a prática do Exercício de Curso e o exercício de fábrica, faz o professor
-//!   dizer as falas aprovadas e anda a Chamada e resposta;
+//!   dizer as falas (aprovadas, e as não revisadas se a preferência deixar) e anda a Chamada e resposta;
 //! - [`AppPianoTutor::nota_para_cursos`] entrega a nota do aluno à Chamada (quando há) ou à
 //!   prática do Exercício de Curso;
 //! - [`AppPianoTutor::ao_mudar_de_rota`] encerra o `mpv`, a voz e a Chamada ao sair da tela.
@@ -231,6 +231,22 @@ impl AppPianoTutor {
                 AcaoCursos::IniciarChamadaFabrica => self.iniciar_chamada_de_fabrica(),
                 AcaoCursos::PararChamada => self.parar_chamada(),
                 AcaoCursos::ProfessorFala(ligado) => self.professor.definir_ligado(ligado),
+                AcaoCursos::UsarNaoRevisado(usar) => {
+                    self.professor.definir_usar_nao_revisado(usar);
+                    self.cursos.usar_nao_revisado = usar;
+                    // Desligou com um exercício não revisado aberto: ele deixa de valer.
+                    if !usar
+                        && self
+                            .cursos
+                            .aberto
+                            .as_ref()
+                            .is_some_and(|a| a.exercicio.nao_revisado())
+                    {
+                        self.parar_chamada();
+                        self.professor.fechar();
+                        self.cursos.fechar_exercicio();
+                    }
+                }
                 AcaoCursos::IrParaFabrica(i) => {
                     if self.exercicios.selecionar(i) {
                         abrir(ctx, ROTA_EXERCICIOS);
@@ -384,6 +400,75 @@ estado = "aprovada"
         b.app.cursos.partitura.iniciar_pratica(agora);
         b.andar(0.5);
         assert_eq!(b.voz.pedidos().len(), n);
+    }
+
+    #[test]
+    fn nao_revisado_abre_e_toca_com_a_preferencia_ligada_e_fecha_ao_desligar() {
+        let mut b = bancada(true);
+        assert!(b.app.cursos.usar_nao_revisado && b.app.professor.usar_nao_revisado());
+        b.abrir_curso("ainda-hipotese");
+        b.andar(0.1);
+        let a = b.app.cursos.aberto.as_ref().expect("aberto");
+        assert!(a.exercicio.nao_revisado(), "a tela mostra o selo");
+        // O "antes" da lição tem uma aprovada e uma hipótese: a aprovada tem prioridade.
+        assert_eq!(b.voz.pedidos(), ["Vamos tocar as cinco notas."]);
+        assert!(!b.app.professor.legenda_nao_revisada());
+        // Pratica de fato: a partitura carregou e aceita notas.
+        let agora = b.app.som.agora_ns();
+        b.app.cursos.partitura.iniciar_pratica(agora);
+        b.andar(0.2);
+        // Desligar fecha o exercício não revisado e o professor deixa de usá-lo.
+        b.app.executar_acoes_cursos(
+            &Context::default(),
+            vec![AcaoCursos::UsarNaoRevisado(false)],
+        );
+        assert!(b.app.cursos.aberto.is_none());
+        assert!(!b.app.cursos.usar_nao_revisado && !b.app.professor.usar_nao_revisado());
+        assert!(
+            b.app
+                .cursos
+                .abrir_exercicio("s03-a14", "em-revisao")
+                .is_err()
+        );
+        assert!(
+            b.app
+                .cursos
+                .abrir_exercicio("s03-a14", "cinco-notas")
+                .is_ok()
+        );
+        // Rejeitado, nunca; ligando de novo, os não revisados voltam.
+        b.app
+            .executar_acoes_cursos(&Context::default(), vec![AcaoCursos::UsarNaoRevisado(true)]);
+        assert!(
+            b.app
+                .cursos
+                .abrir_exercicio("s03-a14", "rejeitado")
+                .is_err()
+        );
+        assert!(
+            b.app
+                .cursos
+                .abrir_exercicio("s03-a14", "em-revisao")
+                .is_ok()
+        );
+        // A preferência está gravada: um professor novo, na mesma pasta, a lê.
+        let dados = b.app.pasta_dados.clone().expect("dados");
+        b.app.executar_acoes_cursos(
+            &Context::default(),
+            vec![AcaoCursos::UsarNaoRevisado(false)],
+        );
+        let novo = AppPianoTutor::com_dispositivos(Dispositivos {
+            fonte_midi: Box::new(FonteFalsa::nova(Vec::<String>::new())),
+            relogio: Arc::new(RelogioManual::novo()),
+            som: servico_pronto(Arc::new(RelogioManual::novo())).0,
+            pasta_sessoes: Some(dados.join("sessoes")),
+            baixador_sf2: None,
+        });
+        assert!(!novo.professor.usar_nao_revisado());
+        assert!(
+            !novo.cursos.usar_nao_revisado,
+            "o estado dos Cursos acompanha"
+        );
     }
 
     #[test]
@@ -701,6 +786,121 @@ estado = "aprovada"
         }
         assert!(c.app.chamada.is_none(), "trocar de tela corta a chamada");
         assert!(c.estado.erros.is_empty(), "{:?}", c.estado.erros);
+    }
+
+    #[test]
+    fn a_janela_desenha_com_a_preferencia_de_nao_revisado_nos_dois_estados() {
+        let b = bancada(true);
+        let (mut c, _dados, _motor) = casca_com(b);
+        let ctx = Context::default();
+        c.abrir(&ctx, ROTA_CURSOS.into(), Local::Centro);
+        c.app.cursos.selecionar(1);
+        for usar in [true, false, true] {
+            c.app
+                .executar_acoes_cursos(&ctx, vec![AcaoCursos::UsarNaoRevisado(usar)]);
+            for _ in 0..3 {
+                quadro(&mut c, &ctx);
+            }
+            c.app
+                .cursos
+                .abrir_exercicio("s03-a14", "cinco-notas")
+                .expect("aprovado abre sempre");
+            c.app
+                .executar_acoes_cursos(&ctx, vec![AcaoCursos::AbriuExercicio]);
+            if usar {
+                c.app
+                    .cursos
+                    .abrir_exercicio("s03-a14", "ainda-hipotese")
+                    .expect("hipótese abre");
+                c.app
+                    .executar_acoes_cursos(&ctx, vec![AcaoCursos::AbriuExercicio]);
+            }
+            for _ in 0..3 {
+                quadro(&mut c, &ctx);
+            }
+            assert!(c.estado.erros.is_empty(), "{:?}", c.estado.erros);
+        }
+    }
+
+    #[test]
+    fn curso_grande_com_18_secoes_e_150_licoes_desenha_sem_travar() {
+        use crate::cursos::{CursoListado, LicaoNaArvore, SecaoNaArvore, Selo};
+        use piano_tutor_curso::{EstadoConteudo, Exercicio, Mao, Modo, TipoLicao};
+        let b = bancada(false);
+        let (mut c, _dados, _motor) = casca_com(b);
+        let ctx = Context::default();
+        let exercicio = |id: String, estado| Exercicio {
+            titulo: id.clone(),
+            id,
+            modo: Modo::Praticar,
+            mao: Mao::Direita,
+            estado,
+            partitura: "p.musicxml".to_owned(),
+            audio: None,
+            alinhamento: None,
+            bpm: None,
+            trecho_aula: None,
+        };
+        let mut n = 0;
+        let arvore: Vec<SecaoNaArvore> = (1..=18)
+            .map(|s| SecaoNaArvore {
+                id: format!("s{s:02}"),
+                numero: s,
+                titulo: format!("Seção {s}"),
+                licoes: (0..8)
+                    .map(|_| {
+                        n += 1;
+                        let estados = [EstadoConteudo::Aprovada, EstadoConteudo::Hipotese];
+                        let exercicios: Vec<_> = estados
+                            .iter()
+                            .enumerate()
+                            .map(|(i, e)| exercicio(format!("ex-{n}-{i}"), *e))
+                            .collect();
+                        LicaoNaArvore {
+                            id: format!("l{n}"),
+                            numero: n,
+                            titulo: format!("Lição {n}"),
+                            tipo: TipoLicao::Exercicio,
+                            aula: None,
+                            aguardando: 1,
+                            exercicios,
+                        }
+                    })
+                    .collect(),
+            })
+            .collect();
+        c.app.cursos.cursos.push(CursoListado {
+            id: "grande".to_owned(),
+            titulo: "Curso grande".to_owned(),
+            autor: "Autor".to_owned(),
+            licenciado: None,
+            licenca: None,
+            versao: "1".to_owned(),
+            chave_curta: None,
+            selo: Selo::ChaveDesconhecida,
+            pasta: None,
+            manifesto: None,
+            arvore,
+            aprovados: 144,
+            aguardando: 144,
+        });
+        c.abrir(&ctx, ROTA_CURSOS.into(), Local::Centro);
+        let ultimo = c.app.cursos.cursos.len() - 1;
+        c.app.cursos.selecionar(ultimo);
+        let inicio = std::time::Instant::now();
+        for usar in [true, false] {
+            c.app
+                .executar_acoes_cursos(&ctx, vec![AcaoCursos::UsarNaoRevisado(usar)]);
+            for _ in 0..20 {
+                quadro(&mut c, &ctx);
+            }
+        }
+        assert!(c.estado.erros.is_empty(), "{:?}", c.estado.erros);
+        assert!(
+            inicio.elapsed() < std::time::Duration::from_secs(20),
+            "40 quadros levaram {:?}",
+            inicio.elapsed()
+        );
     }
 
     #[test]

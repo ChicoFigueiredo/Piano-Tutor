@@ -2,11 +2,14 @@
 //! cada momento (`antes`, `passo`, `acerto`, `erro`, `depois`), diz pela [`Voz`] e guarda o texto
 //! dito para a tela mostrar (acessibilidade: quem não ouve, lê).
 //!
-//! - só falas **aprovadas** são ditas ([`falas_para_dizer`]); hipótese nunca vira voz;
+//! - só falas **aprovadas** são ditas ([`falas_para_dizer`]), a menos que a preferência "Usar
+//!   conteúdo não revisado" esteja ligada (padrão): então `hipotese` e `em_revisao` também são
+//!   ditas, com a legenda marcada "não revisado" e **as aprovadas com prioridade** quando há
+//!   várias para o mesmo momento ([`falas_para_dizer_com`]); rejeitada nunca vira voz;
 //! - havendo várias falas para o mesmo momento, sorteia uma que **não seja a mesma** dita da
 //!   última vez ([`escolher_sem_repetir`]);
-//! - o interruptor "Professor fala" é uma preferência gravada (`preferencias-professor.txt`);
-//!   desligado, o professor não diz nem mostra nada do Roteiro;
+//! - o interruptor "Professor fala" e "Usar conteúdo não revisado" são preferências gravadas
+//!   (`preferencias-professor.txt`, chaves `fala` e `nao_revisado`); desligado, o professor não diz nem mostra nada do Roteiro;
 //! - sem voz instalada ([`VozMuda`](crate::professor_falante::VozMuda)) o texto aparece do mesmo
 //!   jeito, cada fala por um tempo proporcional ao tamanho, e [`Professor::aviso_de_voz`] traz
 //!   o COMO_INSTALAR_A_VOZ.
@@ -15,8 +18,8 @@
 //! [`Professor::dizer`] com o momento.
 
 use crate::professor_falante::{
-    ErroVoz, EstadoVoz, LICAO_DE_FABRICA, Momento, Roteiro, Voz, falas_para_dizer,
-    id_de_exercicio_de_fabrica, roteiro_de_fabrica,
+    ErroVoz, EstadoConteudo, EstadoVoz, LICAO_DE_FABRICA, Momento, Roteiro, Voz,
+    falas_para_dizer_com, id_de_exercicio_de_fabrica, roteiro_de_fabrica,
 };
 use piano_tutor_core::chamada_resposta::estimar_duracao_da_fala_s;
 use std::collections::VecDeque;
@@ -59,10 +62,15 @@ struct Contexto {
 pub struct Professor {
     voz: Box<dyn Voz>,
     ligado: bool,
+    /// Preferência "Usar conteúdo não revisado" (padrão: ligada).
+    usar_nao_revisado: bool,
     arquivo: Option<PathBuf>,
     contexto: Option<Contexto>,
-    fila: VecDeque<String>,
+    /// Falas esperando a vez, com a marca "não revisada".
+    fila: VecDeque<(String, bool)>,
     legenda: Option<String>,
+    /// A legenda atual vem de uma fala não revisada (a tela põe o selo).
+    legenda_nao_revisada: bool,
     ultimas: Vec<(Momento, Option<usize>, String)>,
     semente: u64,
     agora_s: f64,
@@ -84,10 +92,10 @@ impl Professor {
     /// Lê a preferência de `pasta_dados` (padrão: fala ligada).
     pub fn novo(voz: Box<dyn Voz>, pasta_dados: Option<&Path>) -> Self {
         let arquivo = pasta_dados.map(|p| p.join(ARQUIVO_PREFERENCIAS_PROFESSOR));
-        let ligado = arquivo
+        let (ligado, usar_nao_revisado) = arquivo
             .as_deref()
             .and_then(|a| std::fs::read_to_string(a).ok())
-            .is_none_or(|t| ler_fala_ligada(&t));
+            .map_or((true, true), |t| ler_preferencias(&t));
         let semente = std::time::SystemTime::now()
             .duration_since(std::time::UNIX_EPOCH)
             .map_or(0x9E37_79B9_7F4A_7C15, |d| d.as_nanos() as u64)
@@ -95,10 +103,12 @@ impl Professor {
         Self {
             voz,
             ligado,
+            usar_nao_revisado,
             arquivo,
             contexto: None,
             fila: VecDeque::new(),
             legenda: None,
+            legenda_nao_revisada: false,
             ultimas: Vec::new(),
             semente,
             agora_s: 0.0,
@@ -126,18 +136,39 @@ impl Professor {
             self.parar();
             self.legenda = None;
         }
-        if let Some(a) = &self.arquivo {
-            if let Some(p) = a.parent() {
-                let _ = std::fs::create_dir_all(p);
-            }
-            let _ = std::fs::write(
-                a,
-                format!(
-                    "# Piano Tutor: preferências do professor v1\nfala={}\n",
-                    u8::from(ligado)
-                ),
-            );
+        self.gravar_preferencias();
+    }
+
+    /// "Usar conteúdo não revisado": o professor também diz as falas `hipotese` e `em_revisao`
+    /// (nunca as `rejeitada`). Padrão: ligado.
+    pub fn usar_nao_revisado(&self) -> bool {
+        self.usar_nao_revisado
+    }
+
+    /// Liga ou desliga a preferência e grava junto das do professor.
+    pub fn definir_usar_nao_revisado(&mut self, usar: bool) {
+        if self.usar_nao_revisado == usar {
+            return;
         }
+        self.usar_nao_revisado = usar;
+        self.gravar_preferencias();
+    }
+
+    fn gravar_preferencias(&self) {
+        let Some(a) = &self.arquivo else {
+            return;
+        };
+        if let Some(p) = a.parent() {
+            let _ = std::fs::create_dir_all(p);
+        }
+        let _ = std::fs::write(
+            a,
+            format!(
+                "# Piano Tutor: preferências do professor v1\nfala={}\nnao_revisado={}\n",
+                u8::from(self.ligado),
+                u8::from(self.usar_nao_revisado)
+            ),
+        );
     }
 
     /// Fixa o sorteio (testes).
@@ -196,11 +227,21 @@ impl Professor {
 
     /// Há alguma fala aprovada neste Exercício (em qualquer momento)?
     pub fn tem_falas_aprovadas(&self) -> bool {
+        self.tem_falas(false)
+    }
+
+    /// Há alguma fala que o professor pode dizer neste Exercício, conforme a preferência
+    /// "Usar conteúdo não revisado" (aprovadas, e as não revisadas se estiver ligada)?
+    pub fn tem_falas_para_dizer(&self) -> bool {
+        self.tem_falas(self.usar_nao_revisado)
+    }
+
+    fn tem_falas(&self, permitir_nao_revisado: bool) -> bool {
         let Some(c) = &self.contexto else {
             return false;
         };
         c.roteiro.as_ref().is_some_and(|r| {
-            r.falas_aprovadas().any(|f| {
+            r.falas_utilizaveis(permitir_nao_revisado).any(|f| {
                 f.licao == c.licao && f.exercicio.as_deref().is_none_or(|e| e == c.exercicio)
             })
         })
@@ -215,18 +256,31 @@ impl Professor {
         if !self.ligado || (so_se_livre && !self.livre()) {
             return false;
         }
-        let candidatas: Vec<String> = {
+        let permitir = self.usar_nao_revisado;
+        let candidatas: Vec<(String, bool)> = {
             let Some(c) = &self.contexto else {
                 return false;
             };
             let Some(roteiro) = &c.roteiro else {
                 return false;
             };
-            falas_para_dizer(roteiro, &c.licao, Some(&c.exercicio), momento, passo)
-                .iter()
-                .map(|f| f.texto.trim().to_owned())
-                .filter(|t| !t.is_empty())
-                .collect()
+            falas_para_dizer_com(
+                roteiro,
+                &c.licao,
+                Some(&c.exercicio),
+                momento,
+                passo,
+                permitir,
+            )
+            .iter()
+            .map(|f| {
+                (
+                    f.texto.trim().to_owned(),
+                    f.estado != EstadoConteudo::Aprovada,
+                )
+            })
+            .filter(|(t, _)| !t.is_empty())
+            .collect()
         };
         if candidatas.is_empty() {
             return false;
@@ -237,12 +291,14 @@ impl Professor {
             .find(|(m, p, _)| *m == momento && *p == passo)
             .map(|(_, _, t)| t.clone());
         let sorteio = self.sortear();
-        let refs: Vec<&str> = candidatas.iter().map(String::as_str).collect();
+        let refs: Vec<&str> = candidatas.iter().map(|(t, _)| t.as_str()).collect();
         let Some(texto) =
             escolher_sem_repetir(&refs, ultima.as_deref(), sorteio).map(str::to_owned)
         else {
             return false;
         };
+        let nao_revisada = candidatas.iter().any(|(t, nr)| *nr && *t == texto)
+            && !candidatas.iter().any(|(t, nr)| !*nr && *t == texto);
         match self
             .ultimas
             .iter_mut()
@@ -251,7 +307,7 @@ impl Professor {
             Some(e) => e.2.clone_from(&texto),
             None => self.ultimas.push((momento, passo, texto.clone())),
         }
-        self.fila.push_back(texto);
+        self.fila.push_back((texto, nao_revisada));
         true
     }
 
@@ -264,16 +320,17 @@ impl Professor {
             return false;
         }
         let com_voz = self.voz_pronta();
-        self.dizer_agora(texto);
+        self.dizer_agora(texto, false);
         com_voz && self.voz.falando()
     }
 
-    fn dizer_agora(&mut self, texto: &str) {
+    fn dizer_agora(&mut self, texto: &str, nao_revisada: bool) {
         let texto = texto.trim();
         if texto.is_empty() {
             return;
         }
         self.legenda = Some(texto.to_owned());
+        self.legenda_nao_revisada = nao_revisada;
         self.livre_em_s = if self.voz_pronta() {
             0.0
         } else {
@@ -298,9 +355,9 @@ impl Professor {
             return;
         }
         if self.ocioso()
-            && let Some(texto) = self.fila.pop_front()
+            && let Some((texto, nao_revisada)) = self.fila.pop_front()
         {
-            self.dizer_agora(&texto);
+            self.dizer_agora(&texto, nao_revisada);
         }
     }
 
@@ -337,6 +394,11 @@ impl Professor {
         self.legenda.as_deref()
     }
 
+    /// A última fala dita ainda não foi revisada pelo tutor (a tela mostra o selo).
+    pub fn legenda_nao_revisada(&self) -> bool {
+        self.legenda.is_some() && self.legenda_nao_revisada
+    }
+
     /// Aviso para o aluno quando não há voz (ou a voz falhou): COMO_INSTALAR_A_VOZ. Só com o
     /// professor ligado.
     pub fn aviso_de_voz(&self) -> Option<String> {
@@ -355,12 +417,16 @@ impl Professor {
     }
 }
 
-fn ler_fala_ligada(texto: &str) -> bool {
-    texto
-        .lines()
-        .filter_map(|l| l.trim().split_once('='))
-        .find(|(k, _)| k.trim() == "fala")
-        .is_none_or(|(_, v)| !matches!(v.trim(), "0" | "false"))
+/// `(fala, nao_revisado)` do arquivo de preferências; chave ausente ou ilegível vale ligado.
+fn ler_preferencias(texto: &str) -> (bool, bool) {
+    let ligada = |chave: &str| {
+        texto
+            .lines()
+            .filter_map(|l| l.trim().split_once('='))
+            .find(|(k, _)| k.trim() == chave)
+            .is_none_or(|(_, v)| !matches!(v.trim(), "0" | "false"))
+    };
+    (ligada("fala"), ligada("nao_revisado"))
 }
 
 #[cfg(test)]
@@ -457,6 +523,125 @@ estado = "aprovada"
         assert_eq!(p.legenda(), Some("Vamos começar."));
         assert!(p.tem_falas_aprovadas());
         assert_eq!(p.aviso_de_voz(), None);
+    }
+
+    const ROTEIRO_SO_NAO_REVISADO: &str = r#"
+formato_versao = 1
+
+[[falas]]
+id = "h1"
+licao = "l1"
+exercicio = "ex"
+momento = "antes"
+texto = "Esta é hipótese."
+estado = "hipotese"
+
+[[falas]]
+id = "r1"
+licao = "l1"
+exercicio = "ex"
+momento = "acerto"
+texto = "Em revisão."
+estado = "em_revisao"
+
+[[falas]]
+id = "x1"
+licao = "l1"
+exercicio = "ex"
+momento = "erro"
+texto = "Rejeitada."
+estado = "rejeitada"
+"#;
+
+    #[test]
+    fn com_a_preferencia_ligada_o_professor_diz_hipotese_com_selo_e_nunca_rejeitada() {
+        let (mut p, voz) = professor_falso();
+        assert!(p.usar_nao_revisado(), "padrão: ligado");
+        p.abrir(
+            "l1",
+            "ex",
+            Some(ler_roteiro(ROTEIRO_SO_NAO_REVISADO).expect("roteiro")),
+        );
+        p.atualizar(0.0);
+        assert_eq!(voz.pedidos(), ["Esta é hipótese."]);
+        assert_eq!(p.legenda(), Some("Esta é hipótese."));
+        assert!(p.legenda_nao_revisada());
+        assert!(p.tem_falas_para_dizer());
+        assert!(!p.tem_falas_aprovadas());
+        voz.terminar_a_fala();
+        assert!(p.dizer(Momento::Acerto, None, false), "em revisão também");
+        p.atualizar(1.0);
+        assert_eq!(
+            voz.pedidos().last().map(String::as_str),
+            Some("Em revisão.")
+        );
+        assert!(p.legenda_nao_revisada());
+        assert!(!p.dizer(Momento::Erro, None, false), "rejeitada nunca");
+    }
+
+    #[test]
+    fn com_a_preferencia_desligada_so_as_aprovadas_falam() {
+        let (mut p, voz) = professor_falso();
+        p.definir_usar_nao_revisado(false);
+        p.abrir(
+            "l1",
+            "ex",
+            Some(ler_roteiro(ROTEIRO_SO_NAO_REVISADO).expect("roteiro")),
+        );
+        p.atualizar(0.0);
+        assert!(voz.pedidos().is_empty());
+        assert!(!p.dizer(Momento::Acerto, None, false));
+        assert!(!p.tem_falas_para_dizer());
+        assert_eq!(p.legenda(), None);
+    }
+
+    #[test]
+    fn aprovada_tem_prioridade_e_nao_leva_selo() {
+        let (mut p, voz) = professor_falso();
+        abrir_teste(&mut p); // "antes": a aprovada a1 e a hipótese a2.
+        for _ in 0..8 {
+            voz.terminar_a_fala();
+            p.atualizar(1.0);
+            assert!(p.dizer(Momento::Antes, None, false));
+            voz.terminar_a_fala();
+            p.atualizar(2.0);
+            assert_eq!(p.legenda(), Some("Vamos começar."));
+            assert!(!p.legenda_nao_revisada());
+        }
+    }
+
+    #[test]
+    fn preferencia_de_conteudo_nao_revisado_persiste_sem_perder_a_da_fala() {
+        let pasta = tempfile::tempdir().expect("pasta");
+        let mut p = Professor::novo(Box::new(VozFalsa::nova()), Some(pasta.path()));
+        assert!(p.usar_nao_revisado());
+        p.definir_usar_nao_revisado(false);
+        p.definir_ligado(false);
+        let outro = Professor::novo(Box::new(VozFalsa::nova()), Some(pasta.path()));
+        assert!(!outro.usar_nao_revisado());
+        assert!(!outro.ligado());
+        let mut p = outro;
+        p.definir_ligado(true);
+        let de_novo = Professor::novo(Box::new(VozFalsa::nova()), Some(pasta.path()));
+        assert!(de_novo.ligado());
+        assert!(
+            !de_novo.usar_nao_revisado(),
+            "ligar a fala não mexe na outra"
+        );
+        let mut p = de_novo;
+        p.definir_usar_nao_revisado(true);
+        assert!(
+            Professor::novo(Box::new(VozFalsa::nova()), Some(pasta.path())).usar_nao_revisado()
+        );
+        // Arquivo antigo, só com `fala=`, mantém o padrão ligado.
+        std::fs::write(
+            pasta.path().join(ARQUIVO_PREFERENCIAS_PROFESSOR),
+            "fala=0\n",
+        )
+        .expect("grava");
+        let antigo = Professor::novo(Box::new(VozFalsa::nova()), Some(pasta.path()));
+        assert!(!antigo.ligado());
+        assert!(antigo.usar_nao_revisado());
     }
 
     #[test]
