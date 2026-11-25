@@ -28,7 +28,7 @@ _Evitar_: módulo, curso, categoria
 
 **Exercício**:
 Unidade praticável com um Gabarito, pertencente a uma Lição ou fornecida de fábrica.
-_Evitar_: lição, desafio, atividade
+_Evitar_: lição, desafio, atividade ("cada vídeo é um desafio" é jeito de falar, não termo)
 
 **Acervo**:
 Biblioteca de partituras do aplicativo, com as de domínio público que vêm com ele e as importadas pelo aluno.
@@ -36,7 +36,7 @@ _Evitar_: repositório, banco de partituras
 
 **Pacote de Curso**:
 Arquivo plugável que abastece o aplicativo com um Curso de tutor (Lições, partituras, áudios, Alinhamentos, Roteiro) sem fazer parte dele; pode ser distribuído só com licença do autor.
-_Evitar_: plugin como sinônimo de extensão de código, conteúdo embutido, pacote local
+_Evitar_: plugin, conteúdo embutido, pacote local (o código que ele leva são os Roteiros de Aula)
 
 **Roteiro**:
 Falas aprovadas que o professor diz ao aluno durante uma Lição, ligadas aos passos dos Exercícios, ditas por voz sintética.
@@ -49,6 +49,26 @@ _Evitar_: eco, imitação, pergunta e resposta (nome de uma música do curso)
 **Alinhamento**:
 Ligação entre cada nota de uma partitura aprovada e o instante em que ela soa numa Aula.
 _Evitar_: sincronia, transcrição de áudio
+
+**Player de Aula**:
+Tela em que uma Lição derivada de uma Aula é vivida de ponta a ponta: o vídeo da Aula (embutido, ou destacado numa janela própria que pode ser maximizada), a partitura e o teclado com o dedilhado andam juntos no mesmo instante, e os Exercícios são trechos da linha do tempo.
+_Evitar_: tela do Curso, visualizador, "ver vídeo"
+
+**Âncora**:
+Ponto do Alinhamento fixado à mão no editor de sincronia do Player de Aula: "este instante da Aula é esta nota da partitura". Deslocar e acelerar um trecho movem as suas Âncoras; um ajuste salvo vira nova Hipótese do Alinhamento.
+_Evitar_: marcador, keyframe, sincronia global
+
+**Roteiro de Aula**:
+Script em Luau, um por Aula, que conduz o Player de Aula (que trecho tocar, quando esperar o aluno, quando repetir ou avançar). Viaja assinado no Pacote de Curso e roda isolado, só com a API do player.
+_Evitar_: desafio, plugin, Roteiro (que são as falas do professor)
+
+**Modo de acompanhamento**:
+Como o Player de Aula reage enquanto o aluno toca junto um trecho: **Espera** (para em cada nota até a certa), **Segue no tempo** (não para, pontua acerto e erro) ou **Chamada e resposta**. O aluno escolhe e troca durante a Aula; o Roteiro de Aula pode sugerir um.
+_Evitar_: modo de prática (é da tela de Partitura)
+
+**Calibração de vídeo**:
+Mapa, por Aula, de onde fica cada tecla no quadro da câmera de cima, proposto automaticamente pela fábrica e conferido pelo revisor; é dele que sai a Hipótese de dedilhado da Aula.
+_Evitar_: calibração do teclado (é a do instrumento MIDI)
 
 **Gabarito**:
 Resposta esperada de um Exercício; só existe a partir de conteúdo aprovado, nunca de saída bruta de IA.
