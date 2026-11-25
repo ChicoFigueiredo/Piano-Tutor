@@ -5,6 +5,9 @@
 # (a voz só diz falas aprovadas). Sem "#" nem "b" no texto: a voz lê por extenso.
 #
 # licao = "fabrica"; exercicio = "exNN", com NN o id do exercício (01 a 10).
+#
+# "acerto" e "erro" são comentários de TRECHO, ditos ao concluir o exercício (nunca a cada nota):
+# "acerto" quando a tentativa saiu sem nota errada, "erro" quando teve alguma. Vêm antes do "depois".
 
 formato_versao = 1
 
@@ -21,7 +24,7 @@ id = "fabrica-ex01-acerto"
 licao = "fabrica"
 exercicio = "ex01"
 momento = "acerto"
-texto = "Isso! Esse é o Dó central."
+texto = "Boa! Achou o Dó de primeira."
 estado = "hipotese"
 
 [[falas]]
@@ -29,7 +32,7 @@ id = "fabrica-ex01-erro"
 licao = "fabrica"
 exercicio = "ex01"
 momento = "erro"
-texto = "Quase. Procure o grupo de duas teclas pretas e toque a branca à esquerda dele."
+texto = "Quase. Procure o grupo de duas teclas pretas e toque a branca à esquerda dele; vamos de novo, com calma."
 estado = "hipotese"
 
 [[falas]]
@@ -53,7 +56,7 @@ id = "fabrica-ex02-acerto"
 licao = "fabrica"
 exercicio = "ex02"
 momento = "acerto"
-texto = "Isso mesmo, pode seguir."
+texto = "Boa! A subida e a descida saíram limpas. Agora de novo, um pouco mais depressa, se quiser."
 estado = "hipotese"
 
 [[falas]]
@@ -61,7 +64,7 @@ id = "fabrica-ex02-erro"
 licao = "fabrica"
 exercicio = "ex02"
 momento = "erro"
-texto = "Sem pressa. Olhe a tecla marcada e toque ela; a anterior continua valendo."
+texto = "Teve umas notas fora do lugar. Vamos de novo, mais devagar, olhando a tecla marcada."
 estado = "hipotese"
 
 [[falas]]
@@ -85,7 +88,7 @@ id = "fabrica-ex03-acerto"
 licao = "fabrica"
 exercicio = "ex03"
 momento = "acerto"
-texto = "Certo, essa veio na ordem pedida."
+texto = "Boa! A ordem saiu certa. Agora de novo, sem olhar a tecla marcada."
 estado = "hipotese"
 
 [[falas]]
@@ -93,7 +96,7 @@ id = "fabrica-ex03-erro"
 licao = "fabrica"
 exercicio = "ex03"
 momento = "erro"
-texto = "A ordem é Mi, Dó, Sol. Tente a nota marcada."
+texto = "A ordem é Mi, Dó, Sol. Vamos de novo, uma nota de cada vez, mais devagar."
 estado = "hipotese"
 
 [[falas]]
@@ -117,7 +120,7 @@ id = "fabrica-ex04-acerto"
 licao = "fabrica"
 exercicio = "ex04"
 momento = "acerto"
-texto = "Tecla preta certa."
+texto = "Boa! As teclas pretas saíram sem tropeço."
 estado = "hipotese"
 
 [[falas]]
@@ -125,7 +128,7 @@ id = "fabrica-ex04-erro"
 licao = "fabrica"
 exercicio = "ex04"
 momento = "erro"
-texto = "Sustenido fica à direita da branca; bemol, à esquerda da próxima. Tente de novo."
+texto = "Sustenido fica à direita da branca; bemol, à esquerda da próxima. Vamos de novo, mais devagar."
 estado = "hipotese"
 
 [[falas]]
@@ -149,7 +152,7 @@ id = "fabrica-ex05-acerto"
 licao = "fabrica"
 exercicio = "ex05"
 momento = "acerto"
-texto = "Intervalo certo, as duas notas juntas."
+texto = "Boa! Os intervalos saíram juntos. Agora de novo, tentando acertar de primeira."
 estado = "hipotese"
 
 [[falas]]
@@ -157,7 +160,7 @@ id = "fabrica-ex05-erro"
 licao = "fabrica"
 exercicio = "ex05"
 momento = "erro"
-texto = "Toque só as duas notas marcadas, juntas, num golpe só."
+texto = "Alguns intervalos escaparam. Toque as duas notas num golpe só; vamos de novo, mais devagar."
 estado = "hipotese"
 
 [[falas]]
@@ -181,7 +184,7 @@ id = "fabrica-ex06-acerto"
 licao = "fabrica"
 exercicio = "ex06"
 momento = "acerto"
-texto = "Mais um degrau da escala."
+texto = "Boa! A escala saiu sem erro. Agora de novo, um pouco mais depressa."
 estado = "hipotese"
 
 [[falas]]
@@ -189,7 +192,7 @@ id = "fabrica-ex06-erro"
 licao = "fabrica"
 exercicio = "ex06"
 momento = "erro"
-texto = "Aqui só teclas brancas. Toque a próxima marcada."
+texto = "A escala teve umas notas fora. Aqui só teclas brancas; vamos de novo, mais devagar."
 estado = "hipotese"
 
 [[falas]]
@@ -213,7 +216,7 @@ id = "fabrica-ex07-acerto"
 licao = "fabrica"
 exercicio = "ex07"
 momento = "acerto"
-texto = "Acorde completo, as notas soaram juntas."
+texto = "Boa! Acorde limpo, sem nota a mais. Agora de novo, mudando a posição."
 estado = "hipotese"
 
 [[falas]]
@@ -221,7 +224,7 @@ id = "fabrica-ex07-erro"
 licao = "fabrica"
 exercicio = "ex07"
 momento = "erro"
-texto = "Dó maior é só Dó, Mi e Sol, ao mesmo tempo, sem nota a mais."
+texto = "Sobrou ou faltou nota no acorde. Dó maior é Dó, Mi e Sol, juntos; vamos de novo, mais devagar."
 estado = "hipotese"
 
 [[falas]]
@@ -245,7 +248,7 @@ id = "fabrica-ex08-acerto"
 licao = "fabrica"
 exercicio = "ex08"
 momento = "acerto"
-texto = "Acorde certo."
+texto = "Boa! Maiores e menores no lugar certo."
 estado = "hipotese"
 
 [[falas]]
@@ -253,7 +256,7 @@ id = "fabrica-ex08-erro"
 licao = "fabrica"
 exercicio = "ex08"
 momento = "erro"
-texto = "Confira a nota do meio: no acorde maior a terça é maior; no menor, ela é menor."
+texto = "Confira a nota do meio: na terça maior ela é mais alta, na menor é mais baixa. Vamos de novo, mais devagar."
 estado = "hipotese"
 
 [[falas]]
@@ -277,7 +280,7 @@ id = "fabrica-ex09-acerto"
 licao = "fabrica"
 exercicio = "ex09"
 momento = "acerto"
-texto = "Nota certa do arpejo."
+texto = "Boa! O arpejo saiu na ordem certa. Agora de novo, mais ligado."
 estado = "hipotese"
 
 [[falas]]
@@ -285,7 +288,7 @@ id = "fabrica-ex09-erro"
 licao = "fabrica"
 exercicio = "ex09"
 momento = "erro"
-texto = "No arpejo a ordem importa. Toque a nota marcada, uma de cada vez."
+texto = "No arpejo a ordem importa. Vamos de novo, uma nota de cada vez, mais devagar."
 estado = "hipotese"
 
 [[falas]]
@@ -309,7 +312,7 @@ id = "fabrica-ex10-acerto"
 licao = "fabrica"
 exercicio = "ex10"
 momento = "acerto"
-texto = "Você ouviu e acertou."
+texto = "Boa! Você ouviu e repetiu sem errar. Agora de novo, para fixar."
 estado = "hipotese"
 
 [[falas]]
@@ -317,7 +320,7 @@ id = "fabrica-ex10-erro"
 licao = "fabrica"
 exercicio = "ex10"
 momento = "erro"
-texto = "Essa não é a nota da frase. Escute de novo e tente outra."
+texto = "Algumas notas não eram as da frase. Escute de novo com atenção e tente outra vez, mais devagar."
 estado = "hipotese"
 
 [[falas]]

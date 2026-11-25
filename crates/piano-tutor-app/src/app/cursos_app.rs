@@ -39,17 +39,16 @@ impl AppPianoTutor {
                 EventoPratica::Passo(i) => {
                     self.professor.dizer(Momento::Passo, Some(i), false);
                 }
-                EventoPratica::Erro => {
-                    // Comentário de erro só se o professor não está ocupado.
-                    self.professor.dizer(Momento::Erro, None, true);
-                }
-                EventoPratica::Concluida { concluiu, .. } => {
-                    let m = if concluiu {
+                EventoPratica::FimDeTrecho { limpo } => {
+                    // Acerto e erro são comentários de trecho, nunca de nota.
+                    let m = if limpo {
                         Momento::Acerto
                     } else {
                         Momento::Erro
                     };
                     self.professor.dizer(m, None, false);
+                }
+                EventoPratica::Concluida { .. } => {
                     self.professor.dizer(Momento::Depois, None, false);
                 }
             }
@@ -61,13 +60,13 @@ impl AppPianoTutor {
                         let roteiro = self.roteiro_da_fabrica();
                         self.professor.abrir_fabrica(n, roteiro);
                     }
-                    EventoFabrica::Acerto => {
-                        self.professor.dizer(Momento::Acerto, None, true);
-                    }
-                    EventoFabrica::Erro => {
-                        self.professor.dizer(Momento::Erro, None, true);
-                    }
-                    EventoFabrica::Concluiu => {
+                    EventoFabrica::Concluiu { sem_erros } => {
+                        let m = if sem_erros {
+                            Momento::Acerto
+                        } else {
+                            Momento::Erro
+                        };
+                        self.professor.dizer(m, None, false);
                         self.professor.dizer(Momento::Depois, None, false);
                     }
                 }
@@ -385,6 +384,39 @@ estado = "aprovada"
         b.app.cursos.partitura.iniciar_pratica(agora);
         b.andar(0.5);
         assert_eq!(b.voz.pedidos().len(), n);
+    }
+
+    #[test]
+    fn professor_comenta_erro_so_ao_fim_do_trecho_nunca_a_cada_nota() {
+        let mut b = bancada(true);
+        b.abrir_curso("cinco-notas");
+        b.andar(0.1);
+        let antes = b.voz.pedidos().len();
+        let agora = b.app.som.agora_ns();
+        b.app.cursos.partitura.iniciar_pratica(agora);
+        // Nota errada isolada: só o retorno visual, nenhuma fala.
+        b.andar(0.1);
+        let t = b.app.som.agora_ns();
+        b.app
+            .nota_para_cursos(true, NotaMidi::nova(61).expect("nota"), t);
+        b.andar(0.5);
+        assert_eq!(b.voz.pedidos().len(), antes, "{:?}", b.voz.pedidos());
+        // Toca as 4 primeiras notas certas e chega ao começo da próxima frase (passo 4): o
+        // trecho acabou com erro, então vem o comentário de erro, depois a fala do passo.
+        let notas = [60u8, 62, 64, 65, 67];
+        for n in notas {
+            b.andar(0.1);
+            let t = b.app.som.agora_ns();
+            b.app
+                .nota_para_cursos(true, NotaMidi::nova(n).expect("nota"), t);
+        }
+        b.andar(1.0);
+        let ditas = b.voz.pedidos();
+        assert_eq!(
+            &ditas[antes..],
+            ["Calma, confira a nota.", "Agora o Sol."],
+            "{ditas:?}"
+        );
     }
 
     #[test]

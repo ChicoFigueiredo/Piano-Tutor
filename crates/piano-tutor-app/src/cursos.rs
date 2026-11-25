@@ -17,9 +17,9 @@ use crate::mpv::Midia;
 use crate::partitura_visual::{Destaque, Mao as MaoVisual};
 use crate::tela_partitura::EstadoPartitura;
 use piano_tutor_curso::{
-    Alinhamento, Aula, ErroPacote, Exercicio, Licao, Manifesto, Mao, Modo, Roteiro, TipoLicao,
-    caminho_seguro, chaves_confiaveis, cursos_instalados, instalar, ler_pacote_de_arquivo,
-    sha256_hex,
+    Alinhamento, Aula, ErroPacote, Exercicio, Licao, Manifesto, Mao, Modo, Momento, Roteiro,
+    TipoLicao, caminho_seguro, chaves_confiaveis, cursos_instalados, instalar,
+    ler_pacote_de_arquivo, sha256_hex,
 };
 use sha2::{Digest, Sha256};
 use std::collections::HashMap;
@@ -676,46 +676,109 @@ pub fn carregar_exercicio(
 
 // --- Observador da prática --------------------------------------------------------------------
 
+/// Quantos compassos tem um trecho quando o Roteiro não marca as frases (falas `passo`).
+pub const COMPASSOS_POR_TRECHO: usize = 2;
+
 /// O que aconteceu na prática desde o último quadro (o professor reage a isto).
+///
+/// Nota errada ou certa isolada **não** vira evento: o retorno de cada nota é só o visual (verde
+/// ou vermelho na pauta). O professor comenta acerto e erro por **trecho** ([`FimDeTrecho`]).
+///
+/// [`FimDeTrecho`]: EventoPratica::FimDeTrecho
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub enum EventoPratica {
     /// A prática chegou à nota de índice `i` (momento `passo` do Roteiro).
     Passo(usize),
-    /// Uma nota errada ou fora do lugar.
-    Erro,
+    /// Terminou um trecho (uma frase, ou [`COMPASSOS_POR_TRECHO`] compassos, ou o fim da
+    /// prática): `limpo` diz se foi sem erro (momento `acerto`) ou com erro (momento `erro`).
+    /// Vem sempre **antes** do `Passo` que abre o trecho seguinte e da `Concluida`.
+    FimDeTrecho { limpo: bool },
     /// A prática terminou; `pct` é a precisão e `concluiu` diz se bateu o limiar.
     Concluida { pct: f32, concluiu: bool },
 }
 
+/// Índices de nota que o Roteiro marca como começo de frase: as falas `passo` do Exercício
+/// (aprovadas ou não: a fronteira não depende de a fala já ser dita).
+pub fn fronteiras_de_frase(roteiro: Option<&Roteiro>, licao: &str, exercicio: &str) -> Vec<usize> {
+    let mut v: Vec<usize> = roteiro
+        .into_iter()
+        .flat_map(|r| r.falas.iter())
+        .filter(|f| {
+            f.momento == Momento::Passo
+                && f.licao == licao
+                && f.exercicio.as_deref().is_none_or(|e| e == exercicio)
+        })
+        .filter_map(|f| f.passo.map(|p| p as usize))
+        .collect();
+    v.sort_unstable();
+    v.dedup();
+    v
+}
+
 #[derive(Debug, Default)]
 struct ObservadorPratica {
+    /// Começos de frase do Roteiro; vazio = trechos de [`COMPASSOS_POR_TRECHO`] compassos.
+    fronteiras: Vec<usize>,
     em_andamento: bool,
     registrada: bool,
     ultimo_indice: Option<usize>,
-    ultimos_extras: usize,
+    /// Compasso da primeira nota vista (os blocos de compassos contam a partir dele).
+    compasso_base: Option<usize>,
+    /// Erros (notas a mais e esperadas perdidas) já contados quando o trecho atual começou.
+    erros_ate_o_trecho: usize,
+}
+
+fn erros_do_resumo(r: &piano_tutor_core::pratica::Resumo) -> usize {
+    r.extras + r.faltas
 }
 
 impl ObservadorPratica {
+    fn com_fronteiras(fronteiras: Vec<usize>) -> Self {
+        Self {
+            fronteiras,
+            ..Self::default()
+        }
+    }
+
+    /// `i` abre um trecho novo em relação à nota anterior `antes`?
+    fn abre_trecho(&self, p: &EstadoPartitura, antes: usize, i: usize) -> bool {
+        if !self.fronteiras.is_empty() {
+            return self.fronteiras.iter().any(|&b| antes < b && b <= i);
+        }
+        let bloco = |n: usize| {
+            let c = p.destaque_da_nota(n)?.compasso;
+            Some(c.saturating_sub(self.compasso_base?) / COMPASSOS_POR_TRECHO)
+        };
+        matches!((bloco(antes), bloco(i)), (Some(a), Some(b)) if b != a)
+    }
+
     fn observar(&mut self, p: &EstadoPartitura) -> Vec<EventoPratica> {
         let mut eventos = Vec::new();
         if p.praticando() {
             if !self.em_andamento {
                 *self = Self {
                     em_andamento: true,
-                    ..Self::default()
+                    ..Self::com_fronteiras(std::mem::take(&mut self.fronteiras))
                 };
             }
+            let erros = p.resumo_pratica().map_or(0, |r| erros_do_resumo(&r));
             if let Some(i) = p.indice_da_pratica()
                 && self.ultimo_indice != Some(i)
             {
+                if self.compasso_base.is_none() {
+                    self.compasso_base = p.destaque_da_nota(i).map(|d| d.compasso);
+                }
+                if let Some(antes) = self.ultimo_indice
+                    && self.abre_trecho(p, antes, i)
+                {
+                    eventos.push(EventoPratica::FimDeTrecho {
+                        limpo: erros <= self.erros_ate_o_trecho,
+                    });
+                    self.erros_ate_o_trecho = erros;
+                }
                 self.ultimo_indice = Some(i);
                 eventos.push(EventoPratica::Passo(i));
             }
-            let extras = p.resumo_pratica().map_or(0, |r| r.extras);
-            if extras > self.ultimos_extras {
-                eventos.push(EventoPratica::Erro);
-            }
-            self.ultimos_extras = extras;
         } else if self.em_andamento {
             self.em_andamento = false;
             if !self.registrada
@@ -723,10 +786,12 @@ impl ObservadorPratica {
             {
                 self.registrada = true;
                 let pct = r.precisao_pct() as f32;
-                eventos.push(EventoPratica::Concluida {
-                    pct,
-                    concluiu: pct >= LIMIAR_CONCLUIDO_PCT,
+                let concluiu = pct >= LIMIAR_CONCLUIDO_PCT;
+                // O último trecho só é "limpo" se não teve erro e a prática bateu o limiar.
+                eventos.push(EventoPratica::FimDeTrecho {
+                    limpo: concluiu && erros_do_resumo(&r) <= self.erros_ate_o_trecho,
                 });
+                eventos.push(EventoPratica::Concluida { pct, concluiu });
             }
         }
         eventos
@@ -736,16 +801,17 @@ impl ObservadorPratica {
 // --- Observador do Curso de fábrica -----------------------------------------------------------
 
 /// O que aconteceu no exercício de fábrica desde o último quadro.
+///
+/// Passo certo ou nota errada isolados não geram evento (o retorno de cada nota é só o visual).
+/// Os 10 exercícios de fábrica têm de 1 a 10 passos, curtos: o trecho comentado é o exercício
+/// inteiro, ao concluir (não há comentário a cada N passos).
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum EventoFabrica {
     /// O exercício `n` (1 a 10) foi aberto ou trocado: momento `antes` do Roteiro.
     Abriu(u8),
-    /// Um passo certo.
-    Acerto,
-    /// Uma nota errada.
-    Erro,
-    /// O exercício foi concluído: momento `depois`.
-    Concluiu,
+    /// O exercício foi concluído: `acerto` (`sem_erros`) ou `erro` sobre a tentativa toda e,
+    /// em seguida, o momento `depois`.
+    Concluiu { sem_erros: bool },
 }
 
 /// Olha o [`EstadoExercicios`] a cada quadro e diz o que o professor deve comentar.
@@ -753,6 +819,8 @@ pub enum EventoFabrica {
 pub struct ObservadorFabrica {
     id: Option<u8>,
     vistos: usize,
+    /// Notas erradas da tentativa em curso (zera ao reiniciar ou ao concluir).
+    erros: usize,
 }
 
 impl ObservadorFabrica {
@@ -762,7 +830,7 @@ impl ObservadorFabrica {
     }
 
     pub fn observar(&mut self, e: &crate::exercicios::EstadoExercicios) -> Vec<EventoFabrica> {
-        use crate::exercicios::Classificacao::{Errada, ExercicioCompleto, PassoCompleto};
+        use crate::exercicios::Classificacao::{Errada, ExercicioCompleto};
         let Some(ex) = e.exercicio() else {
             return Vec::new();
         };
@@ -770,19 +838,27 @@ impl ObservadorFabrica {
         if self.id != Some(ex.id) {
             self.id = Some(ex.id);
             self.vistos = registro.len();
+            self.erros = 0;
             return vec![EventoFabrica::Abriu(ex.id)];
         }
-        // "Reiniciar" esvazia o registro.
+        // "Reiniciar" esvazia o registro: a tentativa recomeça sem erros.
+        if registro.len() < self.vistos {
+            self.erros = 0;
+        }
         self.vistos = self.vistos.min(registro.len());
-        let eventos = registro[self.vistos..]
-            .iter()
-            .filter_map(|ev| match ev.resultado {
-                PassoCompleto => Some(EventoFabrica::Acerto),
-                ExercicioCompleto => Some(EventoFabrica::Concluiu),
-                Errada => Some(EventoFabrica::Erro),
-                _ => None,
-            })
-            .collect();
+        let mut eventos = Vec::new();
+        for ev in &registro[self.vistos..] {
+            match ev.resultado {
+                Errada => self.erros += 1,
+                ExercicioCompleto => {
+                    eventos.push(EventoFabrica::Concluiu {
+                        sem_erros: self.erros == 0,
+                    });
+                    self.erros = 0;
+                }
+                _ => {}
+            }
+        }
         self.vistos = registro.len();
         eventos
     }
@@ -1055,7 +1131,11 @@ impl EstadoCursos {
             Ok(a) => {
                 self.midia.parar_tudo();
                 self.cursor_audio = None;
-                self.observador = ObservadorPratica::default();
+                self.observador = ObservadorPratica::com_fronteiras(fronteiras_de_frase(
+                    a.roteiro.as_ref(),
+                    &a.licao_id,
+                    &a.exercicio.id,
+                ));
                 self.partitura.limpar_pratica();
                 if let Some(bpm) = a.exercicio.bpm {
                     self.partitura.definir_bpm(bpm as f32);
@@ -2026,16 +2106,26 @@ mod testes {
             );
             vistos.extend(e.atualizar());
         }
-        assert!(vistos.contains(&EventoPratica::Passo(4)), "{vistos:?}");
+        // O Roteiro marca a frase em 4 (falas `passo`): o trecho 0..4 fecha limpo ANTES do passo 4.
+        let pos = |ev: EventoPratica| vistos.iter().position(|v| *v == ev);
+        let fim = pos(EventoPratica::FimDeTrecho { limpo: true }).expect("fim da frase");
         assert!(
-            vistos.contains(&EventoPratica::Concluida {
-                pct: 100.0,
-                concluiu: true
-            }),
+            fim < pos(EventoPratica::Passo(4)).expect("passo 4"),
             "{vistos:?}"
         );
+        let concluida = EventoPratica::Concluida {
+            pct: 100.0,
+            concluiu: true,
+        };
+        // O último trecho fecha limpo e logo antes da conclusão.
+        let n = vistos.len();
+        assert_eq!(
+            &vistos[n - 2..],
+            [EventoPratica::FimDeTrecho { limpo: true }, concluida]
+        );
         assert!(e.progresso(ID_CURSO).concluido("cinco-notas"));
-        // Nova rodada com erros: nota errada vira evento de erro, e parar encerra com faltas.
+        // Nova rodada: nota errada isolada NÃO gera evento nenhum (nem fala); parar encerra com
+        // faltas e o último trecho fecha com erro.
         e.partitura.limpar_pratica();
         e.partitura.iniciar_pratica(10_000);
         e.atualizar();
@@ -2044,16 +2134,19 @@ mod testes {
             piano_tutor_core::NotaMidi::nova(61).expect("nota"),
             11_000,
         );
-        assert!(e.atualizar().contains(&EventoPratica::Erro));
+        assert!(e.atualizar().is_empty(), "nota errada isolada não comenta");
         e.partitura.parar_pratica();
         let fim = e.atualizar();
         assert!(
             matches!(
                 fim.as_slice(),
-                [EventoPratica::Concluida {
-                    concluiu: false,
-                    ..
-                }]
+                [
+                    EventoPratica::FimDeTrecho { limpo: false },
+                    EventoPratica::Concluida {
+                        concluiu: false,
+                        ..
+                    }
+                ]
             ),
             "{fim:?}"
         );
@@ -2066,8 +2159,130 @@ mod testes {
         );
     }
 
+    /// Toca as primeiras `n` notas certas do Exercício sintético, depois de uma nota errada
+    /// opcional, e junta os eventos de cada quadro.
+    fn tocar_sintetico(e: &mut EstadoCursos, errar_primeiro: bool, n: usize) -> Vec<EventoPratica> {
+        let mut vistos = e.atualizar();
+        if errar_primeiro {
+            e.partitura.nota_tocada(
+                true,
+                piano_tutor_core::NotaMidi::nova(61).expect("nota"),
+                1_500,
+            );
+            vistos.extend(e.atualizar());
+        }
+        for i in 0..n {
+            let nota = [60u8, 62, 64, 65, 67, 69, 71, 72][i % 8];
+            e.partitura.nota_tocada(
+                true,
+                piano_tutor_core::NotaMidi::nova(nota).expect("nota"),
+                2_000 + i as u64,
+            );
+            vistos.extend(e.atualizar());
+        }
+        vistos
+    }
+
     #[test]
-    fn observador_de_fabrica_ve_abrir_acertos_erros_e_conclusao() {
+    fn trecho_com_erro_fecha_com_erro_e_o_seguinte_limpo_fecha_com_acerto() {
+        let dados = tempfile::tempdir().expect("dados");
+        instalar_sintetico(dados.path(), None);
+        let (mut e, _) = estado(dados.path());
+        e.selecionar(1);
+        e.abrir_exercicio("s03-a14", "cinco-notas").expect("abre");
+        e.partitura.iniciar_pratica(1_000);
+        let vistos = tocar_sintetico(&mut e, true, 16);
+        let trechos: Vec<EventoPratica> = vistos
+            .iter()
+            .copied()
+            .filter(|v| matches!(v, EventoPratica::FimDeTrecho { .. }))
+            .collect();
+        // Frase 0..4 com a nota errada; frase 4..16 limpa e concluída (100 % das esperadas).
+        assert_eq!(
+            trechos,
+            [
+                EventoPratica::FimDeTrecho { limpo: false },
+                EventoPratica::FimDeTrecho { limpo: true }
+            ],
+            "{vistos:?}"
+        );
+    }
+
+    #[test]
+    fn sem_falas_de_passo_o_trecho_e_de_dois_compassos() {
+        let dados = tempfile::tempdir().expect("dados");
+        instalar_sintetico(dados.path(), None);
+        let (mut e, _) = estado(dados.path());
+        e.selecionar(1);
+        e.abrir_exercicio("s03-a14", "cinco-notas").expect("abre");
+        // Sem fronteiras do Roteiro: a cada 2 compassos (8 notas em 4/4).
+        e.observador = ObservadorPratica::com_fronteiras(Vec::new());
+        e.partitura.iniciar_pratica(1_000);
+        let vistos = tocar_sintetico(&mut e, true, 16);
+        let trechos: Vec<(usize, EventoPratica)> = vistos
+            .iter()
+            .copied()
+            .enumerate()
+            .filter(|(_, v)| matches!(v, EventoPratica::FimDeTrecho { .. }))
+            .collect();
+        assert_eq!(
+            trechos.iter().map(|t| t.1).collect::<Vec<_>>(),
+            [
+                EventoPratica::FimDeTrecho { limpo: false },
+                EventoPratica::FimDeTrecho { limpo: true }
+            ],
+            "{vistos:?}"
+        );
+        // O primeiro fecha logo antes do passo 8 (3.º compasso), não antes.
+        assert_eq!(
+            vistos[trechos[0].0 + 1],
+            EventoPratica::Passo(8),
+            "{vistos:?}"
+        );
+    }
+
+    #[test]
+    fn fronteiras_de_frase_vem_das_falas_passo_do_exercicio() {
+        let r = Roteiro::de_toml(
+            r#"formato_versao = 1
+[[falas]]
+id = "a"
+licao = "l1"
+exercicio = "e1"
+momento = "passo"
+passo = 8
+texto = "x"
+estado = "hipotese"
+[[falas]]
+id = "b"
+licao = "l1"
+momento = "passo"
+passo = 4
+texto = "x"
+estado = "aprovada"
+[[falas]]
+id = "c"
+licao = "l1"
+exercicio = "outro"
+momento = "passo"
+passo = 2
+texto = "x"
+estado = "aprovada"
+[[falas]]
+id = "d"
+licao = "l1"
+momento = "erro"
+texto = "x"
+estado = "aprovada"
+"#,
+        )
+        .expect("roteiro");
+        assert_eq!(fronteiras_de_frase(Some(&r), "l1", "e1"), [4, 8]);
+        assert!(fronteiras_de_frase(None, "l1", "e1").is_empty());
+    }
+
+    #[test]
+    fn observador_de_fabrica_so_comenta_ao_concluir_o_exercicio() {
         use crate::exercicios::EstadoExercicios;
         use piano_tutor_core::NotaMidi;
         let n = |x| NotaMidi::nova(x).expect("nota");
@@ -2075,21 +2290,34 @@ mod testes {
         let mut o = ObservadorFabrica::default();
         assert_eq!(o.observar(&e), [EventoFabrica::Abriu(1)]);
         assert!(o.observar(&e).is_empty());
-        // Ex. 1: errar (61) e depois acertar (60) conclui.
+        // Ex. 1: errar (61) não gera evento; acertar (60) conclui, e a tentativa teve erro.
         e.classificar(true, n(61), 1_000);
-        assert_eq!(o.observar(&e), [EventoFabrica::Erro]);
+        assert!(o.observar(&e).is_empty(), "nota errada isolada não comenta");
         e.classificar(true, n(60), 2_000);
-        assert_eq!(o.observar(&e), [EventoFabrica::Concluiu]);
+        assert_eq!(
+            o.observar(&e),
+            [EventoFabrica::Concluiu { sem_erros: false }]
+        );
         assert!(o.observar(&e).is_empty());
-        // Trocar de exercício reabre; reiniciar não repete eventos velhos.
+        // Ex. 2 (10 notas): passos certos não geram evento; o erro conta só na tentativa em
+        // curso; reiniciar zera.
         assert!(e.selecionar(1));
         assert_eq!(o.observar(&e), [EventoFabrica::Abriu(2)]);
         e.classificar(true, n(60), 3_000);
-        assert_eq!(o.observar(&e), [EventoFabrica::Acerto]);
+        assert!(o.observar(&e).is_empty(), "passo certo isolado não comenta");
+        e.classificar(true, n(61), 3_500);
+        assert!(o.observar(&e).is_empty());
         e.reiniciar();
         assert!(o.observar(&e).is_empty());
-        e.classificar(true, n(60), 4_000);
-        assert_eq!(o.observar(&e), [EventoFabrica::Acerto]);
+        let mut t = 4_000;
+        for x in [60, 62, 64, 65, 67, 67, 65, 64, 62, 60] {
+            e.classificar(true, n(x), t);
+            t += 1_000;
+        }
+        assert_eq!(
+            o.observar(&e),
+            [EventoFabrica::Concluiu { sem_erros: true }]
+        );
         // Ao entrar na tela de novo, o professor abre o exercício outra vez.
         o.reiniciar();
         assert_eq!(o.observar(&e), [EventoFabrica::Abriu(2)]);

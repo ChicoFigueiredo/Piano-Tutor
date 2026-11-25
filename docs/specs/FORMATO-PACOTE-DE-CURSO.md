@@ -119,7 +119,15 @@ estado = "hipotese"           # só "aprovada" é dita pelo professor
 origem = { aula = 14, inicio_s = 12.3, fim_s = 18.0 }   # trecho da fala da Aula de onde veio
 ```
 
-O Curso de fábrica usa o mesmo `roteiro.toml` (embutido no app, falas já aprovadas).
+O Curso de fábrica usa o mesmo `roteiro.toml` (embutido no app; suas falas nascem como hipótese até o revisor aprová-las).
+
+**Momentos.** `antes` é dito ao abrir o Exercício; `passo` ao chegar à nota de índice `passo`; `depois` ao terminar. `acerto` e `erro` são comentários de **trecho**: o professor os diz **ao fim de um trecho, nunca a cada nota** (a nota isolada só tem o retorno visual verde/vermelho, sem fala). Trecho sem nota errada ou faltante → `acerto`; trecho com erro → `erro` (por exemplo, "boa, agora de novo mais devagar"). O que é um trecho:
+
+- **Exercício de partitura**: uma frase. As falas `passo` do Exercício marcam o começo de cada frase (a nota `passo` abre a frase seguinte); sem falas `passo`, a cada 2 compassos. O último trecho fecha ao concluir a prática e só conta como `acerto` se também bateu o limiar de conclusão (80 %). O comentário do trecho vem antes da fala `passo` da frase seguinte e antes do `depois`.
+- **Exercício de fábrica**: a tentativa inteira, ao concluir (os exercícios têm de 1 a 10 passos; não há comentário intermediário).
+- **Chamada e resposta**: cada chamada é um trecho e já é avaliada ao fim dela.
+
+O professor não repete a mesma fala em seguida (havendo outra do mesmo momento) e só diz falas `aprovada`.
 
 ## Instalação e progresso
 
