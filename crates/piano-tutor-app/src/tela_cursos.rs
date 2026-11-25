@@ -71,10 +71,16 @@ pub fn desenhar_tela(
     ctx: &ContextoCursos<'_>,
 ) -> Vec<AcaoCursos> {
     let mut acoes = Vec::new();
+    abrir_player_do_ambiente(e);
     ScrollArea::vertical()
         .id_salt("cursos-vertical")
         .auto_shrink([false, false])
         .show(ui, |ui| {
+            if e.player.is_some() {
+                desenhar_cabecalho_do_player(ui, e, ctx, &mut acoes);
+                crate::tela_player_aula::desenhar_player(ui, e, espelho);
+                return;
+            }
             ui.heading("Cursos");
             desenhar_seletor(ui, e);
             ui.add_space(4.0);
@@ -88,6 +94,67 @@ pub fn desenhar_tela(
             }
         });
     acoes
+}
+
+/// Para testar: `PIANO_TUTOR_PLAYER=<curso>/<lição>/<exercício>` abre o Player de Aula no
+/// primeiro quadro da tela (junto com `PIANO_TUTOR_ROTA=cursos`).
+fn abrir_player_do_ambiente(e: &mut EstadoCursos) {
+    static FEITO: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(false);
+    if FEITO.swap(true, std::sync::atomic::Ordering::Relaxed) {
+        return;
+    }
+    let Ok(pedido) = std::env::var("PIANO_TUTOR_PLAYER") else {
+        return;
+    };
+    let partes: Vec<&str> = pedido.split('/').collect();
+    let [curso, licao, resto @ ..] = partes.as_slice() else {
+        return;
+    };
+    e.selecionar_por_id(curso);
+    let exercicio = resto.first().copied();
+    if let Some(x) = exercicio {
+        let _ = e.abrir_exercicio(licao, x);
+    }
+    crate::tela_player_aula::abrir_player(e, licao, exercicio);
+}
+
+/// Topo da tela com o Player de Aula aberto: de onde veio, como voltar e os avisos.
+fn desenhar_cabecalho_do_player(
+    ui: &mut Ui,
+    e: &mut EstadoCursos,
+    ctx: &ContextoCursos<'_>,
+    acoes: &mut Vec<AcaoCursos>,
+) {
+    let titulo = e
+        .player
+        .as_ref()
+        .map(|p| {
+            p.arquivo
+                .file_stem()
+                .map_or_else(String::new, |n| n.to_string_lossy().into_owned())
+        })
+        .unwrap_or_default();
+    ui.horizontal_wrapped(|ui| {
+        if ui
+            .button("Voltar às Lições")
+            .on_hover_text("Fecha o Player de Aula")
+            .clicked()
+        {
+            crate::tela_player_aula::fechar_player(e);
+            e.fechar_exercicio();
+            acoes.push(AcaoCursos::PararChamada);
+        }
+        ui.heading(format!("{} · {titulo}", e.curso_selecionado().titulo));
+    });
+    if let Some(m) = &e.aviso_video {
+        mensagem(ui, m);
+    }
+    if let Some(m) = &e.mensagem {
+        mensagem(ui, m);
+    }
+    if let Some(ac) = desenhar_professor(ui, ctx.professor) {
+        acoes.push(ac);
+    }
 }
 
 // --- Seletor e instalação ---------------------------------------------------------------------
@@ -289,12 +356,17 @@ fn desenhar_tutor(ui: &mut Ui, e: &mut EstadoCursos, idx: usize, acoes: &mut Vec
             });
     }
     if let Some(l) = video {
-        e.ver_video(&l, None);
+        crate::tela_player_aula::abrir_player(e, &l, None);
     }
     if let Some((l, x)) = abrir {
         // O professor é ligado ao Exercício pelo app (AbriuExercicio).
         if e.abrir_exercicio(&l, &x).is_ok() {
             acoes.push(AcaoCursos::AbriuExercicio);
+            // Exercício com trecho na Aula e vídeo achado: abre direto no Player de Aula.
+            let tem_trecho = e.trechos_da_licao(&l).iter().any(|t| t.exercicio_id == x);
+            if tem_trecho && e.resolver_video(&l).is_ok() {
+                crate::tela_player_aula::abrir_player(e, &l, Some(&x));
+            }
         }
     }
 }
@@ -341,9 +413,7 @@ fn desenhar_licao(
         if l.tipo == TipoLicao::Assistir
             && ui
                 .button("Ver vídeo")
-                .on_hover_text(
-                    "Abre o vídeo desta Aula no mpv (você indica a pasta dos vídeos uma vez)",
-                )
+                .on_hover_text("Abre esta Aula no Player (você indica a pasta dos vídeos uma vez)")
                 .clicked()
         {
             *video = Some(l.id.clone());
@@ -560,10 +630,14 @@ fn desenhar_exercicio(
         }
         if ui
             .add_enabled(a.aula.is_some(), Button::new("Ver vídeo"))
-            .on_hover_text("Abre o vídeo da Aula no instante em que o tutor toca este exercício")
+            .on_hover_text(
+                "Abre o Player de Aula: vídeo, partitura e teclado juntos, no instante em que o \
+                 tutor toca este exercício",
+            )
             .clicked()
         {
-            e.ver_video(&a.licao_id, Some(&a.exercicio.id));
+            let (l, x) = (a.licao_id.clone(), a.exercicio.id.clone());
+            crate::tela_player_aula::abrir_player(e, &l, Some(&x));
         }
         if !modo_chamada {
             botao_chamada(ui, acoes);

@@ -1052,6 +1052,11 @@ pub fn desenhar_corpo(
 /// a embutem (a de revisão do tutor). Quem chama cuida de `atualizar` e dos botões.
 pub fn desenhar_vista(ui: &mut Ui, e: &mut EstadoPartitura, som: &ServicoSom) {
     let destaque = e.destaque(som.agora_ns());
+    desenhar_vista_com_cursor(ui, e, destaque);
+}
+
+/// A vista da partitura com o cursor dado por fora (o Player de Aula segue o vídeo).
+pub fn desenhar_vista_com_cursor(ui: &mut Ui, e: &mut EstadoPartitura, destaque: Option<Destaque>) {
     let Some(p) = e.partitura.take() else {
         ui.label(RichText::new("Nenhuma partitura carregada.").weak());
         return;
@@ -1073,7 +1078,7 @@ pub fn desenhar_vista(ui: &mut Ui, e: &mut EstadoPartitura, som: &ServicoSom) {
         },
     );
     e.partitura = Some(p);
-    if e.tocando() {
+    if e.tocando() || destaque.is_some() {
         ui.ctx().request_repaint();
     }
 }

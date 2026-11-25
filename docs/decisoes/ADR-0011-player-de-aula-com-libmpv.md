@@ -26,3 +26,6 @@ A tela do Curso era uma árvore de Seções com "Abrir" e "Ver vídeo", que abri
 
 - O app passa a ligar à libmpv (dlopen de `libmpv.so.2`). Sem ela, o player mostra a partitura e o teclado e oferece o "Ver vídeo" externo. O empacotamento `.deb` precisa declarar `libmpv2` quando for retomado.
 - O Alinhamento ganha Âncoras manuais com proveniência ("editor", autor, data), distintas das notas alinhadas pelo DTW.
+- O dlopen da libmpv exige `unsafe`. O crate do app troca `[lints] workspace = true` por `unsafe_code = "deny"` (mais os lints clippy do workspace, copiados), e só `video_embutido.rs` tem `#![allow(unsafe_code)]`. O resto do app continua sem `unsafe`.
+- Render da libmpv em modo software (quadro RGB0 → textura do egui); render por OpenGL fica para quando o custo de CPU pesar.
+- Para testar sem clicar: `PIANO_TUTOR_ROTA=cursos PIANO_TUTOR_PLAYER=<curso>/<lição>/<exercício>` abre o player direto.

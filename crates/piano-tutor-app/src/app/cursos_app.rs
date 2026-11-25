@@ -98,6 +98,9 @@ impl AppPianoTutor {
         }
         if self.rota_atual == ROTA_CURSOS {
             self.cursos.partitura.nota_tocada(ligada, nota, instante_ns);
+            if ligada && self.cursos.player.is_some() {
+                self.cursos.notas_do_aluno.push(nota.numero());
+            }
         }
     }
 

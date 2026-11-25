@@ -2900,6 +2900,7 @@ version = "0.1.0"
 dependencies = [
  "bancada-casca",
  "dirs",
+ "libloading 0.8.9",
  "piano-tutor-audio",
  "piano-tutor-core",
  "piano-tutor-curso",

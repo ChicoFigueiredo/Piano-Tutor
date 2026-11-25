@@ -39,14 +39,24 @@ toml_edit = { version = "=0.25.20", default-features = false, features = ["parse
 png = { version = "=0.18.1", default-features = false }  # MIT OR Apache-2.0
 # Preferências e perfis em SQLite (ADR-0010); SQLite embutido, sem lib do sistema no .deb.
 rusqlite = { version = "=0.43.0", features = ["bundled"] }  # MIT; SQLite é domínio público
+# Vídeo embutido (ADR-0011): dlopen da libmpv.so.2 em tempo de execução, sem ligar nem exigir headers.
+libloading = "=0.8.9"  # ISC
 bancada-casca = { git = "https://github.com/ChicoFigueiredo/bancada", rev = "94818fd95dc74b5a42a7757b1d258ed17822ed06" }
 
 [dev-dependencies]
 # Pastas temporárias nos testes de revisão: MIT OR Apache-2.0.
 tempfile = "=3.27.0"
 
-[lints]
-workspace = true
+# Mesmos lints do workspace, exceto `unsafe_code`: `forbid` (workspace) vira `deny` aqui para que
+# SÓ o módulo `video_embutido` (dlopen da libmpv, ADR-0011) o libere com `#![allow(unsafe_code)]`.
+# Todo o resto do app continua sem `unsafe`. (`[lints] workspace = true` não admite exceções.)
+[lints.rust]
+unsafe_code = "deny"
+
+[lints.clippy]
+dbg_macro = "warn"
+todo = "warn"
+unwrap_used = "warn"
 
 # Empacotamento .deb mínimo (F03, ticket #40). Gerado por scripts/empacotar-deb.sh.
 # O SoundFont FluidR3_GM (MIT, Debian main) NÃO é embutido: vem como dependência do sistema.

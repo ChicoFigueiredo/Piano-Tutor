@@ -978,6 +978,10 @@ pub struct EstadoCursos {
     /// Preferência "Usar conteúdo não revisado" (a do app; padrão ligada). O app a mantém em
     /// dia com a do professor, que é quem a grava.
     pub usar_nao_revisado: bool,
+    /// Player de Aula aberto (ADR-0011): vídeo embutido, trechos e Modo de acompanhamento.
+    pub player: Option<crate::tela_player_aula::EstadoPlayer>,
+    /// Notas que o aluno ligou desde o último quadro (o player as consome).
+    pub notas_do_aluno: Vec<u8>,
 }
 
 impl std::fmt::Debug for EstadoCursos {
@@ -1006,6 +1010,8 @@ impl EstadoCursos {
             campo_videos: String::new(),
             verificacao: None,
             aviso_video: None,
+            player: None,
+            notas_do_aluno: Vec::new(),
             cursor_audio: None,
             observador: ObservadorPratica::default(),
             usar_nao_revisado: true,
@@ -1259,6 +1265,93 @@ impl EstadoCursos {
         });
     }
 
+    /// O arquivo do vídeo da Aula da Lição `licao_id` na pasta que o aluno indicou.
+    pub fn resolver_video(&self, licao_id: &str) -> Result<PathBuf, String> {
+        let curso = self.curso_selecionado();
+        let manifesto = curso
+            .manifesto
+            .as_ref()
+            .ok_or("Este Curso não tem vídeos de Aula.")?;
+        let licao = manifesto
+            .secoes
+            .iter()
+            .flat_map(|s| &s.licoes)
+            .find(|l| l.id == licao_id)
+            .ok_or("Lição não encontrada neste Curso.")?;
+        let aula = licao
+            .aula
+            .as_ref()
+            .ok_or("Esta Lição não indica um vídeo de Aula.")?;
+        let dados = self
+            .dados
+            .as_deref()
+            .ok_or("Não há pasta de dados do usuário.")?;
+        let pasta = ler_pasta_de_videos(dados, &curso.id).ok_or(
+            "Indique a pasta onde estão os vídeos deste Curso (campo «Pasta dos vídeos») e tente de novo.",
+        )?;
+        achar_video(&pasta, &aula.nome_arquivo).ok_or_else(|| {
+            format!(
+                "Não achei o vídeo «{}» na pasta {}.",
+                aula.nome_arquivo,
+                pasta.display()
+            )
+        })
+    }
+
+    /// Os Exercícios da Lição que têm trecho na Aula, como trechos da linha do tempo.
+    pub fn trechos_da_licao(&self, licao_id: &str) -> Vec<crate::player_aula::Trecho> {
+        let permitir = self.usar_nao_revisado;
+        let mut v: Vec<_> = self
+            .curso_selecionado()
+            .manifesto
+            .iter()
+            .flat_map(|m| &m.secoes)
+            .flat_map(|s| &s.licoes)
+            .filter(|l| l.id == licao_id)
+            .flat_map(|l| &l.exercicios)
+            .filter(|e| e.utilizavel(permitir))
+            .filter_map(|e| {
+                e.trecho_aula.map(|t| crate::player_aula::Trecho {
+                    exercicio_id: e.id.clone(),
+                    titulo: e.titulo.clone(),
+                    inicio_s: t.inicio_s,
+                    fim_s: t.fim_s,
+                })
+            })
+            .collect();
+        v.sort_by(|a, b| a.inicio_s.total_cmp(&b.inicio_s));
+        v
+    }
+
+    /// Dedilhado do Exercício aberto: o do pacote (`dedilhados/<id>.json`) ou a Hipótese que a
+    /// fábrica deixou nos dados do aluno (`cursos/dedilhados/<curso>/<id>.json`).
+    pub fn dedilhado_do_aberto(&self) -> Option<crate::player_aula::Dedilhado> {
+        let a = self.aberto.as_ref()?;
+        let curso = self.curso_selecionado();
+        let nome = format!("{}.json", a.exercicio.id);
+        if !caminho_seguro(&nome) {
+            return None;
+        }
+        let mut candidatos = Vec::new();
+        if let (Some(m), Some(pasta)) = (curso.manifesto.as_ref(), curso.pasta.as_ref()) {
+            let c = format!("dedilhados/{nome}");
+            if m.arquivos.iter().any(|x| x.caminho == c) {
+                candidatos.push(pasta.join(c));
+            }
+        }
+        if let Some(d) = self.dados.as_deref() {
+            candidatos.push(
+                d.join("cursos")
+                    .join("dedilhados")
+                    .join(&curso.id)
+                    .join(&nome),
+            );
+        }
+        candidatos
+            .into_iter()
+            .find_map(|p| crate::player_aula::Dedilhado::de_json(&fs::read(p).ok()?).ok())
+    }
+
     fn preparar_video(
         &mut self,
         licao_id: &str,
@@ -1378,6 +1471,9 @@ impl EstadoCursos {
     /// Ao sair da tela: nenhum mpv fica vivo e a partitura para.
     pub fn ao_sair_da_tela(&mut self) {
         self.midia.parar_tudo();
+        // O vídeo embutido não continua tocando fora da tela.
+        self.player = None;
+        self.notas_do_aluno.clear();
         self.cursor_audio = None;
         self.verificacao = None;
     }
@@ -1385,6 +1481,7 @@ impl EstadoCursos {
     /// A tela precisa de ~60 quadros por segundo (áudio com cursor ou instalação em curso).
     pub fn precisa_de_quadros(&self) -> bool {
         self.midia.audio_tocando()
+            || self.player.is_some()
             || self.instalando.is_some()
             || self.verificacao.is_some()
             || self.partitura.praticando()

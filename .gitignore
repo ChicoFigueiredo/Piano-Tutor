@@ -25,3 +25,8 @@
 
 # Exceção: MIDIs sintéticos CC0 de referência da F06 (tests/fixtures/LEIAME.md).
 !crates/piano-tutor-app/tests/fixtures/*.mid
+
+# Fábrica de vídeo (fabrica/video): ambiente virtual e modelo baixado
+fabrica/video/.venv/
+fabrica/video/modelos/
+fabrica/video/exemplos/**/*.png

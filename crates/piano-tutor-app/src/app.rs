@@ -1167,6 +1167,7 @@ impl AppCasca for AppPianoTutor {
             ROTA_EXERCICIOS,
             ROTA_PARTITURA,
             ROTA_GRAVACAO,
+            ROTA_CURSOS,
         ];
         match conhecidas.into_iter().find(|r| *r == pedida) {
             Some(r) => Rota::nova(r),

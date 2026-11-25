@@ -1,0 +1,252 @@
+{
+  "formato_versao": 1,
+  "estado": "hipotese",
+  "metodo": "mediapipe-hand-landmarker+calibracao-de-video",
+  "proveniencia": {
+    "ferramenta": "fabrica/video/dedilhado.py",
+    "video": "14 - Música (Cinco notas no piano).mp4",
+    "alinhamento": "cinco-notas.json",
+    "calibracao": "calibracao.json",
+    "calibracao_confianca": 0.84,
+    "modelo_maos": "hand_landmarker.task (MediaPipe, float16)",
+    "bibliotecas": {
+      "mediapipe": "1.2.3",
+      "opencv": "5.1.0"
+    },
+    "trecho_inicio_s": 204.379,
+    "trecho_inicio_origem": "--trecho-inicio",
+    "janela_ms": [
+      -80.0,
+      40.0
+    ],
+    "lado_da_mao": "geometria do dorso visto de cima (o rótulo do MediaPipe não é usado)",
+    "regra_de_voto": "soma, nos quadros da janela, de gaussiana (sigma 0,3 tecla) do x da ponta do dedo ao centro da tecla; vence o par (mão, dedo) de maior soma"
+  },
+  "exercicio": "cinco-notas",
+  "notas": [
+    {
+      "indice": 0,
+      "midi": 60,
+      "dedo": 1,
+      "mao": "direita",
+      "confianca": 0.824,
+      "quadros_usados": 4,
+      "quadros_com_mao": 4,
+      "segundo_colocado": {
+        "mao": "direita",
+        "dedo": 2
+      },
+      "t_video_s": 204.879
+    },
+    {
+      "indice": 1,
+      "midi": 62,
+      "dedo": 2,
+      "mao": "direita",
+      "confianca": 0.907,
+      "quadros_usados": 4,
+      "quadros_com_mao": 4,
+      "segundo_colocado": {
+        "mao": "direita",
+        "dedo": 3
+      },
+      "t_video_s": 205.512
+    },
+    {
+      "indice": 2,
+      "midi": 60,
+      "dedo": 1,
+      "mao": "direita",
+      "confianca": 0.952,
+      "quadros_usados": 3,
+      "quadros_com_mao": 3,
+      "segundo_colocado": {
+        "mao": "direita",
+        "dedo": 2
+      },
+      "t_video_s": 206.123
+    },
+    {
+      "indice": 3,
+      "midi": 62,
+      "dedo": 2,
+      "mao": "direita",
+      "confianca": 0.976,
+      "quadros_usados": 4,
+      "quadros_com_mao": 4,
+      "segundo_colocado": {
+        "mao": "direita",
+        "dedo": 3
+      },
+      "t_video_s": 206.763
+    },
+    {
+      "indice": 4,
+      "midi": 64,
+      "dedo": 3,
+      "mao": "direita",
+      "confianca": 0.845,
+      "quadros_usados": 4,
+      "quadros_com_mao": 4,
+      "segundo_colocado": {
+        "mao": "direita",
+        "dedo": 4
+      },
+      "t_video_s": 207.369
+    },
+    {
+      "indice": 5,
+      "midi": 65,
+      "dedo": 4,
+      "mao": "direita",
+      "confianca": 0.981,
+      "quadros_usados": 4,
+      "quadros_com_mao": 4,
+      "segundo_colocado": {
+        "mao": "direita",
+        "dedo": 3
+      },
+      "t_video_s": 209.836
+    },
+    {
+      "indice": 6,
+      "midi": 62,
+      "dedo": 2,
+      "mao": "direita",
+      "confianca": 0.976,
+      "quadros_usados": 4,
+      "quadros_com_mao": 4,
+      "segundo_colocado": {
+        "mao": "direita",
+        "dedo": 3
+      },
+      "t_video_s": 211.071
+    },
+    {
+      "indice": 7,
+      "midi": 64,
+      "dedo": 3,
+      "mao": "direita",
+      "confianca": 0.92,
+      "quadros_usados": 3,
+      "quadros_com_mao": 3,
+      "segundo_colocado": {
+        "mao": "direita",
+        "dedo": 2
+      },
+      "t_video_s": 212.326
+    },
+    {
+      "indice": 8,
+      "midi": 60,
+      "dedo": 1,
+      "mao": "direita",
+      "confianca": 0.751,
+      "quadros_usados": 4,
+      "quadros_com_mao": 4,
+      "segundo_colocado": {
+        "mao": "direita",
+        "dedo": 2
+      },
+      "t_video_s": 214.778
+    },
+    {
+      "indice": 9,
+      "midi": 62,
+      "dedo": 2,
+      "mao": "direita",
+      "confianca": 0.975,
+      "quadros_usados": 4,
+      "quadros_com_mao": 4,
+      "segundo_colocado": {
+        "mao": "direita",
+        "dedo": 3
+      },
+      "t_video_s": 215.4
+    },
+    {
+      "indice": 10,
+      "midi": 60,
+      "dedo": 1,
+      "mao": "direita",
+      "confianca": 0.799,
+      "quadros_usados": 3,
+      "quadros_com_mao": 3,
+      "segundo_colocado": {
+        "mao": "direita",
+        "dedo": 2
+      },
+      "t_video_s": 216.019
+    },
+    {
+      "indice": 11,
+      "midi": 62,
+      "dedo": 2,
+      "mao": "direita",
+      "confianca": 0.936,
+      "quadros_usados": 3,
+      "quadros_com_mao": 3,
+      "segundo_colocado": {
+        "mao": "direita",
+        "dedo": 3
+      },
+      "t_video_s": 216.615
+    },
+    {
+      "indice": 12,
+      "midi": 64,
+      "dedo": 3,
+      "mao": "direita",
+      "confianca": 0.937,
+      "quadros_usados": 3,
+      "quadros_com_mao": 3,
+      "segundo_colocado": {
+        "mao": "direita",
+        "dedo": 4
+      },
+      "t_video_s": 217.249
+    },
+    {
+      "indice": 13,
+      "midi": 62,
+      "dedo": 2,
+      "mao": "direita",
+      "confianca": 0.963,
+      "quadros_usados": 3,
+      "quadros_com_mao": 3,
+      "segundo_colocado": {
+        "mao": "direita",
+        "dedo": 3
+      },
+      "t_video_s": 219.724
+    },
+    {
+      "indice": 14,
+      "midi": 67,
+      "dedo": 5,
+      "mao": "direita",
+      "confianca": 0.991,
+      "quadros_usados": 4,
+      "quadros_com_mao": 4,
+      "segundo_colocado": {
+        "mao": "direita",
+        "dedo": 4
+      },
+      "t_video_s": 220.967
+    },
+    {
+      "indice": 15,
+      "midi": 60,
+      "dedo": 1,
+      "mao": "direita",
+      "confianca": 0.96,
+      "quadros_usados": 4,
+      "quadros_com_mao": 4,
+      "segundo_colocado": {
+        "mao": "direita",
+        "dedo": 2
+      },
+      "t_video_s": 222.208
+    }
+  ]
+}
