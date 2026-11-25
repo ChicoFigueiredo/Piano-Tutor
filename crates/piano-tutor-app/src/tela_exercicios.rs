@@ -1,13 +1,16 @@
 //! Tela Exercícios (F05): professor assistido com 10 exercícios progressivos, feedback com
 //! texto e símbolo (nunca só cor), estatísticas e comandos de progresso.
 
+use crate::chamada_app::{ChamadaAtiva, fabrica_tem_chamada};
 use crate::espelho::EstadoEspelho;
 use crate::exercicios::{
     Classificacao, ConfigExercicios, EstadoExercicios, Fase, JANELA_MAX_MS, JANELA_MIN_MS, Tipo,
     Tom, nome_nota,
 };
 use crate::gravacao::agendar_gravacao;
+use crate::professor::Professor;
 use crate::som::ServicoSom;
+use crate::tela_cursos::{AcaoCursos, desenhar_chamada_de_fabrica, desenhar_professor};
 use crate::tela_espelho::desenhar_teclado_embutido;
 use bancada_casca::egui::{Button, Color32, RichText, ScrollArea, Slider, Ui, vec2};
 use piano_tutor_core::NotaMidi;
@@ -75,7 +78,10 @@ pub fn desenhar_tela(
     e: &mut EstadoExercicios,
     espelho: &mut EstadoEspelho,
     som: &mut ServicoSom,
-) {
+    professor: &Professor,
+    chamada: Option<&ChamadaAtiva>,
+) -> Vec<AcaoCursos> {
+    let mut acoes = Vec::new();
     // Limite de tempo opcional e gravação do progresso quando as teclas estão soltas.
     e.verificar_tempo(som.agora_ns());
     if espelho.teclas().notas_ligadas().next().is_none() {
@@ -89,6 +95,12 @@ pub fn desenhar_tela(
             desenhar_lista(ui, e);
             ui.add_space(8.0);
             desenhar_exercicio(ui, e, som);
+            ui.add_space(4.0);
+            if let Some(a) = desenhar_professor(ui, professor) {
+                acoes.push(a);
+            }
+            let tem_chamada = e.exercicio().is_some_and(fabrica_tem_chamada);
+            acoes.extend(desenhar_chamada_de_fabrica(ui, tem_chamada, chamada));
             ui.add_space(6.0);
             desenhar_feedback(ui, e);
             desenhar_erros(ui, e);
@@ -109,6 +121,7 @@ pub fn desenhar_tela(
             ui.add_space(6.0);
             desenhar_progresso(ui, e);
         });
+    acoes
 }
 
 fn desenhar_lista(ui: &mut Ui, e: &mut EstadoExercicios) {

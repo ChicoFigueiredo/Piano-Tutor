@@ -9,7 +9,7 @@
 //! - `Acao::TocarNotas` volta em [`SaidaChamada::tocar`] para o app agendar no motor de som;
 //! - `Acao::Feedback` vira texto **com símbolo** (nunca só cor) e a fala `acerto` ou `erro`
 //!   do Roteiro, se houver aprovada;
-//! - estados visíveis: "Ouça…", "Sua vez", "✓ Acertou", "✗ Tente de novo (2/3)".
+//! - estados visíveis: "Ouça…", "Sua vez", "[OK] Acertou", "[X] Tente de novo (2/3)".
 //!
 //! Nada aqui mede latência de MIDI ou áudio: **NÃO VERIFICADO** com teclado e som reais.
 
@@ -24,9 +24,10 @@ use piano_tutor_core::chamada_resposta::{
 use piano_tutor_core::comparador::EventoEsperado;
 use piano_tutor_core::teoria::{Acorde, identificar_acorde};
 
-/// Símbolos do resultado. A tela só os usa se a fonte tiver o glifo (testado em `app.rs`).
-pub const SIMBOLO_ACERTO: &str = "✓";
-pub const SIMBOLO_ERRO: &str = "✗";
+/// Símbolos do resultado, em texto simples como nas outras telas: a fonte da janela não tem
+/// os glifos ✓ e ✗ (conferido em `app/cursos_app.rs`).
+pub const SIMBOLO_ACERTO: &str = "[OK]";
+pub const SIMBOLO_ERRO: &str = "[X]";
 
 /// Compassos por frase nas chamadas de partitura.
 pub const COMPASSOS_POR_FRASE: usize = 2;
@@ -59,7 +60,7 @@ pub struct SaidaChamada {
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct FeedbackVisual {
     pub acertou: bool,
-    /// "✓ Acertou" ou "✗ Tente de novo (2/3)".
+    /// "[OK] Acertou" ou "[X] Tente de novo (2/3)".
     pub titulo: String,
     /// Por que (ex.: "Faltaram notas."), vazio quando acertou.
     pub detalhe: String,
@@ -108,7 +109,7 @@ pub fn motivo_curto(m: Motivo) -> &'static str {
     }
 }
 
-/// "✗ Tente de novo (2/3)": a tentativa que vem, de quantas.
+/// "[X] Tente de novo (2/3)": a tentativa que vem, de quantas.
 pub fn titulo_do_erro(d: &Detalhes) -> String {
     if d.vai_repetir {
         format!(
@@ -542,9 +543,9 @@ estado = "aprovada"
         let t = andar(&mut c, &mut p, t, t + 2.5, &mut saida);
         let f = c.feedback.clone().expect("feedback");
         assert!(!f.acertou);
-        assert_eq!(f.titulo, "✗ Tente de novo (2/3)");
+        assert_eq!(f.titulo, "[X] Tente de novo (2/3)");
         assert_eq!(f.detalhe, "Faltaram notas.");
-        assert_eq!(c.texto_do_estado(), "✗ Tente de novo (2/3)");
+        assert_eq!(c.texto_do_estado(), "[X] Tente de novo (2/3)");
         assert!(
             voz.pedidos().contains(&"Calma.".to_owned()),
             "{:?}",
@@ -588,9 +589,9 @@ estado = "aprovada"
         assert_eq!(
             vistas[..3],
             [
-                "✗ Tente de novo (2/3)".to_owned(),
-                "✗ Tente de novo (3/3)".to_owned(),
-                "✗ Vamos para a próxima (3 tentativas usadas)".to_owned()
+                "[X] Tente de novo (2/3)".to_owned(),
+                "[X] Tente de novo (3/3)".to_owned(),
+                "[X] Vamos para a próxima (3 tentativas usadas)".to_owned()
             ]
         );
         let r = saida.concluida.expect("terminou");

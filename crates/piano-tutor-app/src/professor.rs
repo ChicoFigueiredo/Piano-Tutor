@@ -170,13 +170,21 @@ impl Professor {
         self.dizer(Momento::Antes, None, false);
     }
 
-    /// Abre o exercício de fábrica `n` (1 a 10) com o Roteiro embutido no app.
-    pub fn abrir_fabrica(&mut self, n: u8) {
+    /// Abre o exercício de fábrica `n` (1 a 10). `roteiro` é o da fábrica com a revisão
+    /// aplicada (`revisao::roteiro_de_fabrica_revisado`); sem ele, o embutido no app.
+    pub fn abrir_fabrica(&mut self, n: u8, roteiro: Option<Roteiro>) {
         self.abrir(
             LICAO_DE_FABRICA,
             &id_de_exercicio_de_fabrica(n),
-            roteiro_de_fabrica().ok(),
+            roteiro.or_else(|| roteiro_de_fabrica().ok()),
         );
+    }
+
+    /// Troca a voz (o app detecta o Piper depois de criar o professor).
+    pub fn trocar_voz(&mut self, voz: Box<dyn Voz>) {
+        self.parar();
+        self.voz = voz;
+        self.erro_de_voz = None;
     }
 
     /// Larga o Exercício atual (ao sair da tela).

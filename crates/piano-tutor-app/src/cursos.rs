@@ -572,6 +572,7 @@ pub struct ExercicioAberto {
     pub curso_id: String,
     pub curso_titulo: String,
     pub licao_id: String,
+    pub licao_numero: u32,
     pub licao_titulo: String,
     pub aula: Option<Aula>,
     pub exercicio: Exercicio,
@@ -662,6 +663,7 @@ pub fn carregar_exercicio(
         curso_id: m.id.clone(),
         curso_titulo: m.titulo.clone(),
         licao_id: licao.id.clone(),
+        licao_numero: licao.numero,
         licao_titulo: licao.titulo.clone(),
         aula: licao.aula.clone(),
         exercicio: ex.clone(),
@@ -727,6 +729,61 @@ impl ObservadorPratica {
                 });
             }
         }
+        eventos
+    }
+}
+
+// --- Observador do Curso de fábrica -----------------------------------------------------------
+
+/// O que aconteceu no exercício de fábrica desde o último quadro.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum EventoFabrica {
+    /// O exercício `n` (1 a 10) foi aberto ou trocado: momento `antes` do Roteiro.
+    Abriu(u8),
+    /// Um passo certo.
+    Acerto,
+    /// Uma nota errada.
+    Erro,
+    /// O exercício foi concluído: momento `depois`.
+    Concluiu,
+}
+
+/// Olha o [`EstadoExercicios`] a cada quadro e diz o que o professor deve comentar.
+#[derive(Debug, Default)]
+pub struct ObservadorFabrica {
+    id: Option<u8>,
+    vistos: usize,
+}
+
+impl ObservadorFabrica {
+    /// Esquece o exercício visto (ao entrar na tela): o próximo quadro gera `Abriu`.
+    pub fn reiniciar(&mut self) {
+        *self = Self::default();
+    }
+
+    pub fn observar(&mut self, e: &crate::exercicios::EstadoExercicios) -> Vec<EventoFabrica> {
+        use crate::exercicios::Classificacao::{Errada, ExercicioCompleto, PassoCompleto};
+        let Some(ex) = e.exercicio() else {
+            return Vec::new();
+        };
+        let registro = &e.tentativa.registro;
+        if self.id != Some(ex.id) {
+            self.id = Some(ex.id);
+            self.vistos = registro.len();
+            return vec![EventoFabrica::Abriu(ex.id)];
+        }
+        // "Reiniciar" esvazia o registro.
+        self.vistos = self.vistos.min(registro.len());
+        let eventos = registro[self.vistos..]
+            .iter()
+            .filter_map(|ev| match ev.resultado {
+                PassoCompleto => Some(EventoFabrica::Acerto),
+                ExercicioCompleto => Some(EventoFabrica::Concluiu),
+                Errada => Some(EventoFabrica::Erro),
+                _ => None,
+            })
+            .collect();
+        self.vistos = registro.len();
         eventos
     }
 }
@@ -1147,10 +1204,10 @@ impl EstadoCursos {
         let (curso, exercicio) = (a.curso_id.clone(), a.exercicio.id.clone());
         let p = self.progressos.entry(curso.clone()).or_default();
         let antes = p.concluido(&exercicio);
-        if p.registrar(&exercicio, pct) {
-            if let Some(d) = self.dados.as_deref() {
-                let _ = p.gravar(&arquivo_de_progresso(d, &curso));
-            }
+        if p.registrar(&exercicio, pct)
+            && let Some(d) = self.dados.as_deref()
+        {
+            let _ = p.gravar(&arquivo_de_progresso(d, &curso));
         }
         !antes && p.concluido(&exercicio)
     }
@@ -2007,6 +2064,35 @@ mod testes {
                 .map(|i| i.melhor_pct),
             Some(100.0)
         );
+    }
+
+    #[test]
+    fn observador_de_fabrica_ve_abrir_acertos_erros_e_conclusao() {
+        use crate::exercicios::EstadoExercicios;
+        use piano_tutor_core::NotaMidi;
+        let n = |x| NotaMidi::nova(x).expect("nota");
+        let mut e = EstadoExercicios::novo(None);
+        let mut o = ObservadorFabrica::default();
+        assert_eq!(o.observar(&e), [EventoFabrica::Abriu(1)]);
+        assert!(o.observar(&e).is_empty());
+        // Ex. 1: errar (61) e depois acertar (60) conclui.
+        e.classificar(true, n(61), 1_000);
+        assert_eq!(o.observar(&e), [EventoFabrica::Erro]);
+        e.classificar(true, n(60), 2_000);
+        assert_eq!(o.observar(&e), [EventoFabrica::Concluiu]);
+        assert!(o.observar(&e).is_empty());
+        // Trocar de exercício reabre; reiniciar não repete eventos velhos.
+        assert!(e.selecionar(1));
+        assert_eq!(o.observar(&e), [EventoFabrica::Abriu(2)]);
+        e.classificar(true, n(60), 3_000);
+        assert_eq!(o.observar(&e), [EventoFabrica::Acerto]);
+        e.reiniciar();
+        assert!(o.observar(&e).is_empty());
+        e.classificar(true, n(60), 4_000);
+        assert_eq!(o.observar(&e), [EventoFabrica::Acerto]);
+        // Ao entrar na tela de novo, o professor abre o exercício outra vez.
+        o.reiniciar();
+        assert_eq!(o.observar(&e), [EventoFabrica::Abriu(2)]);
     }
 
     #[test]

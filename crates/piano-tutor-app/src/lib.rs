@@ -42,6 +42,7 @@ pub mod som;
 pub mod teclado_visual;
 pub mod tela_acordes;
 pub mod tela_calibracao;
+pub mod tela_cursos;
 pub mod tela_espelho;
 pub mod tela_exercicios;
 pub mod tela_gravacao;

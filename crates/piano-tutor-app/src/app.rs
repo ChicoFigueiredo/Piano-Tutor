@@ -18,15 +18,20 @@ use crate::acoes;
 use crate::acordes::EstadoAcordes;
 use crate::baixar_sf2::{BaixadorSf2, FLUIDR3_GM, abridor_http, caminho_baixado};
 use crate::calibracao::{Calibracao, PerfilTeclado};
+use crate::chamada_app::ChamadaAtiva;
+use crate::cursos::{EstadoCursos, ObservadorFabrica};
 use crate::espelho::EstadoEspelho;
 use crate::estado::{
-    Efeito, EstadoApp, ROTA_ACORDES, ROTA_CALIBRACAO, ROTA_EXERCICIOS, ROTA_GRAVACAO, ROTA_MONITOR,
-    ROTA_PARTITURA, ROTA_RITMOS, ROTA_TECLADO, ROTA_TIMBRES, TEMAS, VERSAO, ids,
+    Efeito, EstadoApp, ROTA_ACORDES, ROTA_CALIBRACAO, ROTA_CURSOS, ROTA_EXERCICIOS, ROTA_GRAVACAO,
+    ROTA_MONITOR, ROTA_PARTITURA, ROTA_RITMOS, ROTA_TECLADO, ROTA_TIMBRES, TEMAS, VERSAO, ids,
 };
 use crate::exercicios::EstadoExercicios;
 use crate::gravacao::EstadoGravacao;
 use crate::monitor::{EstadoMonitor, pasta_de_sessoes_do_ambiente};
+use crate::mpv::{ExecutorReal, Midia};
 use crate::preferencias::PreferenciasSom;
+use crate::professor::Professor;
+use crate::professor_falante::{VozMuda, voz_do_sistema};
 use crate::ritmo::EstadoRitmo;
 use crate::seletor_instrumento::{self, EstadoSeletor};
 use crate::som::{EstadoSom, ServicoSom, abridor_cpal, carregador_arquivo, sf2_encontrado};
@@ -37,7 +42,7 @@ use crate::tela_partitura::{self, EstadoPartitura};
 use crate::tela_revisao::{self, EstadoRevisao, ROTA_REVISAO};
 use crate::tela_timbres::{AcaoTimbres, EstadoTimbres};
 use crate::{TEMAS_JSON, TOKENS_JSON};
-use crate::{tela_acordes, tela_calibracao, tela_exercicios, tela_ritmos};
+use crate::{tela_acordes, tela_calibracao, tela_cursos, tela_exercicios, tela_ritmos};
 use crate::{tela_espelho, tela_monitor, tela_timbres};
 use bancada_casca::casca::Preferencias;
 use bancada_casca::{
@@ -52,6 +57,8 @@ use piano_tutor_midi::{
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
 use std::time::Duration;
+
+mod cursos_app;
 
 const ROTA_INICIO: &str = "inicio";
 const ROTA_SOBRE: &str = "sobre";
@@ -132,6 +139,13 @@ pub struct AppPianoTutor {
     pub partitura: EstadoPartitura,
     /// Revisão do conteúdo do tutor (M4): partituras e falas em Hipótese.
     pub revisao: EstadoRevisao,
+    /// Cursos (M4): seletor, árvore, Exercício de Curso, áudio do professor e vídeo.
+    pub cursos: EstadoCursos,
+    /// O professor que fala as falas aprovadas do Roteiro.
+    pub professor: Professor,
+    /// Chamada e resposta em andamento (Curso ou exercício de fábrica).
+    pub chamada: Option<ChamadaAtiva>,
+    observador_fabrica: ObservadorFabrica,
     /// Assistente de calibração e o perfil em uso.
     pub calibracao: Calibracao,
     pub perfil: Option<PerfilTeclado>,
@@ -181,6 +195,11 @@ impl AppPianoTutor {
             eprintln!("Piano Tutor: dados do usuário: {e}");
         }
         let mut app = Self::com_dispositivos(d);
+        // mpv e voz do sistema (o Piper, se instalado; senão só o texto na tela).
+        app.cursos.midia = Midia::do_sistema();
+        if let Some(p) = app.pasta_dados.clone() {
+            app.professor.trocar_voz(voz_do_sistema(&p));
+        }
         app.abertura = Abertura::ligada();
         app
     }
@@ -214,6 +233,13 @@ impl AppPianoTutor {
             gravacao: EstadoGravacao::novo(pasta_dados.clone()),
             partitura: EstadoPartitura::novo(pasta_dados.clone()),
             revisao: EstadoRevisao::novo(pasta_dados.clone()),
+            cursos: EstadoCursos::novo(
+                pasta_dados.clone(),
+                Midia::com(Box::new(ExecutorReal), None),
+            ),
+            professor: Professor::novo(Box::new(VozMuda::nova()), pasta_dados.as_deref()),
+            chamada: None,
+            observador_fabrica: ObservadorFabrica::default(),
             calibracao: Calibracao::default(),
             perfil,
             mensagem_calibracao: None,
@@ -356,6 +382,8 @@ impl AppPianoTutor {
             || self.gravacao.tocando()
             || self.gravacao.gravando()
             || self.partitura.tocando()
+            || self.chamada.as_ref().is_some_and(|c| !c.concluida())
+            || self.cursos.precisa_de_quadros()
         {
             // Agenda o ritmo e anima o pulso: ~60 quadros por segundo enquanto toca.
             proximo = proximo.min(Duration::from_millis(16));
@@ -387,6 +415,7 @@ impl AppPianoTutor {
         self.gravacao.atualizar(&mut self.som);
         self.partitura.atualizar(&mut self.som);
         self.conferir_desafio();
+        self.atualizar_cursos();
     }
 
     /// Download do SF2 padrão: carrega quando termina e publica o progresso na tela Timbres.
@@ -443,7 +472,15 @@ impl AppPianoTutor {
                     {
                         self.ritmo.toque(timestamp_monotonico_ns);
                     }
-                    if self.rota_atual == ROTA_EXERCICIOS {
+                    if let EventoMidi::NotaLigada {
+                        nota,
+                        timestamp_monotonico_ns,
+                        ..
+                    } = ev
+                    {
+                        self.nota_para_cursos(true, nota, timestamp_monotonico_ns);
+                    }
+                    if self.rota_atual == ROTA_EXERCICIOS && self.chamada.is_none() {
                         match ev {
                             EventoMidi::NotaLigada {
                                 nota,
@@ -502,7 +539,10 @@ impl AppPianoTutor {
             }
             self.gravacao
                 .nota_simulada(ev.acao == AcaoTecla::Ligar, ev.nota, agora);
-            if self.rota_atual == ROTA_EXERCICIOS {
+            if ev.acao == AcaoTecla::Ligar {
+                self.nota_para_cursos(true, ev.nota, agora);
+            }
+            if self.rota_atual == ROTA_EXERCICIOS && self.chamada.is_none() {
                 self.exercicios
                     .nota(ev.acao == AcaoTecla::Ligar, ev.nota, agora);
             }
@@ -677,6 +717,10 @@ impl AppCasca for AppPianoTutor {
                 ],
             ),
             GrupoNavegacao::novo(
+                "Cursos",
+                vec![ItemNavegacao::novo(ROTA_CURSOS, "Cursos", "exercicios")],
+            ),
+            GrupoNavegacao::novo(
                 "Tutor",
                 vec![ItemNavegacao::novo(
                     ROTA_REVISAO,
@@ -704,6 +748,7 @@ impl AppCasca for AppPianoTutor {
             ROTA_EXERCICIOS => vec![inicio(), Elo::texto("Exercícios")],
             ROTA_GRAVACAO => vec![inicio(), Elo::texto("Gravar e ouvir")],
             ROTA_PARTITURA => vec![inicio(), Elo::texto("Partitura")],
+            ROTA_CURSOS => vec![inicio(), Elo::texto("Cursos")],
             ROTA_REVISAO => vec![inicio(), Elo::texto("Revisão do tutor")],
             _ => vec![Elo::texto("Início")],
         }
@@ -711,8 +756,10 @@ impl AppCasca for AppPianoTutor {
 
     fn desenhar_pagina(&mut self, ui: &mut egui::Ui, rota: &Rota, _local: Local) {
         self.processar_quadro(ui.ctx());
+        let anterior = self.rota_atual.clone();
         rota.como_texto().clone_into(&mut self.rota_atual);
-        let com_teclado = [ROTA_TECLADO, ROTA_ACORDES, ROTA_EXERCICIOS];
+        self.ao_mudar_de_rota(&anterior);
+        let com_teclado = [ROTA_TECLADO, ROTA_ACORDES, ROTA_EXERCICIOS, ROTA_CURSOS];
         if rota.como_texto() != ROTA_ACORDES && rota.como_texto() != ROTA_EXERCICIOS {
             self.espelho.guias.clear();
         }
@@ -738,12 +785,31 @@ impl AppCasca for AppPianoTutor {
                 tela_partitura::desenhar_tela(ui, &mut self.partitura, &mut self.som);
             }
             ROTA_GRAVACAO => tela_gravacao::desenhar_tela(ui, &mut self.gravacao, &mut self.som),
-            ROTA_EXERCICIOS => tela_exercicios::desenhar_tela(
-                ui,
-                &mut self.exercicios,
-                &mut self.espelho,
-                &mut self.som,
-            ),
+            ROTA_CURSOS => {
+                let acoes = tela_cursos::desenhar_tela(
+                    ui,
+                    &mut self.cursos,
+                    &mut self.som,
+                    &mut self.espelho,
+                    &tela_cursos::ContextoCursos {
+                        professor: &self.professor,
+                        chamada: self.chamada.as_ref(),
+                        fabrica: &self.exercicios,
+                    },
+                );
+                self.executar_acoes_cursos(ui.ctx(), acoes);
+            }
+            ROTA_EXERCICIOS => {
+                let acoes = tela_exercicios::desenhar_tela(
+                    ui,
+                    &mut self.exercicios,
+                    &mut self.espelho,
+                    &mut self.som,
+                    &self.professor,
+                    self.chamada.as_ref(),
+                );
+                self.executar_acoes_cursos(ui.ctx(), acoes);
+            }
             ROTA_RITMOS => tela_ritmos::desenhar_tela(ui, &mut self.ritmo, &mut self.som),
             ROTA_ACORDES => {
                 tela_acordes::desenhar_tela(
