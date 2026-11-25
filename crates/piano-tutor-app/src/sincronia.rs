@@ -151,6 +151,21 @@ impl EdicaoSincronia {
         Some(n)
     }
 
+    /// Corrige a altura (MIDI) da nota `indice` (auditoria: o vídeo mostra outra tecla).
+    pub fn trocar_nota(&mut self, indice: u32, midi: u8) {
+        if self
+            .atual
+            .notas
+            .iter()
+            .any(|n| n.indice == indice && n.midi != midi)
+        {
+            self.guardar();
+            if let Some(n) = self.atual.notas.iter_mut().find(|n| n.indice == indice) {
+                n.midi = midi;
+            }
+        }
+    }
+
     pub fn soltar_ancora(&mut self, indice: u32) {
         if self.ancoras.contains(&indice) {
             self.guardar();
@@ -216,6 +231,11 @@ pub fn arquivo_na_oficina(dados: &Path, tutor: &str, exercicio: &str) -> PathBuf
 /// (`<id>.json.antes-<n>`). Devolve o caminho da cópia, se houve.
 pub fn salvar(destino: &Path, al: &Alinhamento) -> Result<Option<PathBuf>, String> {
     let texto = serde_json::to_string_pretty(al).map_err(|e| e.to_string())?;
+    salvar_texto(destino, &texto)
+}
+
+/// Grava `texto` em `destino` do mesmo jeito (cópia do anterior, troca atômica).
+pub fn salvar_texto(destino: &Path, texto: &str) -> Result<Option<PathBuf>, String> {
     if let Some(pai) = destino.parent() {
         fs::create_dir_all(pai).map_err(|e| format!("{}: {e}", pai.display()))?;
     }

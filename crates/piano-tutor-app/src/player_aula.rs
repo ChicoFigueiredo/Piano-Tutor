@@ -7,7 +7,7 @@
 //! instante no áudio do Exercício, que é o eixo do Alinhamento.
 
 use piano_tutor_curso::{Alinhamento, NotaAlinhada};
-use serde::Deserialize;
+use serde::{Deserialize, Serialize};
 
 /// Janela (s) em que uma nota do professor ainda conta como "soando agora" no teclado.
 pub const JANELA_SOANDO_S: f64 = 0.35;
@@ -105,24 +105,35 @@ pub enum Comando {
 }
 
 /// O dedilhado de um Exercício (Hipótese ou Aprovado), indexado pela nota do Alinhamento.
-#[derive(Clone, Debug, Default, PartialEq, Deserialize)]
+#[derive(Clone, Debug, Default, PartialEq, Deserialize, Serialize)]
 pub struct Dedilhado {
+    #[serde(default = "formato_um")]
+    pub formato_versao: u32,
     #[serde(default)]
     pub estado: String,
+    #[serde(default)]
+    pub metodo: String,
     #[serde(default)]
     pub notas: Vec<DedoDaNota>,
 }
 
-#[derive(Clone, Debug, PartialEq, Deserialize)]
+fn formato_um() -> u32 {
+    1
+}
+
+#[derive(Clone, Debug, PartialEq, Deserialize, Serialize)]
 pub struct DedoDaNota {
     pub indice: u32,
-    #[serde(default)]
+    #[serde(default, skip_serializing_if = "Option::is_none")]
     pub midi: Option<u8>,
     pub dedo: u8,
-    #[serde(default)]
+    #[serde(default, skip_serializing_if = "Option::is_none")]
     pub mao: Option<String>,
-    #[serde(default)]
+    #[serde(default, skip_serializing_if = "Option::is_none")]
     pub confianca: Option<f64>,
+    /// Quem pôs este dedo: ausente = a fábrica; `"revisor"` = corrigido à mão no player.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub origem: Option<String>,
 }
 
 impl Dedilhado {
@@ -132,6 +143,43 @@ impl Dedilhado {
             return Err("dedo fora de 1 a 5 no dedilhado".to_owned());
         }
         Ok(d)
+    }
+
+    /// Corrige (ou acrescenta) o dedo da nota `indice` à mão: o arquivo volta a ser Hipótese.
+    pub fn definir(&mut self, indice: u32, midi: u8, dedo: u8) {
+        let dedo = dedo.clamp(1, 5);
+        match self.notas.iter_mut().find(|n| n.indice == indice) {
+            Some(n) => {
+                n.dedo = dedo;
+                n.midi = Some(midi);
+                n.confianca = Some(1.0);
+                n.origem = Some("revisor".into());
+            }
+            None => {
+                self.notas.push(DedoDaNota {
+                    indice,
+                    midi: Some(midi),
+                    dedo,
+                    mao: None,
+                    confianca: Some(1.0),
+                    origem: Some("revisor".into()),
+                });
+                self.notas.sort_by_key(|n| n.indice);
+            }
+        }
+        self.estado = "hipotese".into();
+        if self.metodo.is_empty() {
+            self.metodo = "revisor".into();
+        }
+        self.formato_versao = 1;
+    }
+
+    /// De onde veio o dedo da nota: `"revisor"`, `"fábrica"` ou nada.
+    pub fn origem(&self, indice: u32) -> Option<&str> {
+        self.notas
+            .iter()
+            .find(|n| n.indice == indice)
+            .map(|n| n.origem.as_deref().unwrap_or("fábrica"))
     }
 
     pub fn dedo(&self, indice: u32) -> Option<u8> {
@@ -189,6 +237,24 @@ pub fn guias_no_instante(al: &Alinhamento, dedos: Option<&Dedilhado>, t_audio: f
         },
         None => Guias::default(),
     }
+}
+
+/// Os instantes de ataque (t_audio) do Alinhamento, em ordem, sem repetir os de um acorde.
+pub fn ataques(al: &Alinhamento) -> Vec<f64> {
+    let mut v: Vec<f64> = al.notas.iter().map(|n| n.t_audio_s).collect();
+    v.sort_by(f64::total_cmp);
+    v.dedup_by(|a, b| (*a - *b).abs() < 0.03);
+    v
+}
+
+/// O ataque anterior a `t_audio` (com folga, para dois toques seguidos andarem de nota em nota).
+pub fn nota_anterior(al: &Alinhamento, t_audio: f64) -> Option<f64> {
+    ataques(al).into_iter().rev().find(|&a| a < t_audio - 0.05)
+}
+
+/// O ataque seguinte a `t_audio`.
+pub fn proxima_nota(al: &Alinhamento, t_audio: f64) -> Option<f64> {
+    ataques(al).into_iter().find(|&a| a > t_audio + 0.05)
 }
 
 /// Estado do acompanhamento (o que o aluno já tocou no trecho).
@@ -454,7 +520,9 @@ mod testes {
                 dedo: 2,
                 mao: None,
                 confianca: None,
+                origem: None,
             }],
+            ..Dedilhado::default()
         };
         let g = guias_no_instante(&a, Some(&d), 2.1);
         assert_eq!(g.notas, vec![(62, Some(2), 1)]);
@@ -529,6 +597,31 @@ mod testes {
         assert_eq!(ac.voltar(&t, 35.0, 1.0), Some(Comando::Buscar(30.0)));
         assert_eq!(ac.voltar(&t, 30.0, 1.3), Some(Comando::Buscar(10.0)));
         assert_eq!(ac.voltar(&t, 35.0, 5.0), Some(Comando::Buscar(30.0)));
+    }
+
+    #[test]
+    fn anda_de_nota_em_nota() {
+        let a = al();
+        assert_eq!(proxima_nota(&a, 0.0), Some(1.0));
+        assert_eq!(proxima_nota(&a, 1.01), Some(2.0));
+        assert_eq!(nota_anterior(&a, 2.01), Some(1.0));
+        assert_eq!(nota_anterior(&a, 1.0), None);
+        assert_eq!(proxima_nota(&a, 3.0), None);
+    }
+
+    #[test]
+    fn corrigir_dedo_marca_revisor_e_volta_a_hipotese() {
+        let mut d = Dedilhado::de_json(br#"{"estado":"aprovada","notas":[{"indice":0,"dedo":1}]}"#)
+            .expect("lê");
+        assert_eq!(d.origem(0), Some("fábrica"));
+        d.definir(0, 60, 2);
+        d.definir(3, 65, 4);
+        assert_eq!((d.dedo(0), d.dedo(3)), (Some(2), Some(4)));
+        assert_eq!(d.origem(0), Some("revisor"));
+        assert_eq!(d.estado, "hipotese");
+        let volta =
+            Dedilhado::de_json(serde_json::to_string(&d).expect("json").as_bytes()).expect("relê");
+        assert_eq!(volta, d);
     }
 
     #[test]

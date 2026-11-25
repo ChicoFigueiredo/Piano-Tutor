@@ -12,6 +12,7 @@ use crate::player_aula::{
     Acompanhamento, Comando, Dedilhado, ModoAcompanhamento, Trecho, guias_no_instante,
     notas_do_trecho, trecho_no_instante,
 };
+use crate::player_aula::{nota_anterior, proxima_nota};
 use crate::roteiro_aula::{Pedido, RoteiroAula, TrechoInfo, ler_roteiro_da_pasta};
 use crate::sincronia::{self, EdicaoSincronia, PASSO_ACELERAR, PASSO_TEMPO_S};
 use crate::tela_espelho::desenhar_teclado_embutido;
@@ -69,6 +70,89 @@ pub struct EstadoPlayer {
     pub falas: Vec<String>,
     trecho_do_roteiro: Option<usize>,
     t_anterior: f64,
+    /// Nota (índice do Alinhamento) do menu de contexto aberto na linha do tempo.
+    nota_do_menu: Option<u32>,
+    pedido_transporte: Option<Transporte>,
+    correcao: Option<Correcao>,
+}
+
+/// Botões de transporte, como num tocador de música.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+enum Transporte {
+    Inicio,
+    NotaAnterior,
+    ProximaNota,
+    Fim,
+}
+
+/// Uma correção pedida pelo menu de contexto (auditoria do professor).
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+enum Correcao {
+    Dedo { indice: u32, midi: u8, dedo: u8 },
+    Nota { indice: u32, de: u8, para: u8 },
+    IrPara { indice: u32 },
+}
+
+const NOMES_DOS_DEDOS: [&str; 5] = ["polegar", "indicador", "médio", "anelar", "mínimo"];
+
+/// Menu de contexto de uma nota: corrigir o dedo, corrigir a nota, ir até ela.
+fn menu_da_nota(ui: &mut Ui, indice: u32, midi: u8, dedo: Option<u8>) -> Option<Correcao> {
+    let mut c = None;
+    ui.label(
+        RichText::new(format!(
+            "Nota {} · {}",
+            indice + 1,
+            nome_da_nota_no_curso(midi)
+        ))
+        .strong(),
+    );
+    if ui.button("Ir até esta nota").clicked() {
+        c = Some(Correcao::IrPara { indice });
+        ui.close();
+    }
+    ui.separator();
+    ui.menu_button("Corrigir o dedo", |ui| {
+        for d in 1..=5u8 {
+            let marcado = dedo == Some(d);
+            let texto = format!("{d} · {}", NOMES_DOS_DEDOS[usize::from(d - 1)]);
+            if ui.add(Button::new(texto).selected(marcado)).clicked() {
+                c = Some(Correcao::Dedo {
+                    indice,
+                    midi,
+                    dedo: d,
+                });
+                ui.close();
+            }
+        }
+    });
+    ui.menu_button("Corrigir a nota", |ui| {
+        egui::ScrollArea::vertical()
+            .max_height(320.0)
+            .show(ui, |ui| {
+                for k in (-12i16..=12).rev() {
+                    let Ok(para) = u8::try_from(i16::from(midi) + k) else {
+                        continue;
+                    };
+                    if para > 127 {
+                        continue;
+                    }
+                    let rotulo = if k == 0 {
+                        format!("{} (atual)", nome_da_nota_no_curso(para))
+                    } else {
+                        format!("{} ({k:+} semitons)", nome_da_nota_no_curso(para))
+                    };
+                    if ui.add_enabled(k != 0, Button::new(rotulo)).clicked() {
+                        c = Some(Correcao::Nota {
+                            indice,
+                            de: midi,
+                            para,
+                        });
+                        ui.close();
+                    }
+                }
+            });
+    });
+    c
 }
 
 impl std::fmt::Debug for EstadoPlayer {
@@ -116,6 +200,9 @@ impl EstadoPlayer {
             falas: Vec::new(),
             trecho_do_roteiro: None,
             t_anterior: inicio_s,
+            nota_do_menu: None,
+            pedido_transporte: None,
+            correcao: None,
         }
     }
 
@@ -518,18 +605,49 @@ pub fn desenhar_player(ui: &mut Ui, e: &mut EstadoCursos, espelho: &mut EstadoEs
             (false, false) => "Agora: ".to_owned(),
         };
         if !texto.is_empty() {
-            let nomes: Vec<String> = g
-                .notas
-                .iter()
-                .map(|(m, d, _)| {
-                    let nome = nome_da_nota_no_curso(*m);
-                    match d {
-                        Some(d) => format!("{nome} (dedo {d})"),
-                        None => nome,
-                    }
-                })
-                .collect();
-            ui.label(RichText::new(format!("{texto}{}", nomes.join(", "))).strong());
+            // Para conferir: o dedo que o teclado mostra e de onde ele veio.
+            let estimados = crate::dedos::inferir(
+                &g.notas
+                    .iter()
+                    .filter_map(|(m, _, _)| NotaMidi::nova(*m))
+                    .collect::<Vec<_>>(),
+                false,
+            );
+            ui.horizontal_wrapped(|ui| {
+                ui.label(RichText::new(texto).strong());
+                for (m, d, i) in &g.notas {
+                    let (dedo, origem) = match d {
+                        Some(d) => (
+                            Some(*d),
+                            p.dedilhado
+                                .as_ref()
+                                .and_then(|x| x.origem(*i))
+                                .unwrap_or("fábrica")
+                                .to_owned(),
+                        ),
+                        None => (
+                            estimados
+                                .iter()
+                                .find(|(n, _)| n.numero() == *m)
+                                .map(|(_, d)| *d),
+                            "estimado pelo app".to_owned(),
+                        ),
+                    };
+                    let rotulo = match dedo {
+                        Some(d) => format!("{} · dedo {d} ({origem})", nome_da_nota_no_curso(*m)),
+                        None => format!("{} · sem dedo definido", nome_da_nota_no_curso(*m)),
+                    };
+                    let r = ui
+                        .add(Button::new(RichText::new(rotulo).strong()))
+                        .on_hover_text("Botão direito: corrigir o dedo ou a nota");
+                    let (m, i) = (*m, *i);
+                    r.context_menu(|ui| {
+                        if let Some(c) = menu_da_nota(ui, i, m, dedo) {
+                            p.correcao = Some(c);
+                        }
+                    });
+                }
+            });
         }
     }
     desenhar_teclado_embutido(ui, espelho);
@@ -563,15 +681,190 @@ pub fn desenhar_player(ui: &mut Ui, e: &mut EstadoCursos, espelho: &mut EstadoEs
         }
     }
 
+    // Teclas de transporte (como num tocador de música).
+    if !ui.ctx().egui_wants_keyboard_input() {
+        let tecla = ui.input_mut(|i| {
+            if i.consume_key(Modifiers::NONE, Key::Home) {
+                Some(Transporte::Inicio)
+            } else if i.consume_key(Modifiers::NONE, Key::End) {
+                Some(Transporte::Fim)
+            } else if i.consume_key(Modifiers::NONE, Key::ArrowLeft) {
+                Some(Transporte::NotaAnterior)
+            } else if i.consume_key(Modifiers::NONE, Key::ArrowRight) {
+                Some(Transporte::ProximaNota)
+            } else {
+                None
+            }
+        });
+        if tecla.is_some() {
+            p.pedido_transporte = tecla;
+        }
+    }
+    if let Some(tr) = p.pedido_transporte.take() {
+        executar_transporte(&mut p, tr, alinhamento.as_ref());
+    }
+    if let Some(c) = p.correcao.take() {
+        aplicar_correcao(e, &mut p, c);
+    }
+
     if !p.pausado() || p.destacado {
         ctx.request_repaint();
     }
     e.player = Some(p);
 }
 
+fn executar_transporte(
+    p: &mut EstadoPlayer,
+    tr: Transporte,
+    al: Option<&piano_tutor_curso::Alinhamento>,
+) {
+    let t = p.posicao();
+    let alvo = match tr {
+        Transporte::Inicio => Some(p.trechos.first().map_or(0.0, |x| x.inicio_s)),
+        Transporte::Fim => p
+            .trechos
+            .last()
+            .map(|x| x.fim_s)
+            .or_else(|| p.video.as_ref().and_then(VideoEmbutido::duracao_s)),
+        Transporte::NotaAnterior => al.and_then(|a| {
+            nota_anterior(a, t - a.offset_aula_s).map(|x| x + a.offset_aula_s + 0.01)
+        }),
+        Transporte::ProximaNota => al
+            .and_then(|a| proxima_nota(a, t - a.offset_aula_s).map(|x| x + a.offset_aula_s + 0.01)),
+    };
+    let Some(s) = alvo else {
+        return;
+    };
+    p.acompanhamento.recomecar();
+    p.executar(Comando::Buscar(s));
+    // Andar de nota em nota é para conferir: fica parado na nota.
+    if matches!(
+        tr,
+        Transporte::NotaAnterior | Transporte::ProximaNota | Transporte::Fim
+    ) {
+        p.executar(Comando::Pausar);
+    }
+}
+
+/// Aplica a correção do menu de contexto: dedo vai para o dedilhado, nota para o
+/// Alinhamento; os dois gravados como Hipótese na oficina do tutor, com cópia do anterior.
+fn aplicar_correcao(e: &mut EstadoCursos, p: &mut EstadoPlayer, c: Correcao) {
+    let Some(exercicio) = e.aberto.as_ref().map(|a| a.exercicio.id.clone()) else {
+        return;
+    };
+    match c {
+        Correcao::IrPara { indice } => {
+            let al = p
+                .edicao
+                .as_ref()
+                .map(|x| x.atual.clone())
+                .or_else(|| e.aberto.as_ref().and_then(|a| a.alinhamento.clone()));
+            if let Some(n) = al.as_ref().and_then(|a| {
+                a.notas
+                    .iter()
+                    .find(|n| n.indice == indice)
+                    .map(|n| n.t_audio_s + a.offset_aula_s)
+            }) {
+                p.executar(Comando::Buscar(n + 0.01));
+                p.executar(Comando::Pausar);
+            }
+        }
+        Correcao::Dedo { indice, midi, dedo } => {
+            let mut d = p.dedilhado.clone().unwrap_or_default();
+            d.definir(indice, midi, dedo);
+            let r = e
+                .destino_do_dedilhado(&exercicio)
+                .ok_or_else(|| "sem pasta de dados".to_owned())
+                .and_then(|destino| {
+                    let texto = serde_json::to_string_pretty(&d).map_err(|x| x.to_string())?;
+                    sincronia::salvar_texto(&destino, &texto).map(|_| destino)
+                });
+            p.aviso_edicao = Some(match r {
+                Ok(destino) => {
+                    p.dedilhado = Some(d);
+                    format!(
+                        "Nota {}: dedo {dedo} gravado como Hipótese em {}.",
+                        indice + 1,
+                        destino.display()
+                    )
+                }
+                Err(m) => format!("Não consegui gravar o dedo: {m}"),
+            });
+        }
+        Correcao::Nota { indice, de, para } => {
+            let aviso = format!(
+                "Nota {}: {} → {}. A partitura não muda; se o erro for dela, corrija o \
+                 MusicXML na Revisão do tutor.",
+                indice + 1,
+                nome_da_nota_no_curso(de),
+                nome_da_nota_no_curso(para)
+            );
+            if let Some(ed) = p.edicao.as_mut() {
+                ed.trocar_nota(indice, para);
+                p.aviso_edicao = Some(format!("{aviso} Salve a edição para gravar."));
+                return;
+            }
+            let Some(mut al) = e.aberto.as_ref().and_then(|a| a.alinhamento.clone()) else {
+                return;
+            };
+            if let Some(n) = al.notas.iter_mut().find(|n| n.indice == indice) {
+                n.midi = para;
+            }
+            let ed = EdicaoSincronia::nova(&al);
+            let salvo = ed.para_salvar();
+            let r = e
+                .destino_do_alinhamento(&exercicio)
+                .ok_or_else(|| "sem pasta de dados".to_owned())
+                .and_then(|d| sincronia::salvar(&d, &salvo).map(|_| d));
+            p.aviso_edicao = Some(match r {
+                Ok(d) => {
+                    if let Some(a) = &mut e.aberto {
+                        a.alinhamento = Some(salvo);
+                    }
+                    format!("{aviso} Gravado como Hipótese em {}.", d.display())
+                }
+                Err(m) => format!("Não consegui gravar a nota: {m}"),
+            });
+        }
+    }
+}
+
 fn desenhar_barra(ui: &mut Ui, p: &mut EstadoPlayer) {
     ui.horizontal_wrapped(|ui| {
         let t = p.posicao();
+        if ui
+            .button("Início")
+            .on_hover_text("Volta tudo: começo do primeiro trecho da Aula (Home)")
+            .clicked()
+        {
+            p.pedido_transporte = Some(Transporte::Inicio);
+        }
+        if ui
+            .button("‹ Nota")
+            .on_hover_text("Volta uma nota e pausa (seta para a esquerda)")
+            .clicked()
+        {
+            p.pedido_transporte = Some(Transporte::NotaAnterior);
+        }
+        let rotulo = if p.pausado() { "Tocar" } else { "Pausar" };
+        if ui.button(rotulo).on_hover_text("Espaço").clicked() {
+            p.alternar_pausa();
+        }
+        if ui
+            .button("Nota ›")
+            .on_hover_text("Avança uma nota e pausa (seta para a direita)")
+            .clicked()
+        {
+            p.pedido_transporte = Some(Transporte::ProximaNota);
+        }
+        if ui
+            .button("Fim")
+            .on_hover_text("Vai ao fim do último trecho (End)")
+            .clicked()
+        {
+            p.pedido_transporte = Some(Transporte::Fim);
+        }
+        ui.separator();
         if ui
             .button("Voltar trecho")
             .on_hover_text("Volta ao início do trecho (Backspace ou botão 'voltar' do mouse; dois toques: trecho anterior)")
@@ -581,10 +874,6 @@ fn desenhar_barra(ui: &mut Ui, p: &mut EstadoPlayer) {
             if let Some(c) = p.acompanhamento.voltar(&p.trechos, t, agora) {
                 p.executar(c);
             }
-        }
-        let rotulo = if p.pausado() { "Tocar" } else { "Pausar" };
-        if ui.button(rotulo).on_hover_text("Espaço").clicked() {
-            p.alternar_pausa();
         }
         ui.label(formatar_instante(t));
         ui.separator();
@@ -1044,4 +1333,97 @@ fn desenhar_linha_do_tempo(
         "{} · clique para ir ao instante",
         formatar_instante(t)
     ));
+    if let (Some(al), Some(i)) = (al, atual) {
+        desenhar_trecho_ampliado(ui, p, al, i);
+    }
+}
+
+/// O trecho atual ampliado, com o nome e o dedo de cada nota. Clique leva o vídeo à nota;
+/// botão direito abre o menu de correção (auditoria).
+fn desenhar_trecho_ampliado(
+    ui: &mut Ui,
+    p: &mut EstadoPlayer,
+    al: &piano_tutor_curso::Alinhamento,
+    i: usize,
+) {
+    let trecho = p.trechos[i].clone();
+    let (ini, fim) = (trecho.inicio_s - 0.5, trecho.fim_s + 0.5);
+    let dur = (fim - ini).max(1.0);
+    let (r, resp) = ui.allocate_exact_size(vec2(ui.available_width(), 40.0), Sense::click());
+    let x_de = |s: f64| r.left() + ((s - ini) / dur) as f32 * r.width();
+    let pintor = ui.painter_at(r);
+    pintor.rect_filled(r, CornerRadius::same(3), ui.visuals().faint_bg_color);
+    let ponteiro = resp.hover_pos();
+    let mut perto: Option<(u32, u8, f64, f32)> = None;
+    let mut ultimo_x = f32::NEG_INFINITY;
+    for n in notas_do_trecho(al, &trecho) {
+        let tv = n.t_audio_s + al.offset_aula_s;
+        let x = x_de(tv);
+        let dedo = p.dedilhado.as_ref().and_then(|d| d.dedo(n.indice));
+        let revisor = p.dedilhado.as_ref().and_then(|d| d.origem(n.indice)) == Some("revisor");
+        let cor = if revisor {
+            Color32::from_rgb(120, 190, 240)
+        } else {
+            ui.visuals().text_color()
+        };
+        pintor.line_segment(
+            [pos2(x, r.top() + 2.0), pos2(x, r.bottom() - 2.0)],
+            Stroke::new(1.0, cor),
+        );
+        // Rótulos só quando há espaço (notas muito juntas ficam só com o traço).
+        if x - ultimo_x > 26.0 {
+            let rotulo = match dedo {
+                Some(d) => format!("{}\n{d}", nome_da_nota_no_curso(n.midi)),
+                None => nome_da_nota_no_curso(n.midi),
+            };
+            pintor.text(
+                pos2(x + 2.0, r.top() + 2.0),
+                egui::Align2::LEFT_TOP,
+                rotulo,
+                egui::FontId::proportional(10.0),
+                cor,
+            );
+            ultimo_x = x;
+        }
+        if let Some(pp) = ponteiro {
+            let d = (pp.x - x).abs();
+            if perto.is_none_or(|(_, _, _, dd)| d < dd) {
+                perto = Some((n.indice, n.midi, tv, d));
+            }
+        }
+    }
+    let t = p.posicao();
+    if (ini..=fim).contains(&t) {
+        let x = x_de(t);
+        pintor.line_segment(
+            [pos2(x, r.top()), pos2(x, r.bottom())],
+            Stroke::new(2.0, Color32::from_rgb(235, 100, 100)),
+        );
+    }
+    if resp.clicked()
+        && let Some((_, _, tv, _)) = perto
+    {
+        p.executar(Comando::Buscar(tv + 0.01));
+        p.executar(Comando::Pausar);
+    }
+    if resp.secondary_clicked() {
+        p.nota_do_menu = perto.map(|(n, ..)| n);
+    }
+    let alvo = p
+        .nota_do_menu
+        .and_then(|n| al.notas.iter().find(|x| x.indice == n))
+        .map(|n| (n.indice, n.midi));
+    let dedo_alvo = alvo.and_then(|(n, _)| p.dedilhado.as_ref().and_then(|d| d.dedo(n)));
+    let mut escolha = None;
+    resp.on_hover_text("Clique: vai à nota · botão direito: corrigir dedo ou nota")
+        .context_menu(|ui| {
+            if let Some((n, m)) = alvo {
+                escolha = menu_da_nota(ui, n, m, dedo_alvo);
+            } else {
+                ui.label("Nenhuma nota aqui.");
+            }
+        });
+    if escolha.is_some() {
+        p.correcao = escolha;
+    }
 }

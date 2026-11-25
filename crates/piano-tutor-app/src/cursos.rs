@@ -1269,28 +1269,39 @@ impl EstadoCursos {
     /// tutor que já tem esse Alinhamento (ou cujo nome começa o id do Curso); sem oficina, nos
     /// dados do aluno.
     pub fn destino_do_alinhamento(&self, exercicio: &str) -> Option<PathBuf> {
+        self.destino_na_oficina("alinhamentos", exercicio)
+    }
+
+    /// Onde a correção de dedos do player é gravada (mesma regra do Alinhamento).
+    pub fn destino_do_dedilhado(&self, exercicio: &str) -> Option<PathBuf> {
+        self.destino_na_oficina("dedilhados", exercicio)
+    }
+
+    fn destino_na_oficina(&self, sub: &str, exercicio: &str) -> Option<PathBuf> {
         let dados = self.dados.as_deref()?;
         let curso = &self.curso_selecionado().id;
         let oficinas = crate::revisao::descobrir_oficinas(dados, None);
         let nome = format!("{exercicio}.json");
+        if !caminho_seguro(&nome) {
+            return None;
+        }
         oficinas
             .iter()
-            .map(|o| o.raiz.join("alinhamentos").join(&nome))
+            .map(|o| o.raiz.join(sub).join(&nome))
             .find(|p| p.is_file())
             .or_else(|| {
                 oficinas
                     .iter()
                     .find(|o| curso.starts_with(&o.tutor))
-                    .map(|o| o.raiz.join("alinhamentos").join(&nome))
+                    .map(|o| o.raiz.join(sub).join(&nome))
             })
             .or_else(|| {
-                Some(
-                    dados
-                        .join("cursos")
-                        .join("alinhamentos-editados")
-                        .join(curso)
-                        .join(&nome),
-                )
+                let pasta = if sub == "dedilhados" {
+                    "dedilhados".to_owned()
+                } else {
+                    format!("{sub}-editados")
+                };
+                Some(dados.join("cursos").join(pasta).join(curso).join(&nome))
             })
     }
 
@@ -1405,6 +1416,10 @@ impl EstadoCursos {
             return None;
         }
         let mut candidatos = Vec::new();
+        // A correção do revisor (oficina) vence a do pacote.
+        if let Some(p) = self.destino_do_dedilhado(&a.exercicio.id) {
+            candidatos.push(p);
+        }
         if let (Some(m), Some(pasta)) = (curso.manifesto.as_ref(), curso.pasta.as_ref()) {
             let c = format!("dedilhados/{nome}");
             if m.arquivos.iter().any(|x| x.caminho == c) {
