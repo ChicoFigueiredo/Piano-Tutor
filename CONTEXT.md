@@ -63,12 +63,16 @@ Script em Luau, um por Aula, que conduz o Player de Aula (que trecho tocar, quan
 _Evitar_: desafio, plugin, Roteiro (que são as falas do professor)
 
 **Modo de acompanhamento**:
-Como o Player de Aula reage enquanto o aluno toca junto um trecho: **Espera** (para em cada nota até a certa), **Segue no tempo** (não para, pontua acerto e erro) ou **Chamada e resposta**. O aluno escolhe e troca durante a Aula; o Roteiro de Aula pode sugerir um.
+Como o Player de Aula reage enquanto o aluno toca junto um trecho: **Nota a nota** (para em cada nota até a certa, sem andamento), **Espera tocar**, **Segue no tempo** (não para, pontua acerto e erro) ou **Chamada e resposta**. O aluno escolhe e troca durante a Aula; o Roteiro de Aula pode sugerir um.
 _Evitar_: modo de prática (é da tela de Partitura)
 
 **Espera tocar**:
-Modo da prática, na tela de Partitura e no Player de Aula, que anda no andamento da Lição e só para quando a janela de uma nota passa sem a nota certa; ao acertar, retoma voltando 0, 1, 2 ou 4 notas, ou do início, conforme a escolha do aluno.
-_Evitar_: Espera (que para em toda nota), modo lento
+Modo da prática, na tela de Partitura e no Player de Aula, que anda no andamento da Lição e só para quando a janela de uma nota passa sem a nota certa; no Player de Aula, vídeo e som param junto. Ao acertar, conta dois tempos e retoma voltando 0, 1, 2 ou 4 notas, ou do início, conforme a escolha do aluno; as notas voltadas são tocadas e conferidas de novo.
+_Evitar_: Espera, Nota a nota (que para em toda nota), modo lento
+
+**Nota a nota**:
+Modo da prática que para em cada nota até o aluno tocar a certa, sem andamento.
+_Evitar_: Espera (nome antigo)
 
 **Calibração de vídeo**:
 Mapa, por Aula, de onde fica cada tecla no quadro da câmera de cima, proposto automaticamente pela fábrica e conferido pelo revisor; é dele que sai a Hipótese de dedilhado da Aula.
