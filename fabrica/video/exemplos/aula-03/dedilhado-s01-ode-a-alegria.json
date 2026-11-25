@@ -1,0 +1,448 @@
+{
+  "formato_versao": 1,
+  "estado": "hipotese",
+  "metodo": "mediapipe-hand-landmarker+calibracao-de-video",
+  "proveniencia": {
+    "ferramenta": "fabrica/video/dedilhado.py",
+    "video": "03 - Música (Ode à alegria de Beethoven).mp4",
+    "alinhamento": "s01-ode-a-alegria.json",
+    "calibracao": "calibracao.json",
+    "calibracao_confianca": 0.897,
+    "modelo_maos": "hand_landmarker.task (MediaPipe, float16)",
+    "bibliotecas": {
+      "mediapipe": "1.2.3",
+      "opencv": "5.1.0"
+    },
+    "trecho_inicio_s": 258.9146,
+    "trecho_inicio_origem": "offset_aula_s do Alinhamento",
+    "janela_ms": [
+      -80.0,
+      40.0
+    ],
+    "lado_da_mao": "geometria do dorso visto de cima (o rótulo do MediaPipe não é usado)",
+    "regra_de_voto": "soma, nos quadros da janela, de gaussiana (sigma 0,3 tecla) do x da ponta do dedo ao centro da tecla; vence o par (mão, dedo) de maior soma"
+  },
+  "exercicio": "s01-ode-a-alegria",
+  "notas": [
+    {
+      "indice": 0,
+      "midi": 64,
+      "dedo": 3,
+      "mao": "direita",
+      "confianca": 0.918,
+      "quadros_usados": 3,
+      "quadros_com_mao": 3,
+      "segundo_colocado": {
+        "mao": "direita",
+        "dedo": 2
+      },
+      "t_video_s": 259.415
+    },
+    {
+      "indice": 1,
+      "midi": 64,
+      "dedo": 3,
+      "mao": "direita",
+      "confianca": 0.92,
+      "quadros_usados": 4,
+      "quadros_com_mao": 4,
+      "segundo_colocado": {
+        "mao": "direita",
+        "dedo": 2
+      },
+      "t_video_s": 260.064
+    },
+    {
+      "indice": 2,
+      "midi": 65,
+      "dedo": 4,
+      "mao": "direita",
+      "confianca": 0.934,
+      "quadros_usados": 4,
+      "quadros_com_mao": 4,
+      "segundo_colocado": {
+        "mao": "direita",
+        "dedo": 3
+      },
+      "t_video_s": 260.704
+    },
+    {
+      "indice": 3,
+      "midi": 67,
+      "dedo": 5,
+      "mao": "direita",
+      "confianca": 0.892,
+      "quadros_usados": 4,
+      "quadros_com_mao": 4,
+      "segundo_colocado": {
+        "mao": "direita",
+        "dedo": 4
+      },
+      "t_video_s": 261.307
+    },
+    {
+      "indice": 4,
+      "midi": 67,
+      "dedo": 5,
+      "mao": "direita",
+      "confianca": 0.526,
+      "quadros_usados": 4,
+      "quadros_com_mao": 4,
+      "segundo_colocado": {
+        "mao": "direita",
+        "dedo": 4
+      },
+      "t_video_s": 261.87
+    },
+    {
+      "indice": 5,
+      "midi": 65,
+      "dedo": 4,
+      "mao": "direita",
+      "confianca": 0.875,
+      "quadros_usados": 4,
+      "quadros_com_mao": 4,
+      "segundo_colocado": {
+        "mao": "direita",
+        "dedo": 5
+      },
+      "t_video_s": 262.477
+    },
+    {
+      "indice": 6,
+      "midi": 64,
+      "dedo": 3,
+      "mao": "direita",
+      "confianca": 0.823,
+      "quadros_usados": 4,
+      "quadros_com_mao": 4,
+      "segundo_colocado": {
+        "mao": "direita",
+        "dedo": 4
+      },
+      "t_video_s": 263.063
+    },
+    {
+      "indice": 7,
+      "midi": 62,
+      "dedo": 2,
+      "mao": "direita",
+      "confianca": 0.969,
+      "quadros_usados": 4,
+      "quadros_com_mao": 4,
+      "segundo_colocado": {
+        "mao": "direita",
+        "dedo": 3
+      },
+      "t_video_s": 263.663
+    },
+    {
+      "indice": 8,
+      "midi": 60,
+      "dedo": 1,
+      "mao": "direita",
+      "confianca": 0.756,
+      "quadros_usados": 3,
+      "quadros_com_mao": 3,
+      "segundo_colocado": {
+        "mao": "direita",
+        "dedo": 2
+      },
+      "t_video_s": 264.252
+    },
+    {
+      "indice": 9,
+      "midi": 60,
+      "dedo": 1,
+      "mao": "direita",
+      "confianca": 0.643,
+      "quadros_usados": 4,
+      "quadros_com_mao": 4,
+      "segundo_colocado": {
+        "mao": "direita",
+        "dedo": 2
+      },
+      "t_video_s": 264.839
+    },
+    {
+      "indice": 10,
+      "midi": 62,
+      "dedo": 2,
+      "mao": "direita",
+      "confianca": 0.981,
+      "quadros_usados": 4,
+      "quadros_com_mao": 4,
+      "segundo_colocado": {
+        "mao": "direita",
+        "dedo": 3
+      },
+      "t_video_s": 265.436
+    },
+    {
+      "indice": 11,
+      "midi": 64,
+      "dedo": 3,
+      "mao": "direita",
+      "confianca": 0.89,
+      "quadros_usados": 4,
+      "quadros_com_mao": 4,
+      "segundo_colocado": {
+        "mao": "direita",
+        "dedo": 4
+      },
+      "t_video_s": 266.007
+    },
+    {
+      "indice": 12,
+      "midi": 64,
+      "dedo": 3,
+      "mao": "direita",
+      "confianca": 0.835,
+      "quadros_usados": 4,
+      "quadros_com_mao": 4,
+      "segundo_colocado": {
+        "mao": "direita",
+        "dedo": 4
+      },
+      "t_video_s": 266.579
+    },
+    {
+      "indice": 13,
+      "midi": 62,
+      "dedo": 2,
+      "mao": "direita",
+      "confianca": 0.955,
+      "quadros_usados": 4,
+      "quadros_com_mao": 4,
+      "segundo_colocado": {
+        "mao": "direita",
+        "dedo": 3
+      },
+      "t_video_s": 267.468
+    },
+    {
+      "indice": 14,
+      "midi": 62,
+      "dedo": 2,
+      "mao": "direita",
+      "confianca": 0.983,
+      "quadros_usados": 4,
+      "quadros_com_mao": 4,
+      "segundo_colocado": {
+        "mao": "direita",
+        "dedo": 3
+      },
+      "t_video_s": 267.795
+    },
+    {
+      "indice": 15,
+      "midi": 64,
+      "dedo": 3,
+      "mao": "direita",
+      "confianca": 0.963,
+      "quadros_usados": 3,
+      "quadros_com_mao": 3,
+      "segundo_colocado": {
+        "mao": "direita",
+        "dedo": 4
+      },
+      "t_video_s": 268.924
+    },
+    {
+      "indice": 16,
+      "midi": 64,
+      "dedo": 3,
+      "mao": "direita",
+      "confianca": 0.944,
+      "quadros_usados": 4,
+      "quadros_com_mao": 4,
+      "segundo_colocado": {
+        "mao": "direita",
+        "dedo": 2
+      },
+      "t_video_s": 269.501
+    },
+    {
+      "indice": 17,
+      "midi": 65,
+      "dedo": 4,
+      "mao": "direita",
+      "confianca": 0.872,
+      "quadros_usados": 3,
+      "quadros_com_mao": 3,
+      "segundo_colocado": {
+        "mao": "direita",
+        "dedo": 3
+      },
+      "t_video_s": 270.087
+    },
+    {
+      "indice": 18,
+      "midi": 67,
+      "dedo": 5,
+      "mao": "direita",
+      "confianca": 0.892,
+      "quadros_usados": 3,
+      "quadros_com_mao": 3,
+      "segundo_colocado": {
+        "mao": "direita",
+        "dedo": 4
+      },
+      "t_video_s": 270.654
+    },
+    {
+      "indice": 19,
+      "midi": 67,
+      "dedo": 5,
+      "mao": "direita",
+      "confianca": 0.787,
+      "quadros_usados": 4,
+      "quadros_com_mao": 4,
+      "segundo_colocado": {
+        "mao": "direita",
+        "dedo": 4
+      },
+      "t_video_s": 271.24
+    },
+    {
+      "indice": 20,
+      "midi": 65,
+      "dedo": 4,
+      "mao": "direita",
+      "confianca": 0.898,
+      "quadros_usados": 4,
+      "quadros_com_mao": 4,
+      "segundo_colocado": {
+        "mao": "direita",
+        "dedo": 3
+      },
+      "t_video_s": 271.829
+    },
+    {
+      "indice": 21,
+      "midi": 64,
+      "dedo": 3,
+      "mao": "direita",
+      "confianca": 0.824,
+      "quadros_usados": 4,
+      "quadros_com_mao": 4,
+      "segundo_colocado": {
+        "mao": "direita",
+        "dedo": 4
+      },
+      "t_video_s": 272.407
+    },
+    {
+      "indice": 22,
+      "midi": 62,
+      "dedo": 2,
+      "mao": "direita",
+      "confianca": 0.978,
+      "quadros_usados": 3,
+      "quadros_com_mao": 3,
+      "segundo_colocado": {
+        "mao": "direita",
+        "dedo": 3
+      },
+      "t_video_s": 272.986
+    },
+    {
+      "indice": 23,
+      "midi": 60,
+      "dedo": 1,
+      "mao": "direita",
+      "confianca": 0.919,
+      "quadros_usados": 3,
+      "quadros_com_mao": 3,
+      "segundo_colocado": {
+        "mao": "direita",
+        "dedo": 2
+      },
+      "t_video_s": 273.551
+    },
+    {
+      "indice": 24,
+      "midi": 60,
+      "dedo": 1,
+      "mao": "direita",
+      "confianca": 0.852,
+      "quadros_usados": 3,
+      "quadros_com_mao": 3,
+      "segundo_colocado": {
+        "mao": "direita",
+        "dedo": 2
+      },
+      "t_video_s": 274.115
+    },
+    {
+      "indice": 25,
+      "midi": 62,
+      "dedo": 2,
+      "mao": "direita",
+      "confianca": 0.914,
+      "quadros_usados": 3,
+      "quadros_com_mao": 3,
+      "segundo_colocado": {
+        "mao": "direita",
+        "dedo": 3
+      },
+      "t_video_s": 274.683
+    },
+    {
+      "indice": 26,
+      "midi": 64,
+      "dedo": 3,
+      "mao": "direita",
+      "confianca": 0.703,
+      "quadros_usados": 4,
+      "quadros_com_mao": 4,
+      "segundo_colocado": {
+        "mao": "direita",
+        "dedo": 4
+      },
+      "t_video_s": 275.228
+    },
+    {
+      "indice": 27,
+      "midi": 62,
+      "dedo": 2,
+      "mao": "direita",
+      "confianca": 0.955,
+      "quadros_usados": 4,
+      "quadros_com_mao": 4,
+      "segundo_colocado": {
+        "mao": "direita",
+        "dedo": 3
+      },
+      "t_video_s": 275.808
+    },
+    {
+      "indice": 28,
+      "midi": 60,
+      "dedo": 1,
+      "mao": "direita",
+      "confianca": 0.894,
+      "quadros_usados": 4,
+      "quadros_com_mao": 4,
+      "segundo_colocado": {
+        "mao": "direita",
+        "dedo": 2
+      },
+      "t_video_s": 276.664
+    },
+    {
+      "indice": 29,
+      "midi": 60,
+      "dedo": 1,
+      "mao": "direita",
+      "confianca": 0.564,
+      "quadros_usados": 4,
+      "quadros_com_mao": 4,
+      "segundo_colocado": {
+        "mao": "direita",
+        "dedo": 2
+      },
+      "t_video_s": 276.999
+    }
+  ]
+}
