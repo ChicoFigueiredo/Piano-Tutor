@@ -11,7 +11,11 @@ use crate::erro::ErroPacote;
 
 /// Chaves públicas embutidas no app como confiáveis (hexadecimal). Vazia por enquanto:
 /// a confiança vem de `<dados>/cursos/chaves-confiaveis/*.pub`.
-pub const CHAVES_EMBUTIDAS: &[&str] = &[];
+pub const CHAVES_EMBUTIDAS: &[&str] = &[
+    // Chave de empacotamento do Chico (cerebro, 2026-11-24; chave curta 4273…384e).
+    // Só a pública fica no repositório; a privada está fora dele (ADR-0009).
+    "4273012c7d150a7994f7f4b3fe45201273ab76117b43a9c56349e4dfde9b384e",
+];
 
 /// Chave pública ed25519 (32 bytes).
 #[derive(Clone, Copy, PartialEq, Eq, Hash, PartialOrd, Ord)]

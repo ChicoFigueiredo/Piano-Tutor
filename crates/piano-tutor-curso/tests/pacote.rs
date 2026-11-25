@@ -428,7 +428,9 @@ fn chaves_confiaveis_da_pasta_dados() {
     fs::write(pasta.join("lixo.pub"), "isto não é uma chave").unwrap();
     fs::write(pasta.join("ignorado.txt"), autor.publica().para_hex()).unwrap();
     let chaves = piano_tutor_curso::chaves_confiaveis(dados.path());
-    assert_eq!(chaves, vec![autor.publica()]);
+    let embutidas = piano_tutor_curso::CHAVES_EMBUTIDAS.len();
+    assert_eq!(chaves.len(), embutidas + 1);
+    assert_eq!(chaves.last(), Some(&autor.publica()));
 }
 
 // ---------- instalação ----------
