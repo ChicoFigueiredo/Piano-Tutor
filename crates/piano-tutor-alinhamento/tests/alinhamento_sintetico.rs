@@ -269,6 +269,30 @@ fn erros_de_entrada() {
     assert!(alinhar(&p, &curto, &ConfigAlinhamento::default()).is_err());
 }
 
+#[test]
+fn notas_repetidas_recebem_cada_uma_o_seu_ataque() {
+    // Cada altura quatro vezes seguidas (como o Exercício 2 do curso): o croma é idêntico dentro
+    // de cada sequência e só os onsets distinguem uma nota da outra.
+    let mut notas = Vec::new();
+    for passo in ['C', 'D', 'E', 'F'] {
+        for _ in 0..4 {
+            notas.push(comum::n(passo, 4, 1));
+        }
+    }
+    notas.push(comum::n('C', 4, 4));
+    let g = gravar(&notas, 100.0, 1.0, 6.0);
+    let r = alinhar_gravacao(&notas, 100, &g, &ConfigAlinhamento::default());
+    let (por_nota, max) = erros(&r, &g);
+    eprintln!("[repetidas] erros (ms): {:?}", ms(&por_nota));
+    eprintln!("[repetidas] confianças: {:?}", conf(&r));
+    assert!(max < LIMITE_ERRO_S, "erro máximo {max:.3} s");
+    assert!(
+        r.notas.windows(2).all(|w| w[1].t_audio_s > w[0].t_audio_s),
+        "instantes estritamente crescentes"
+    );
+    assert!(r.notas.iter().all(|n| n.com_onset));
+}
+
 fn ms(v: &[Option<f64>]) -> Vec<String> {
     v.iter()
         .map(|e| e.map_or("-".to_owned(), |x| format!("{:.0}", x * 1000.0)))
