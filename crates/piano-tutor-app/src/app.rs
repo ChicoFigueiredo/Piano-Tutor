@@ -34,6 +34,7 @@ use crate::tela_calibracao::{AcaoCalibracao, ContextoCalibracao};
 use crate::tela_gravacao;
 use crate::tela_inicio::{self, Resumo};
 use crate::tela_partitura::{self, EstadoPartitura};
+use crate::tela_revisao::{self, EstadoRevisao, ROTA_REVISAO};
 use crate::tela_timbres::{AcaoTimbres, EstadoTimbres};
 use crate::{TEMAS_JSON, TOKENS_JSON};
 use crate::{tela_acordes, tela_calibracao, tela_exercicios, tela_ritmos};
@@ -129,6 +130,8 @@ pub struct AppPianoTutor {
     pub gravacao: EstadoGravacao,
     /// Partitura MusicXML (F07).
     pub partitura: EstadoPartitura,
+    /// Revisão do conteúdo do tutor (M4): partituras e falas em Hipótese.
+    pub revisao: EstadoRevisao,
     /// Assistente de calibração e o perfil em uso.
     pub calibracao: Calibracao,
     pub perfil: Option<PerfilTeclado>,
@@ -210,6 +213,7 @@ impl AppPianoTutor {
             exercicios: EstadoExercicios::novo(pasta_dados.clone()),
             gravacao: EstadoGravacao::novo(pasta_dados.clone()),
             partitura: EstadoPartitura::novo(pasta_dados.clone()),
+            revisao: EstadoRevisao::novo(pasta_dados.clone()),
             calibracao: Calibracao::default(),
             perfil,
             mensagem_calibracao: None,
@@ -655,22 +659,32 @@ impl AppCasca for AppPianoTutor {
     }
 
     fn navegacao(&self) -> Vec<GrupoNavegacao> {
-        vec![GrupoNavegacao::novo(
-            "Piano Tutor",
-            vec![
-                ItemNavegacao::novo(ROTA_INICIO, "Início", "inicio"),
-                ItemNavegacao::novo(ROTA_MONITOR, "Monitor MIDI", "midi"),
-                ItemNavegacao::novo(ROTA_CALIBRACAO, "Calibrar teclado", "calibrar"),
-                ItemNavegacao::novo(ROTA_TECLADO, "Teclado", "teclado"),
-                ItemNavegacao::novo(ROTA_EXERCICIOS, "Exercícios", "exercicios"),
-                ItemNavegacao::novo(ROTA_ACORDES, "Acordes e escalas", "acordes"),
-                ItemNavegacao::novo(ROTA_RITMOS, "Ritmos", "ritmos"),
-                ItemNavegacao::novo(ROTA_GRAVACAO, "Gravar e ouvir", "gravar"),
-                ItemNavegacao::novo(ROTA_PARTITURA, "Partitura", "partitura"),
-                ItemNavegacao::novo(ROTA_TIMBRES, "Sons e timbres", "timbres"),
-                ItemNavegacao::novo(ROTA_SOBRE, "Sobre", "sobre"),
-            ],
-        )]
+        vec![
+            GrupoNavegacao::novo(
+                "Piano Tutor",
+                vec![
+                    ItemNavegacao::novo(ROTA_INICIO, "Início", "inicio"),
+                    ItemNavegacao::novo(ROTA_MONITOR, "Monitor MIDI", "midi"),
+                    ItemNavegacao::novo(ROTA_CALIBRACAO, "Calibrar teclado", "calibrar"),
+                    ItemNavegacao::novo(ROTA_TECLADO, "Teclado", "teclado"),
+                    ItemNavegacao::novo(ROTA_EXERCICIOS, "Exercícios", "exercicios"),
+                    ItemNavegacao::novo(ROTA_ACORDES, "Acordes e escalas", "acordes"),
+                    ItemNavegacao::novo(ROTA_RITMOS, "Ritmos", "ritmos"),
+                    ItemNavegacao::novo(ROTA_GRAVACAO, "Gravar e ouvir", "gravar"),
+                    ItemNavegacao::novo(ROTA_PARTITURA, "Partitura", "partitura"),
+                    ItemNavegacao::novo(ROTA_TIMBRES, "Sons e timbres", "timbres"),
+                    ItemNavegacao::novo(ROTA_SOBRE, "Sobre", "sobre"),
+                ],
+            ),
+            GrupoNavegacao::novo(
+                "Tutor",
+                vec![ItemNavegacao::novo(
+                    ROTA_REVISAO,
+                    "Revisão do tutor",
+                    "partitura",
+                )],
+            ),
+        ]
     }
 
     fn rota_inicial(&self) -> Rota {
@@ -690,6 +704,7 @@ impl AppCasca for AppPianoTutor {
             ROTA_EXERCICIOS => vec![inicio(), Elo::texto("Exercícios")],
             ROTA_GRAVACAO => vec![inicio(), Elo::texto("Gravar e ouvir")],
             ROTA_PARTITURA => vec![inicio(), Elo::texto("Partitura")],
+            ROTA_REVISAO => vec![inicio(), Elo::texto("Revisão do tutor")],
             _ => vec![Elo::texto("Início")],
         }
     }
@@ -705,7 +720,12 @@ impl AppCasca for AppPianoTutor {
             // Fora da tela Espelho ninguém recebe o "solta": não deixa nota presa.
             self.espelho.liberar_simulacao();
         }
+        if rota.como_texto() != ROTA_REVISAO {
+            // Fora da revisão nada continua tocando nem falando.
+            self.revisao.ao_sair(&mut self.som);
+        }
         match rota.como_texto() {
+            ROTA_REVISAO => tela_revisao::desenhar_tela(ui, &mut self.revisao, &mut self.som),
             ROTA_TECLADO => tela_espelho::desenhar_tela(ui, &mut self.espelho),
             ROTA_MONITOR => {
                 tela_monitor::desenhar_tela(ui, &mut self.monitor);
@@ -1318,6 +1338,51 @@ mod testes {
             .filter(|ch| !ctx.fonts_mut(|f| f.has_glyph(&fonte, *ch)))
             .collect();
         assert!(faltam.is_empty(), "glifos ausentes: {faltam:?}");
+    }
+
+    #[test]
+    fn a_fonte_da_janela_tem_os_simbolos_da_tela_de_revisao() {
+        let mut c = casca();
+        let ctx = Context::default();
+        quadro(&mut c, &ctx, Vec::new(), Modifiers::NONE);
+        quadro(&mut c, &ctx, Vec::new(), Modifiers::NONE);
+        let fonte = egui::FontId::proportional(14.0);
+        let usados: String = crate::revisao::ESTADOS
+            .iter()
+            .map(|e| crate::revisao::simbolo_do_estado(*e))
+            .collect::<String>()
+            + "[!]—·";
+        let faltam: String = usados
+            .chars()
+            .filter(|ch| !ctx.fonts_mut(|f| f.has_glyph(&fonte, *ch)))
+            .collect();
+        assert!(faltam.is_empty(), "símbolos ausentes: {faltam:?}");
+    }
+
+    #[test]
+    fn a_tela_de_revisao_abre_pela_navegacao_com_o_aviso_do_modo_tutor() {
+        let mut c = casca();
+        let ctx = Context::default();
+        quadro(&mut c, &ctx, Vec::new(), Modifiers::NONE);
+        let itens: Vec<(String, ItemNavegacao)> = c
+            .app
+            .navegacao()
+            .into_iter()
+            .flat_map(|g| g.itens.into_iter().map(move |i| (g.rotulo.clone(), i)))
+            .collect();
+        let (grupo, item) = itens
+            .iter()
+            .find(|(_, i)| i.rota.como_texto() == ROTA_REVISAO)
+            .expect("item de revisão na navegação");
+        assert_eq!(grupo, "Tutor");
+        assert!(item.indisponivel.is_none());
+        abrir(&ctx, ROTA_REVISAO);
+        for _ in 0..4 {
+            quadro(&mut c, &ctx, Vec::new(), Modifiers::NONE);
+        }
+        assert_eq!(c.estado.historico.atual().como_texto(), ROTA_REVISAO);
+        assert!(c.estado.erros.is_empty(), "{:?}", c.estado.erros);
+        assert!(!c.app.revisao.tocando());
     }
 
     #[test]
