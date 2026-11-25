@@ -264,6 +264,11 @@ fn desenhar_tutor(ui: &mut Ui, e: &mut EstadoCursos, idx: usize, acoes: &mut Vec
         );
     }
     desenhar_pasta_de_videos(ui, e);
+    // O aviso do vídeo fica junto do campo da pasta: no fim da árvore ele some da vista e o
+    // botão "Ver vídeo" parecia não fazer nada.
+    if let Some(m) = &e.aviso_video {
+        mensagem(ui, m);
+    }
     ui.add_space(4.0);
     if e.cursos[idx].arvore.is_empty() {
         ui.label("Este Curso não tem Seções para mostrar.");
@@ -291,9 +296,6 @@ fn desenhar_tutor(ui: &mut Ui, e: &mut EstadoCursos, idx: usize, acoes: &mut Vec
         if e.abrir_exercicio(&l, &x).is_ok() {
             acoes.push(AcaoCursos::AbriuExercicio);
         }
-    }
-    if let Some(m) = &e.aviso_video {
-        mensagem(ui, m);
     }
 }
 
