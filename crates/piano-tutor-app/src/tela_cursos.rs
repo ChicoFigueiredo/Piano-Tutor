@@ -96,7 +96,7 @@ pub fn desenhar_tela(
     acoes
 }
 
-/// Para testar: `PIANO_TUTOR_PLAYER=<curso>/<lição>/<exercício>` abre o Player de Aula no
+/// Para testar: `PIANO_TUTOR_PLAYER=<curso>/<lição>/<exercício>[/editar]` abre o Player de Aula no
 /// primeiro quadro da tela (junto com `PIANO_TUTOR_ROTA=cursos`).
 fn abrir_player_do_ambiente(e: &mut EstadoCursos) {
     static FEITO: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(false);
@@ -116,6 +116,11 @@ fn abrir_player_do_ambiente(e: &mut EstadoCursos) {
         let _ = e.abrir_exercicio(licao, x);
     }
     crate::tela_player_aula::abrir_player(e, licao, exercicio);
+    if resto.get(1) == Some(&"editar")
+        && let Some(p) = &mut e.player
+    {
+        p.pedir_edicao = Some(true);
+    }
 }
 
 /// Topo da tela com o Player de Aula aberto: de onde veio, como voltar e os avisos.

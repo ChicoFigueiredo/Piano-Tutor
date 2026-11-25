@@ -1265,6 +1265,59 @@ impl EstadoCursos {
         });
     }
 
+    /// Onde o editor de sincronia grava o Alinhamento do Exercício `exercicio`: na oficina do
+    /// tutor que já tem esse Alinhamento (ou cujo nome começa o id do Curso); sem oficina, nos
+    /// dados do aluno.
+    pub fn destino_do_alinhamento(&self, exercicio: &str) -> Option<PathBuf> {
+        let dados = self.dados.as_deref()?;
+        let curso = &self.curso_selecionado().id;
+        let oficinas = crate::revisao::descobrir_oficinas(dados, None);
+        let nome = format!("{exercicio}.json");
+        oficinas
+            .iter()
+            .map(|o| o.raiz.join("alinhamentos").join(&nome))
+            .find(|p| p.is_file())
+            .or_else(|| {
+                oficinas
+                    .iter()
+                    .find(|o| curso.starts_with(&o.tutor))
+                    .map(|o| o.raiz.join("alinhamentos").join(&nome))
+            })
+            .or_else(|| {
+                Some(
+                    dados
+                        .join("cursos")
+                        .join("alinhamentos-editados")
+                        .join(curso)
+                        .join(&nome),
+                )
+            })
+    }
+
+    /// Se o editor de sincronia já gravou um Alinhamento deste Exercício (ainda não
+    /// empacotado), usa-o no Exercício aberto. Devolve se trocou.
+    pub fn usar_alinhamento_editado(&mut self) -> bool {
+        let Some(id) = self.aberto.as_ref().map(|a| a.exercicio.id.clone()) else {
+            return false;
+        };
+        let Some(p) = self.destino_do_alinhamento(&id) else {
+            return false;
+        };
+        let Some(al) = fs::read(&p)
+            .ok()
+            .and_then(|b| Alinhamento::de_json(&b).ok())
+        else {
+            return false;
+        };
+        if al.metodo != "editor" || al.exercicio != id {
+            return false;
+        }
+        if let Some(a) = &mut self.aberto {
+            a.alinhamento = Some(al);
+        }
+        true
+    }
+
     /// O arquivo do vídeo da Aula da Lição `licao_id` na pasta que o aluno indicou.
     pub fn resolver_video(&self, licao_id: &str) -> Result<PathBuf, String> {
         let curso = self.curso_selecionado();

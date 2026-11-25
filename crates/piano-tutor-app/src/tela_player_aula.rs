@@ -12,6 +12,7 @@ use crate::player_aula::{
     Acompanhamento, Comando, Dedilhado, ModoAcompanhamento, Trecho, guias_no_instante,
     notas_do_trecho, trecho_no_instante,
 };
+use crate::sincronia::{self, EdicaoSincronia, PASSO_ACELERAR, PASSO_TEMPO_S};
 use crate::tela_espelho::desenhar_teclado_embutido;
 use crate::tela_partitura::desenhar_vista_com_cursor;
 use crate::video_embutido::VideoEmbutido;
@@ -42,6 +43,13 @@ pub struct EstadoPlayer {
     pub dedilhado: Option<Dedilhado>,
     /// Exercício cujo dedilhado está carregado.
     dedilhado_de: Option<String>,
+    /// Edição de sincronia em curso (modo editor).
+    pub edicao: Option<EdicaoSincronia>,
+    pub aviso_edicao: Option<String>,
+    /// Pedido do botão "Editar sincronia" (ligar/desligar), atendido com o Exercício à mão.
+    pub(crate) pedir_edicao: Option<bool>,
+    /// Nota que está sendo arrastada na linha do tempo do editor.
+    arrastando: Option<u32>,
     pub destacado: bool,
     /// Fração da largura do topo ocupada pelo vídeo.
     pub fracao_video: f32,
@@ -82,6 +90,10 @@ impl EstadoPlayer {
             acompanhamento: Acompanhamento::default(),
             dedilhado: None,
             dedilhado_de: None,
+            edicao: None,
+            aviso_edicao: None,
+            pedir_edicao: None,
+            arrastando: None,
             destacado: false,
             fracao_video: 0.45,
             altura_topo: 0.0,
@@ -253,8 +265,19 @@ pub fn desenhar_player(ui: &mut Ui, e: &mut EstadoCursos, espelho: &mut EstadoEs
     if p.dedilhado_de != exercicio {
         p.dedilhado = e.dedilhado_do_aberto();
         p.dedilhado_de = exercicio;
+        if e.usar_alinhamento_editado() {
+            p.aviso_edicao = Some(
+                "Usando o Alinhamento ajustado no editor (Hipótese, ainda fora do pacote).".into(),
+            );
+        }
+        if p.edicao.take().is_some_and(|ed| ed.alterada()) {
+            p.aviso_edicao = Some("A edição não salva do trecho anterior foi descartada.".into());
+        }
     }
-    let alinhamento = e.aberto.as_ref().and_then(|a| a.alinhamento.clone());
+    let alinhamento = match &p.edicao {
+        Some(ed) => Some(ed.atual.clone()),
+        None => e.aberto.as_ref().and_then(|a| a.alinhamento.clone()),
+    };
     let notas: Vec<u8> = std::mem::take(&mut e.notas_do_aluno);
     if let (Some(al), Some(i)) = (&alinhamento, idx) {
         let trecho = p.trechos[i].clone();
@@ -275,6 +298,12 @@ pub fn desenhar_player(ui: &mut Ui, e: &mut EstadoCursos, espelho: &mut EstadoEs
 
     // --- barra de cima ---
     desenhar_barra(ui, &mut p);
+    if let Some(i) = idx {
+        desenhar_editor(ui, e, &mut p, i);
+    }
+    if let Some(m) = &p.aviso_edicao {
+        ui.label(RichText::new(m).weak());
+    }
     if let Some(erro) = &p.erro_video {
         ui.label(
             RichText::new(format!("[!] Vídeo fora do app: {erro}"))
@@ -333,7 +362,10 @@ pub fn desenhar_player(ui: &mut Ui, e: &mut EstadoCursos, espelho: &mut EstadoEs
     alca_horizontal(ui, &mut p);
 
     // --- linha do tempo ---
-    desenhar_linha_do_tempo(ui, &mut p, alinhamento.as_ref());
+    match (&p.edicao, idx) {
+        (Some(_), Some(i)) => desenhar_linha_do_editor(ui, &mut p, i),
+        _ => desenhar_linha_do_tempo(ui, &mut p, alinhamento.as_ref()),
+    }
 
     // --- teclado com as notas e dedos do professor ---
     if let Some(al) = &alinhamento {
@@ -477,7 +509,253 @@ fn desenhar_barra(ui: &mut Ui, p: &mut EstadoPlayer) {
         {
             p.video_a_direita = !p.video_a_direita;
         }
+        let editando = p.edicao.is_some();
+        if ui
+            .add(Button::new("Editar sincronia").selected(editando))
+            .on_hover_text(
+                "Ajusta quando cada nota bate no vídeo: tempo±, acelerar± e Âncoras (M marca a \
+                 nota mais perto do instante atual)",
+            )
+            .clicked()
+        {
+            p.pedir_edicao = Some(!editando);
+        }
     });
+}
+
+fn indices_do_trecho(al: &piano_tutor_curso::Alinhamento, trecho: &Trecho) -> Vec<u32> {
+    notas_do_trecho(al, trecho)
+        .iter()
+        .map(|n| n.indice)
+        .collect()
+}
+
+/// Barra do editor de sincronia (só no modo editor).
+fn desenhar_editor(ui: &mut Ui, e: &mut EstadoCursos, p: &mut EstadoPlayer, i: usize) {
+    match p.pedir_edicao.take() {
+        Some(true) => {
+            if let Some(al) = e.aberto.as_ref().and_then(|a| a.alinhamento.as_ref()) {
+                p.edicao = Some(EdicaoSincronia::nova(al));
+                p.aviso_edicao = None;
+                p.acompanhamento
+                    .trocar_modo(ModoAcompanhamento::SegueNoTempo);
+            } else {
+                p.aviso_edicao = Some("Este exercício não tem Alinhamento para ajustar.".into());
+            }
+        }
+        Some(false) if p.edicao.take().is_some_and(|ed| ed.alterada()) => {
+            p.aviso_edicao = Some("Edição descartada (não foi salva).".into());
+        }
+        Some(false) | None => {}
+    }
+    let trecho = p.trechos[i].clone();
+    let t = p.posicao();
+    let Some(ed) = p.edicao.as_mut() else {
+        return;
+    };
+    let indices = indices_do_trecho(&ed.atual, &trecho);
+    let offset = ed.atual.offset_aula_s;
+    let mut salvar = false;
+    let mut descartar = false;
+    ui.horizontal_wrapped(|ui| {
+        ui.label(RichText::new("Sincronia do trecho:").strong());
+        if ui
+            .button("Tempo −")
+            .on_hover_text("Notas 50 ms mais cedo")
+            .clicked()
+        {
+            ed.deslocar(&indices, -PASSO_TEMPO_S);
+        }
+        if ui
+            .button("Tempo +")
+            .on_hover_text("Notas 50 ms mais tarde")
+            .clicked()
+        {
+            ed.deslocar(&indices, PASSO_TEMPO_S);
+        }
+        if ui
+            .button("Acelerar −")
+            .on_hover_text("Estica o trecho 1% (notas mais espaçadas)")
+            .clicked()
+        {
+            ed.escalar(&indices, 1.0 + PASSO_ACELERAR);
+        }
+        if ui
+            .button("Acelerar +")
+            .on_hover_text("Comprime o trecho 1% (notas mais juntas)")
+            .clicked()
+        {
+            ed.escalar(&indices, 1.0 - PASSO_ACELERAR);
+        }
+        let marcar = ui
+            .button("Marcar Âncora aqui (M)")
+            .on_hover_text("A nota mais perto do instante atual passa a bater exatamente aqui")
+            .clicked()
+            || (!ui.ctx().egui_wants_keyboard_input()
+                && ui.input_mut(|i| i.consume_key(Modifiers::NONE, Key::M)));
+        if marcar {
+            match ed.marcar_aqui(&indices, t - offset) {
+                Some(n) => p.aviso_edicao = Some(format!("Âncora na nota {}.", n + 1)),
+                None => p.aviso_edicao = Some("Nenhuma nota perto deste instante.".into()),
+            }
+        }
+        let desfazer = ui.button("Desfazer").on_hover_text("Ctrl+Z").clicked()
+            || (!ui.ctx().egui_wants_keyboard_input()
+                && ui.input_mut(|i| i.consume_key(Modifiers::COMMAND, Key::Z)));
+        if desfazer {
+            ed.desfazer();
+        }
+        ui.label(format!("{} Âncoras", ed.ancoras.len()));
+        if ui
+            .add_enabled(ed.alterada(), Button::new("Salvar como Hipótese"))
+            .on_hover_text(
+                "Grava o Alinhamento na oficina do tutor; vai para a revisão e entra no pacote \
+                 com scripts/atualizar-pacote-curso.sh",
+            )
+            .clicked()
+        {
+            salvar = true;
+        }
+        if ui.button("Descartar").clicked() {
+            descartar = true;
+        }
+    });
+    if descartar {
+        p.edicao = None;
+        p.aviso_edicao = Some("Edição descartada.".into());
+        return;
+    }
+    if salvar && let Some(ed) = p.edicao.as_ref() {
+        let al = ed.para_salvar();
+        let r = e
+            .destino_do_alinhamento(&al.exercicio)
+            .ok_or_else(|| "sem pasta de dados".to_owned())
+            .and_then(|d| sincronia::salvar(&d, &al).map(|c| (d, c)));
+        match r {
+            Ok((d, copia)) => {
+                if let Some(a) = &mut e.aberto {
+                    a.alinhamento = Some(al);
+                }
+                p.edicao = None;
+                p.aviso_edicao = Some(format!(
+                    "Salvo como Hipótese em {}{}.",
+                    d.display(),
+                    copia.map_or_else(String::new, |c| format!(
+                        " (cópia do anterior: {})",
+                        c.display()
+                    ))
+                ));
+            }
+            Err(m) => p.aviso_edicao = Some(format!("Não consegui salvar: {m}")),
+        }
+    }
+}
+
+/// Linha do tempo do editor: só o trecho, ampliado; cada nota é um traço que se arrasta (vira
+/// Âncora ao soltar); Âncoras em amarelo.
+fn desenhar_linha_do_editor(ui: &mut Ui, p: &mut EstadoPlayer, i: usize) {
+    let trecho = p.trechos[i].clone();
+    let (ini, fim) = (trecho.inicio_s - 1.0, trecho.fim_s + 1.0);
+    let dur = (fim - ini).max(1.0);
+    let (r, resp) =
+        ui.allocate_exact_size(vec2(ui.available_width(), 54.0), Sense::click_and_drag());
+    let x_de = |s: f64| r.left() + ((s - ini) / dur) as f32 * r.width();
+    let s_de = |x: f32| ini + f64::from((x - r.left()) / r.width()) * dur;
+    let pintor = ui.painter_at(r);
+    pintor.rect_filled(r, CornerRadius::same(3), ui.visuals().extreme_bg_color);
+    let faixa = egui::Rect::from_min_max(
+        pos2(x_de(trecho.inicio_s), r.top()),
+        pos2(x_de(trecho.fim_s), r.bottom()),
+    );
+    pintor.rect_filled(
+        faixa,
+        0.0,
+        Color32::from_rgba_unmultiplied(70, 130, 220, 40),
+    );
+    // Marcas de segundo.
+    let mut s = ini.ceil();
+    while s <= fim {
+        let x = x_de(s);
+        pintor.line_segment(
+            [pos2(x, r.bottom() - 6.0), pos2(x, r.bottom())],
+            Stroke::new(1.0, Color32::GRAY),
+        );
+        s += 1.0;
+    }
+    let Some(ed) = p.edicao.as_mut() else {
+        return;
+    };
+    let offset = ed.atual.offset_aula_s;
+    let ponteiro = ui.input(|i| i.pointer.interact_pos());
+    let solto = ui.input(|i| i.pointer.any_released());
+    let pressionado = ui.input(|i| i.pointer.primary_pressed());
+    let mut perto: Option<(u32, f32)> = None;
+    for n in notas_do_trecho(&ed.atual, &trecho) {
+        let x = x_de(n.t_audio_s + offset);
+        let ancora = ed.ancoras.contains(&n.indice);
+        let cor = if ancora {
+            Color32::from_rgb(230, 190, 70)
+        } else {
+            Color32::WHITE
+        };
+        pintor.line_segment(
+            [pos2(x, r.top() + 4.0), pos2(x, r.bottom() - 10.0)],
+            Stroke::new(2.0, cor),
+        );
+        let nome = nome_da_nota_no_curso(n.midi);
+        pintor.text(
+            pos2(x + 2.0, r.top() + 2.0),
+            egui::Align2::LEFT_TOP,
+            nome,
+            egui::FontId::proportional(10.0),
+            cor,
+        );
+        if let Some(pp) = ponteiro
+            && r.contains(pp)
+        {
+            let d = (pp.x - x).abs();
+            if d < 8.0 && perto.is_none_or(|(_, dd)| d < dd) {
+                perto = Some((n.indice, d));
+            }
+        }
+    }
+    if pressionado && let Some((n, _)) = perto {
+        p.arrastando = Some(n);
+    }
+    let t = p
+        .video
+        .as_ref()
+        .and_then(VideoEmbutido::posicao_s)
+        .unwrap_or(0.0);
+    let x = x_de(t);
+    pintor.line_segment(
+        [pos2(x, r.top()), pos2(x, r.bottom())],
+        Stroke::new(2.0, Color32::from_rgb(235, 100, 100)),
+    );
+    if let Some(n) = p.arrastando
+        && let Some(pp) = ponteiro
+    {
+        pintor.line_segment(
+            [pos2(pp.x, r.top()), pos2(pp.x, r.bottom())],
+            Stroke::new(1.0, Color32::from_rgb(230, 190, 70)),
+        );
+        if solto {
+            ed.fixar_ancora(n, s_de(pp.x) - offset);
+            p.arrastando = None;
+        }
+    } else if p.arrastando.is_none()
+        && resp.clicked()
+        && let Some(pp) = resp.interact_pointer_pos()
+        && let Some(v) = p.video.as_mut()
+    {
+        v.buscar(s_de(pp.x));
+    }
+    if solto {
+        p.arrastando = None;
+    }
+    resp.on_hover_text(
+        "Arraste uma nota para onde ela bate no vídeo (vira Âncora); clique para ir ao instante",
+    );
 }
 
 fn desenhar_quadro(ui: &mut Ui, p: &mut EstadoPlayer, w: f32, h: f32) {
