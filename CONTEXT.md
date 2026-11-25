@@ -75,7 +75,7 @@ Estado de uma Hipótese que um revisor humano está conferindo e corrigindo.
 _Evitar_: needs_review, unreviewed
 
 **Aprovada**:
-Estado do conteúdo que o revisor humano aceitou; só ele pode virar Lição ou Gabarito.
+Estado do conteúdo que o revisor humano aceitou; só ele pode virar Lição ou Gabarito. Normalmente passa por Em revisão; o revisor também pode **aprovar direto** uma Hipótese num clique, e o registro marca que foi direta.
 _Evitar_: final, validado pela IA
 
 **Rejeitada**:

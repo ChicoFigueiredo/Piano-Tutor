@@ -2,12 +2,13 @@
 //!
 //! - aba **Partituras**: a lista da oficina, a página do PDF (PNG, com zoom) ao lado da
 //!   partitura renderizada (com **Ouvir** e andamento ajustável), as divergências e os botões
-//!   Em revisão, Aprovar, Rejeitar, Abrir no MuseScore e Recarregar;
+//!   Em revisão, Aprovar, Aprovar direto (só de Hipótese), Rejeitar, Abrir no MuseScore e
+//!   Recarregar;
 //! - aba **Roteiro**: as falas do `roteiro.toml` de cada oficina e as do Roteiro de fábrica,
 //!   com texto editável, Ouvir (voz Piper) e os botões de estado.
 //!
-//! Só o humano aprova: esta tela é o único caminho para `aprovada`, sempre por **Em revisão**
-//! (regras em [`crate::revisao`]). O estado puro e a gravação ficam em `revisao`; aqui há o
+//! Só o humano aprova: esta tela é o único caminho para `aprovada`, por **Em revisão** ou pelo
+//! atalho **Aprovar direto** (só de Hipótese, marcado no registro; regras em [`crate::revisao`]). O estado puro e a gravação ficam em `revisao`; aqui há o
 //! estado da tela ([`EstadoRevisao`], testável sem janela, com o MuseScore e a voz injetáveis) e
 //! o desenho.
 
@@ -15,8 +16,8 @@ use crate::app::data_de_hoje;
 use crate::professor_falante::{Fala, Momento, Roteiro, Voz, VozMuda, voz_do_sistema};
 use crate::revisao::{
     ESTADOS, Estado, FonteDeRoteiro, ImagemRgba, ItemPartitura, Lancador, LancadorMuseScore,
-    MudancaDeFala, Oficina, contar_por_estado, descobrir_oficinas, ler_png, rotulo_do_estado,
-    simbolo_do_estado, transicao_valida,
+    MudancaDeFala, Oficina, aprovacao_direta_valida, contar_por_estado, descobrir_oficinas,
+    ler_png, rotulo_do_estado, simbolo_do_estado, transicao_valida,
 };
 use crate::som::ServicoSom;
 use crate::tela_partitura::{BPM_MAX, BPM_MIN, EstadoPartitura, desenhar_vista};
@@ -402,6 +403,29 @@ impl EstadoRevisao {
         }
     }
 
+    /// Aprova direto a partitura selecionada (Hipótese → Aprovada; o histórico marca `direto`).
+    pub fn aprovar_direto_da_selecionada(&mut self) {
+        let Some(item) = self.item_selecionado().cloned() else {
+            return;
+        };
+        if let Some(p) = &item.problema {
+            self.aviso = Some(Aviso::erro(format!("{}: {p}", item.id)));
+            return;
+        }
+        match item.aprovar_direto(&(self.hoje)()) {
+            Ok(()) => {
+                self.aviso = Some(Aviso::ok(format!(
+                    "{}: agora Aprovada (aprovação direta).",
+                    item.titulo
+                )));
+                self.rejeitando = false;
+                self.nota_da_rejeicao.clear();
+                self.reler_estados();
+            }
+            Err(e) => self.aviso = Some(Aviso::erro(e.to_string())),
+        }
+    }
+
     /// Rejeita a selecionada com a nota digitada (opcional).
     pub fn confirmar_rejeicao(&mut self) {
         let nota = std::mem::take(&mut self.nota_da_rejeicao);
@@ -568,10 +592,21 @@ impl EstadoRevisao {
             id,
             &MudancaDeFala {
                 estado: Some(para),
-                texto: None,
+                ..MudancaDeFala::default()
             },
             "estado gravado",
         );
+    }
+
+    /// Aprova direto uma fala em Hipótese (Hipótese → Aprovada; fica `aprovacao_direta = true`).
+    pub fn aprovar_direto_a_fala(&mut self, id: &str) {
+        if self.tem_edicao_pendente(id) {
+            self.aviso = Some(Aviso::erro(
+                "Salve o texto editado antes de aprovar a fala.",
+            ));
+            return;
+        }
+        self.aplicar_na_fala(id, &MudancaDeFala::aprovacao_direta(), "aprovação direta");
     }
 
     /// Grava o texto editado (uma fala Aprovada volta a Em revisão).
@@ -582,8 +617,8 @@ impl EstadoRevisao {
         self.aplicar_na_fala(
             id,
             &MudancaDeFala {
-                estado: None,
                 texto: Some(texto),
+                ..MudancaDeFala::default()
             },
             "texto salvo",
         );
@@ -993,6 +1028,20 @@ fn desenhar_botoes_de_estado(
         ) {
             e.mudar_estado_da_selecionada(Estado::Aprovada, None);
         }
+        if ui
+            .add_enabled(
+                livre && aprovacao_direta_valida(item.estado),
+                Button::new("Aprovar direto"),
+            )
+            .on_hover_text(
+                "Hipótese → Aprovada num clique, sem passar por Em revisão. Fica registrado \
+                 no histórico como aprovação direta.",
+            )
+            .on_disabled_hover_text("Só vale para Hipótese; nos outros estados use o fluxo normal.")
+            .clicked()
+        {
+            e.aprovar_direto_da_selecionada();
+        }
         if botao(
             ui,
             "Rejeitar",
@@ -1157,6 +1206,7 @@ enum AcaoDaFala {
     Ouvir(String),
     Parar,
     Estado(String, Estado),
+    AprovarDireto(String),
     Salvar(String),
     Desfazer(String),
 }
@@ -1262,6 +1312,7 @@ fn desenhar_aba_roteiro(ui: &mut Ui, e: &mut EstadoRevisao) {
         Some(AcaoDaFala::Ouvir(id)) => e.ouvir_fala(&id),
         Some(AcaoDaFala::Parar) => e.parar_voz(),
         Some(AcaoDaFala::Estado(id, s)) => e.mudar_estado_da_fala(&id, s),
+        Some(AcaoDaFala::AprovarDireto(id)) => e.aprovar_direto_a_fala(&id),
         Some(AcaoDaFala::Salvar(id)) => e.salvar_texto_da_fala(&id),
         Some(AcaoDaFala::Desfazer(id)) => e.desfazer_edicao(&id),
         None => {}
@@ -1352,6 +1403,22 @@ fn desenhar_fala(ui: &mut Ui, e: &mut EstadoRevisao, f: &Fala) -> Option<AcaoDaF
                 {
                     acao = Some(AcaoDaFala::Estado(f.id.clone(), para));
                 }
+            }
+            let direto_ok = !pendente && aprovacao_direta_valida(f.estado);
+            if ui
+                .add_enabled(direto_ok, Button::new("Aprovar direto"))
+                .on_hover_text(
+                    "Hipótese → Aprovada num clique, sem passar por Em revisão. Fica registrado \
+                     na fala como aprovação direta.",
+                )
+                .on_disabled_hover_text(if pendente {
+                    "Salve ou desfaça o texto antes."
+                } else {
+                    "Só vale para Hipótese; nos outros estados use o fluxo normal."
+                })
+                .clicked()
+            {
+                acao = Some(AcaoDaFala::AprovarDireto(f.id.clone()));
             }
         });
     });
@@ -1488,6 +1555,33 @@ estado = "em_revisao"
         )
         .expect("ler");
         assert!(t.contains("estado = \"aprovada\""), "{t}");
+    }
+
+    #[test]
+    fn aprovar_direto_pela_tela_vai_de_hipotese_a_aprovada_e_marca_o_historico() {
+        let d = dados_sinteticos();
+        let mut e = estado(&d);
+        let mut s = som();
+        e.recarregar_oficinas();
+        e.selecionar(0, &mut s);
+        assert_eq!(e.itens[0].estado, Estado::Hipotese);
+
+        e.aprovar_direto_da_selecionada();
+        assert!(!e.aviso.as_ref().expect("aviso").erro, "{:?}", e.aviso);
+        assert_eq!(e.itens[0].estado, Estado::Aprovada);
+        let h = &e.itens[0].historico;
+        assert_eq!(h.len(), 1);
+        assert_eq!(
+            (h[0].de.as_str(), h[0].para.as_str()),
+            ("hipotese", "aprovada")
+        );
+        assert!(h[0].direto);
+        assert_eq!(h[0].nota.as_deref(), Some("aprovação direta"));
+        assert_eq!(h[0].revisor, "Chico");
+        // Já Aprovada: o botão não vale mais e a chamada direta é recusada.
+        e.aprovar_direto_da_selecionada();
+        assert!(e.aviso.as_ref().expect("aviso").erro);
+        assert_eq!(e.itens[0].historico.len(), 1);
     }
 
     #[test]
@@ -1749,6 +1843,46 @@ estado = "em_revisao"
             .expect("fala");
         assert_eq!(f.estado, Estado::Aprovada);
         assert!(d.path().join("roteiro-fabrica-revisao.toml").is_file());
+    }
+
+    #[test]
+    fn aprovar_direto_uma_fala_pela_tela_so_de_hipotese_e_o_fluxo_antigo_segue() {
+        let d = dados_sinteticos();
+        let mut e = estado(&d);
+        e.recarregar_oficinas();
+        let i = e
+            .fontes
+            .iter()
+            .position(|f| matches!(f, FonteDeRoteiro::Fabrica { .. }))
+            .expect("fábrica");
+        e.trocar_fonte(i);
+        let estado_de = |e: &EstadoRevisao, id: &str| {
+            e.roteiro
+                .as_ref()
+                .expect("r")
+                .falas
+                .iter()
+                .find(|f| f.id == id)
+                .expect("fala")
+                .estado
+        };
+        e.aprovar_direto_a_fala("fabrica-ex01-antes");
+        assert!(!e.aviso.as_ref().expect("aviso").erro, "{:?}", e.aviso);
+        assert_eq!(estado_de(&e, "fabrica-ex01-antes"), Estado::Aprovada);
+        // Texto pendente bloqueia; Aprovada não aprova direto de novo.
+        e.editar_texto("fabrica-ex01-erro", "Outro texto.");
+        e.aprovar_direto_a_fala("fabrica-ex01-erro");
+        assert!(e.aviso.as_ref().expect("aviso").erro);
+        assert_eq!(estado_de(&e, "fabrica-ex01-erro"), Estado::Hipotese);
+        e.desfazer_edicao("fabrica-ex01-erro");
+        e.aprovar_direto_a_fala("fabrica-ex01-antes");
+        assert!(e.aviso.as_ref().expect("aviso").erro);
+        // O fluxo em dois passos continua valendo para outra fala.
+        e.mudar_estado_da_fala("fabrica-ex01-erro", Estado::Aprovada);
+        assert!(e.aviso.as_ref().expect("aviso").erro, "Hipótese não pula");
+        e.mudar_estado_da_fala("fabrica-ex01-erro", Estado::EmRevisao);
+        e.mudar_estado_da_fala("fabrica-ex01-erro", Estado::Aprovada);
+        assert_eq!(estado_de(&e, "fabrica-ex01-erro"), Estado::Aprovada);
     }
 
     // --- Página e janela ---

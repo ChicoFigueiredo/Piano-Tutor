@@ -12,7 +12,7 @@ Seção 3, Aulas 12–24. Viram **Exercício com Gabarito**: 14 Cinco notas, 15 
 ## Etapas
 1. **Formato do Pacote de Curso** (crate novo, só dados): manifesto versionado (Curso → Seções → Lições → Exercícios), MusicXML, áudio Opus dos trechos, Alinhamento por nota, Roteiro, assinatura ed25519, autor e licenciado. Leitor no app + empacotador CLI. Fixtures sintéticas nos testes.
 2. **Importador**: lê índice/catálogo da fonte e gera o manifesto da Seção 3 com hashes.
-3. **Transcrição PDF→MusicXML**: Audiveris (OMR) gera Hipótese; agente confere contra a imagem da página e contra o solfejo falado na transcrição cronometrada; divergências listadas. Estado Hipótese → Em revisão → Aprovada/Rejeitada. Correção humana no MuseScore.
+3. **Transcrição PDF→MusicXML**: Audiveris (OMR) gera Hipótese; agente confere contra a imagem da página e contra o solfejo falado na transcrição cronometrada; divergências listadas. Estado Hipótese → Em revisão → Aprovada/Rejeitada (ou Hipótese → Aprovada pelo botão "Aprovar direto", marcado como `direto` no histórico). Correção humana no MuseScore.
 4. **Alinhamento**: extrai o áudio (ffmpeg), detecta onsets/croma e alinha (DTW) à partitura aprovada; recorta o áudio do trecho tocado pelo Luciano.
 5. **App**: seletor de Curso (fábrica + pacotes instalados, progresso separado); tela de revisão (PDF × partitura renderizada, com som, Aprovar/Rejeitar); Exercício com áudio alinhado e cursor, botão "ver vídeo" (mpv no instante).
 6. **Professor falante**: Roteiro por passo, voz Piper pt-BR local; vale para Curso de fábrica e de tutor. Frases do Roteiro de tutor nascem como Hipótese da fala da Aula e só tocam depois de aprovadas.

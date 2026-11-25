@@ -13,6 +13,9 @@
 //! Regra do projeto (CONTEXT.md): **só o humano aprova**. Este módulo só muda um estado quando
 //! a tela de revisão pede, e só por uma transição válida: Hipótese → Em revisão → Aprovada ou
 //! Rejeitada, e de Aprovada ou Rejeitada de volta a Em revisão. Nada aqui promove sozinho.
+//! Há um atalho do humano, a **aprovação direta** (Hipótese → Aprovada num clique, só a partir
+//! de Hipótese), que fica marcada no registro: `direto = true` e a nota "aprovação direta" no
+//! `[[historico]]` da partitura, e `aprovacao_direta = true` na fala do Roteiro.
 //!
 //! Os arquivos são editados com `toml_edit`: os campos que não são do estado, a ordem e os
 //! comentários ficam como estavam. Cada mudança de estado de partitura acrescenta um registro
@@ -105,6 +108,16 @@ pub const fn transicao_valida(de: Estado, para: Estado) -> bool {
             | (Estado::EmRevisao, Estado::Aprovada | Estado::Rejeitada)
             | (Estado::Aprovada | Estado::Rejeitada, Estado::EmRevisao)
     )
+}
+
+/// Nota gravada no histórico quando o humano aprova uma Hipótese direto, sem passar por Em revisão.
+pub const NOTA_DA_APROVACAO_DIRETA: &str = "aprovação direta";
+
+/// A **aprovação direta** (Hipótese → Aprovada num clique) vale para este estado de partida?
+/// Só para Hipótese: de Em revisão o caminho é "Aprovar", e Aprovada ou Rejeitada voltam por
+/// Em revisão. Não muda [`transicao_valida`] (o fluxo em dois passos continua igual).
+pub const fn aprovacao_direta_valida(de: Estado) -> bool {
+    matches!(de, Estado::Hipotese)
 }
 
 // --- Erros ----------------------------------------------------------------------------------
@@ -294,6 +307,9 @@ pub struct RegistroDeHistorico {
     pub revisor: String,
     #[serde(default)]
     pub nota: Option<String>,
+    /// `true` na aprovação direta (Hipótese → Aprovada sem passar por Em revisão).
+    #[serde(default)]
+    pub direto: bool,
 }
 
 /// Campos do `estado.toml` que a tela lê (o resto do arquivo é ignorado aqui e preservado na
@@ -423,6 +439,11 @@ impl ItemPartitura {
     ) -> Result<(), ErroRevisao> {
         mudar_estado_da_partitura(&self.estado_toml, para, nota, em)
     }
+
+    /// Aprova a Hipótese direto (veja [`aprovar_direto_a_partitura`]).
+    pub fn aprovar_direto(&self, em: &str) -> Result<(), ErroRevisao> {
+        aprovar_direto_a_partitura(&self.estado_toml, em)
+    }
 }
 
 /// Muda o estado de uma partitura no seu `estado.toml` e acrescenta o registro
@@ -435,9 +456,37 @@ pub fn mudar_estado_da_partitura(
     nota: Option<&str>,
     em: &str,
 ) -> Result<(), ErroRevisao> {
+    mudar_estado_gravando(estado_toml, para, nota, em, false)
+}
+
+/// Aprovação direta: Hipótese → Aprovada num passo só, **só a partir de Hipótese** (o estado é
+/// o do arquivo agora). O histórico recebe `de = "hipotese"`, `para = "aprovada"`,
+/// `direto = true` e a nota [`NOTA_DA_APROVACAO_DIRETA`].
+pub fn aprovar_direto_a_partitura(estado_toml: &Path, em: &str) -> Result<(), ErroRevisao> {
+    mudar_estado_gravando(
+        estado_toml,
+        Estado::Aprovada,
+        Some(NOTA_DA_APROVACAO_DIRETA),
+        em,
+        true,
+    )
+}
+
+fn mudar_estado_gravando(
+    estado_toml: &Path,
+    para: Estado,
+    nota: Option<&str>,
+    em: &str,
+    direto: bool,
+) -> Result<(), ErroRevisao> {
     let mut doc = ler_documento(estado_toml)?;
     let de = estado_na_tabela(doc.as_table())?;
-    if !transicao_valida(de, para) {
+    let permitida = if direto {
+        aprovacao_direta_valida(de)
+    } else {
+        transicao_valida(de, para)
+    };
+    if !permitida {
         return Err(ErroRevisao::TransicaoInvalida { de, para });
     }
     definir_texto(doc.as_table_mut(), "estado", estado_para_texto(para));
@@ -447,6 +496,9 @@ pub fn mudar_estado_da_partitura(
     registro["para"] = value(estado_para_texto(para));
     registro["em"] = value(em);
     registro["revisor"] = value(REVISOR);
+    if direto {
+        registro["direto"] = value(true);
+    }
     if let Some(n) = nota.map(str::trim).filter(|n| !n.is_empty()) {
         registro["nota"] = value(n);
     }
@@ -483,7 +535,23 @@ pub fn mudar_estado_da_partitura(
 pub struct MudancaDeFala {
     pub estado: Option<Estado>,
     pub texto: Option<String>,
+    /// Aprovação direta: Hipótese → Aprovada num passo (só vale a partir de Hipótese). Com
+    /// `direto`, `estado` é ignorado e a fala fica com `aprovacao_direta = true`.
+    pub direto: bool,
 }
+
+impl MudancaDeFala {
+    /// A aprovação direta de uma fala em Hipótese.
+    pub fn aprovacao_direta() -> Self {
+        Self {
+            direto: true,
+            ..Self::default()
+        }
+    }
+}
+
+/// Campo gravado na fala do Roteiro (oficina ou sobreposição de fábrica) aprovada direto.
+pub const CAMPO_APROVACAO_DIRETA: &str = "aprovacao_direta";
 
 /// De onde vem um Roteiro na tela de revisão.
 #[derive(Clone, Debug, Eq, PartialEq)]
@@ -561,6 +629,15 @@ fn estado_apos(
     mudanca: &MudancaDeFala,
     texto_atual: &str,
 ) -> Result<Estado, ErroRevisao> {
+    if mudanca.direto {
+        if !aprovacao_direta_valida(atual) {
+            return Err(ErroRevisao::TransicaoInvalida {
+                de: atual,
+                para: Estado::Aprovada,
+            });
+        }
+        return Ok(Estado::Aprovada);
+    }
     let mut novo = atual;
     let texto_mudou = mudanca
         .texto
@@ -606,6 +683,11 @@ fn aplicar_no_roteiro_da_oficina(
     }
     if novo != atual {
         definir_texto(fala, "estado", estado_para_texto(novo));
+        // O registro de aprovação direta vale só para a aprovação que ele descreve.
+        fala.remove(CAMPO_APROVACAO_DIRETA);
+        if mudanca.direto {
+            fala[CAMPO_APROVACAO_DIRETA] = value(true);
+        }
     }
     gravar_atomico(arquivo, &doc.to_string())?;
     Ok(novo)
@@ -662,12 +744,21 @@ fn aplicar_na_fabrica(
         Some(t) => {
             definir_texto(t, "estado", estado_para_texto(novo));
             definir_texto(t, "texto", &texto_novo);
+            if novo != fala.estado {
+                t.remove(CAMPO_APROVACAO_DIRETA);
+                if mudanca.direto {
+                    t[CAMPO_APROVACAO_DIRETA] = value(true);
+                }
+            }
         }
         None => {
             let mut t = Table::new();
             t["id"] = value(id);
             t["estado"] = value(estado_para_texto(novo));
             t["texto"] = value(texto_novo);
+            if mudanca.direto {
+                t[CAMPO_APROVACAO_DIRETA] = value(true);
+            }
             falas.push(t);
         }
     }
@@ -1069,6 +1160,169 @@ estado = "em_revisao"
     }
 
     #[test]
+    fn aprovacao_direta_so_vale_a_partir_de_hipotese_e_nao_muda_o_fluxo() {
+        use crate::professor_falante::EstadoFala::*;
+        for (de, ok) in [
+            (Hipotese, true),
+            (EmRevisao, false),
+            (Aprovada, false),
+            (Rejeitada, false),
+        ] {
+            assert_eq!(aprovacao_direta_valida(de), ok, "{de:?}");
+        }
+        // O fluxo em dois passos continua o mesmo: Hipótese → Aprovada segue fora de
+        // `transicao_valida` (o atalho é outro caminho, marcado no registro).
+        assert!(!transicao_valida(Hipotese, Aprovada));
+        assert!(transicao_valida(Hipotese, EmRevisao));
+        assert!(transicao_valida(EmRevisao, Aprovada));
+    }
+
+    #[test]
+    fn aprovar_direto_a_partitura_marca_o_historico_como_direto() {
+        let d = tmp();
+        let o = oficina_sintetica(d.path());
+        let item = ItemPartitura::ler(&o, "cinco-notas");
+        assert_eq!(item.estado, Estado::Hipotese);
+
+        item.aprovar_direto("2026-11-24").expect("aprovação direta");
+
+        let relido = ItemPartitura::ler(&o, "cinco-notas");
+        assert_eq!(relido.estado, Estado::Aprovada);
+        assert_eq!(
+            relido.historico,
+            [RegistroDeHistorico {
+                de: "hipotese".into(),
+                para: "aprovada".into(),
+                em: "2026-11-24".into(),
+                revisor: "Chico".into(),
+                nota: Some("aprovação direta".into()),
+                direto: true,
+            }]
+        );
+        let texto = fs::read_to_string(&item.estado_toml).expect("ler");
+        assert!(texto.contains("direto = true"), "{texto}");
+        // Os campos e comentários do arquivo continuam.
+        assert!(texto.contains("compassos = 8"), "{texto}");
+    }
+
+    #[test]
+    fn aprovar_direto_de_outro_estado_e_recusado_sem_tocar_o_arquivo() {
+        let d = tmp();
+        let o = oficina_sintetica(d.path());
+        // "a-primeira" já está Em revisão; "cinco-notas" fica Aprovada pelo fluxo normal.
+        let em_revisao = ItemPartitura::ler(&o, "a-primeira");
+        let antes = fs::read_to_string(&em_revisao.estado_toml).expect("ler");
+        let e = em_revisao.aprovar_direto("2026-11-24");
+        assert!(
+            matches!(
+                e,
+                Err(ErroRevisao::TransicaoInvalida {
+                    de: Estado::EmRevisao,
+                    para: Estado::Aprovada
+                })
+            ),
+            "{e:?}"
+        );
+        assert_eq!(
+            fs::read_to_string(&em_revisao.estado_toml).expect("ler"),
+            antes
+        );
+
+        let item = ItemPartitura::ler(&o, "cinco-notas");
+        item.mudar_estado(Estado::EmRevisao, None, "2026-11-24")
+            .expect("em revisão");
+        item.mudar_estado(Estado::Aprovada, None, "2026-11-25")
+            .expect("aprovada");
+        assert!(item.aprovar_direto("2026-11-26").is_err(), "já Aprovada");
+        // O fluxo antigo continua gravando sem `direto`.
+        let relido = ItemPartitura::ler(&o, "cinco-notas");
+        assert_eq!(relido.historico.len(), 2);
+        assert!(relido.historico.iter().all(|r| !r.direto));
+        let texto = fs::read_to_string(&item.estado_toml).expect("ler");
+        assert!(!texto.contains("direto"), "{texto}");
+    }
+
+    #[test]
+    fn aprovar_direto_uma_fala_do_roteiro_da_oficina_marca_aprovacao_direta() {
+        let d = tmp();
+        let o = oficina_sintetica(d.path());
+        let fonte = FonteDeRoteiro::Oficina {
+            tutor: o.tutor.clone(),
+            arquivo: o.arquivo_do_roteiro(),
+        };
+        // Em revisão (a fala 2) não aprova direto.
+        let e = fonte.aplicar("s03-a14-passo-3", &MudancaDeFala::aprovacao_direta());
+        assert!(
+            matches!(e, Err(ErroRevisao::TransicaoInvalida { .. })),
+            "{e:?}"
+        );
+        // Hipótese (a fala 1) aprova direto.
+        let novo = fonte
+            .aplicar("s03-a14-antes", &MudancaDeFala::aprovacao_direta())
+            .expect("direto");
+        assert_eq!(novo, Estado::Aprovada);
+        assert_eq!(
+            fonte.carregar().expect("reler").falas[0].estado,
+            Estado::Aprovada
+        );
+        let texto = fs::read_to_string(o.arquivo_do_roteiro()).expect("ler");
+        assert!(texto.contains("aprovacao_direta = true"), "{texto}");
+        assert!(texto.contains("# comentário do roteiro"));
+        // Editar o texto devolve a Em revisão e apaga a marca (a aprovação direta era do texto
+        // antigo).
+        fonte
+            .aplicar(
+                "s03-a14-antes",
+                &MudancaDeFala {
+                    texto: Some("Texto novo.".into()),
+                    ..MudancaDeFala::default()
+                },
+            )
+            .expect("editar");
+        let texto = fs::read_to_string(o.arquivo_do_roteiro()).expect("ler");
+        assert!(!texto.contains("aprovacao_direta"), "{texto}");
+    }
+
+    #[test]
+    fn aprovar_direto_uma_fala_de_fabrica_grava_na_sobreposicao_e_vale_por_cima() {
+        let d = tmp();
+        let fonte = FonteDeRoteiro::Fabrica {
+            dados: d.path().to_path_buf(),
+        };
+        let id = "fabrica-ex02-acerto";
+        fonte
+            .aplicar(id, &MudancaDeFala::aprovacao_direta())
+            .expect("direto");
+        let r = roteiro_de_fabrica_revisado(d.path()).expect("revisado");
+        assert_eq!(
+            r.falas.iter().find(|f| f.id == id).expect("fala").estado,
+            Estado::Aprovada
+        );
+        let t = fs::read_to_string(arquivo_de_revisao_da_fabrica(d.path())).expect("ler");
+        assert!(t.contains("aprovacao_direta = true"), "{t}");
+        // Já Aprovada: não aprova direto de novo; o fluxo normal (Em revisão → Aprovada) apaga
+        // a marca.
+        assert!(
+            fonte
+                .aplicar(id, &MudancaDeFala::aprovacao_direta())
+                .is_err()
+        );
+        for para in [Estado::EmRevisao, Estado::Aprovada] {
+            fonte
+                .aplicar(
+                    id,
+                    &MudancaDeFala {
+                        estado: Some(para),
+                        ..MudancaDeFala::default()
+                    },
+                )
+                .expect("fluxo normal");
+        }
+        let t = fs::read_to_string(arquivo_de_revisao_da_fabrica(d.path())).expect("ler");
+        assert!(!t.contains("aprovacao_direta"), "{t}");
+    }
+
+    #[test]
     fn textos_do_estado_vao_e_voltam() {
         for e in ESTADOS {
             assert_eq!(estado_de_texto(estado_para_texto(e)), Some(e));
@@ -1105,6 +1359,7 @@ estado = "em_revisao"
                 em: "2026-11-24".into(),
                 revisor: "Chico".into(),
                 nota: None,
+                direto: false,
             }
         );
         assert_eq!(relido.historico[1].de, "em_revisao");
@@ -1225,6 +1480,7 @@ estado = "em_revisao"
             &MudancaDeFala {
                 estado: Some(Estado::Aprovada),
                 texto: None,
+                ..MudancaDeFala::default()
             },
         );
         assert!(
@@ -1239,6 +1495,7 @@ estado = "em_revisao"
                 &MudancaDeFala {
                     estado: Some(Estado::Aprovada),
                     texto: None,
+                    ..MudancaDeFala::default()
                 },
             )
             .expect("aprovar");
@@ -1273,6 +1530,7 @@ estado = "em_revisao"
                 &MudancaDeFala {
                     estado: Some(Estado::Aprovada),
                     texto: None,
+                    ..MudancaDeFala::default()
                 },
             )
             .expect("aprovar");
@@ -1282,6 +1540,7 @@ estado = "em_revisao"
                 &MudancaDeFala {
                     estado: None,
                     texto: Some("  Abra bem a mão, com calma.  ".into()),
+                    ..MudancaDeFala::default()
                 },
             )
             .expect("editar");
@@ -1296,6 +1555,7 @@ estado = "em_revisao"
                 &MudancaDeFala {
                     estado: None,
                     texto: Some("Texto novo.".into()),
+                    ..MudancaDeFala::default()
                 },
             )
             .expect("editar hipótese");
@@ -1306,7 +1566,8 @@ estado = "em_revisao"
                 "s03-a14-antes",
                 &MudancaDeFala {
                     estado: None,
-                    texto: Some("   ".into())
+                    texto: Some("   ".into()),
+                    ..MudancaDeFala::default()
                 }
             ),
             Err(ErroRevisao::Formato(_))
@@ -1342,6 +1603,7 @@ estado = "em_revisao"
             &MudancaDeFala {
                 estado: Some(Estado::Aprovada),
                 texto: None,
+                ..MudancaDeFala::default()
             },
         );
         assert!(
@@ -1354,6 +1616,7 @@ estado = "em_revisao"
                 &MudancaDeFala {
                     estado: Some(Estado::EmRevisao),
                     texto: None,
+                    ..MudancaDeFala::default()
                 },
             )
             .expect("em revisão");
@@ -1363,6 +1626,7 @@ estado = "em_revisao"
                 &MudancaDeFala {
                     estado: Some(Estado::Aprovada),
                     texto: Some("Vamos achar o Dó central, juntos.".into()),
+                    ..MudancaDeFala::default()
                 },
             )
             .expect("aprovar com texto ajustado");
