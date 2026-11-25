@@ -9,8 +9,8 @@
 use crate::cursos::{EstadoCursos, formatar_instante, indice_da_nota_no_instante};
 use crate::espelho::EstadoEspelho;
 use crate::player_aula::{
-    Acompanhamento, Comando, Dedilhado, ModoAcompanhamento, Trecho, guias_no_instante,
-    notas_do_trecho, trecho_no_instante,
+    Acompanhamento, Comando, ConfigEsperaTocar, Dedilhado, ModoAcompanhamento, Trecho,
+    guias_no_instante, notas_do_trecho, trecho_no_instante,
 };
 use crate::player_aula::{nota_anterior, proxima_nota};
 use crate::roteiro_aula::{Pedido, RoteiroAula, TrechoInfo, ler_roteiro_da_pasta};
@@ -25,11 +25,12 @@ use bancada_casca::egui::{
 };
 use piano_tutor_core::NotaMidi;
 use piano_tutor_core::chamada_resposta::nome_da_nota_no_curso;
+use piano_tutor_core::pratica::Retomada;
 use std::path::PathBuf;
 
 /// Tamanho máximo em que o mpv desenha o quadro (o egui escala para o painel).
 const QUADRO_MAX: (u32, u32) = (1280, 720);
-const VELOCIDADES: [f64; 7] = [0.5, 0.6, 0.75, 0.9, 1.0, 1.25, 1.5];
+pub(crate) const VELOCIDADES: [f64; 7] = [0.5, 0.6, 0.75, 0.9, 1.0, 1.25, 1.5];
 
 /// As escolhas do Player de Aula que valem entre aberturas (guardadas no perfil pelo app; o
 /// player é recriado a cada Aula, então elas moram em `EstadoCursos::opcoes_player`).
@@ -39,7 +40,7 @@ pub struct OpcoesPlayer {
     /// Janela de acerto do Espera tocar, em ms.
     pub tolerancia_ms: f32,
     /// Espera tocar: quanto voltar ao retomar.
-    pub retomada: piano_tutor_core::pratica::Retomada,
+    pub retomada: Retomada,
     pub fracao_video: f32,
     pub altura_topo: f32,
     pub video_a_direita: bool,
@@ -51,7 +52,7 @@ impl Default for OpcoesPlayer {
         Self {
             modo: ModoAcompanhamento::default(),
             tolerancia_ms: 150.0,
-            retomada: piano_tutor_core::pratica::Retomada::Zero,
+            retomada: Retomada::Zero,
             fracao_video: 0.45,
             altura_topo: 0.0,
             video_a_direita: false,
@@ -106,7 +107,7 @@ pub struct EstadoPlayer {
     /// Janela de acerto do Espera tocar, em ms.
     pub tolerancia_ms: f32,
     /// Espera tocar: quanto voltar ao retomar.
-    pub retomada: piano_tutor_core::pratica::Retomada,
+    pub retomada: Retomada,
 }
 
 /// Botões de transporte, como num tocador de música.
@@ -363,7 +364,7 @@ impl EstadoPlayer {
             pedido_transporte: None,
             correcao: None,
             tolerancia_ms: 150.0,
-            retomada: piano_tutor_core::pratica::Retomada::Zero,
+            retomada: Retomada::Zero,
         }
     }
 
@@ -427,7 +428,12 @@ impl EstadoPlayer {
         }
     }
 
+    /// Executa um comando no vídeo. No player de aula só o vídeo (com o áudio do professor que
+    /// vem nele) anda no tempo: a partitura e o teclado seguem a posição dele, e nada mais
+    /// (metrônomo, motor de som) toca por conta própria; então pausar e retomar o vídeo é parar e
+    /// retomar tudo junto.
     fn executar(&mut self, c: Comando) {
+        self.acompanhamento.ao_executar(&c);
         let Some(v) = self.video.as_mut() else {
             return;
         };
@@ -438,6 +444,10 @@ impl EstadoPlayer {
                 v.buscar(s);
                 v.pausar(false);
             }
+            Comando::BuscarEPausar(s) => {
+                v.buscar(s);
+                v.pausar(true);
+            }
         }
     }
 
@@ -446,10 +456,11 @@ impl EstadoPlayer {
         if let Some(v) = self.video.as_mut() {
             v.pausar(!p);
         }
-        // Retomar à mão libera a espera.
+        // Retomar à mão libera a espera (e, no Espera tocar, desiste da parada).
         if p {
             self.acompanhamento.esperando = None;
             self.acompanhamento.aguardando_resposta = false;
+            self.acompanhamento.liberar_manual();
         }
     }
 
@@ -582,6 +593,18 @@ pub fn desenhar_player(ui: &mut Ui, e: &mut EstadoCursos, espelho: &mut EstadoEs
         p.trocar_modo(m);
     }
     let agora = ui.input(|i| i.time);
+    // O que o Espera tocar precisa saber: tolerância, retomada, andamento e velocidade do vídeo.
+    p.acompanhamento.definir_relogio(agora);
+    p.acompanhamento.definir_espera_tocar(ConfigEsperaTocar {
+        tolerancia_ms: f64::from(p.tolerancia_ms),
+        retomada: p.retomada,
+        bpm: e
+            .aberto
+            .as_ref()
+            .and_then(|a| a.exercicio.bpm)
+            .map(f64::from),
+        velocidade: p.velocidade,
+    });
     let t = p.posicao();
     if voltar && let Some(c) = p.acompanhamento.voltar(&p.trechos, t, agora) {
         p.executar(c);
@@ -750,7 +773,11 @@ pub fn desenhar_player(ui: &mut Ui, e: &mut EstadoCursos, espelho: &mut EstadoEs
 
     // --- teclado com as notas e dedos do professor ---
     if let Some(al) = &alinhamento {
-        let g = guias_no_instante(al, p.dedilhado.as_ref(), t - al.offset_aula_s);
+        // Parado no Espera tocar, o teclado mostra a nota que falta.
+        let g = p
+            .acompanhamento
+            .guias_da_parada(al, p.dedilhado.as_ref())
+            .unwrap_or_else(|| guias_no_instante(al, p.dedilhado.as_ref(), t - al.offset_aula_s));
         let guias: Vec<NotaMidi> = g
             .notas
             .iter()
@@ -1068,8 +1095,65 @@ fn desenhar_barra(ui: &mut Ui, p: &mut EstadoPlayer) {
         if m != p.acompanhamento.modo {
             p.trocar_modo(m);
         }
+        if p.acompanhamento.modo == ModoAcompanhamento::EsperaTocar {
+            ui.label("Tolerância:");
+            ui.add(
+                egui::Slider::new(&mut p.tolerancia_ms, 20.0..=500.0)
+                    .integer()
+                    .suffix(" ms"),
+            )
+            .on_hover_text(
+                "Quanto tempo depois do instante da nota você ainda pode tocá-la antes de o vídeo parar",
+            );
+            ui.label("Ao retomar:");
+            let mut r = p.retomada;
+            ComboBox::from_id_salt("player-retomada")
+                .selected_text(r.rotulo())
+                .show_ui(ui, |ui| {
+                    for x in Retomada::TODAS {
+                        ui.selectable_value(&mut r, x, x.rotulo());
+                    }
+                })
+                .response
+                .on_hover_text(
+                    "Depois de acertar a nota que faltava, o vídeo conta dois tempos e recomeça daqui",
+                );
+            p.retomada = r;
+        }
         let a = &p.acompanhamento;
-        ui.label(format!("acertos {} · erros {}", a.acertos, a.erros));
+        if a.modo == ModoAcompanhamento::EsperaTocar {
+            ui.label(format!(
+                "acertos {} · erros {} · paradas {} · precisão {:.0}%",
+                a.acertos,
+                a.erros,
+                a.paradas(),
+                a.placar.precisao_pct()
+            ));
+        } else {
+            ui.label(format!("acertos {} · erros {}", a.acertos, a.erros));
+        }
+        let amarelo = Color32::from_rgb(230, 190, 70);
+        if a.parado_esperando() {
+            let nomes: Vec<String> = a
+                .notas_que_faltam()
+                .into_iter()
+                .map(nome_da_nota_no_curso)
+                .collect();
+            ui.label(
+                RichText::new(format!("Parado: toque a nota que falta ({})", nomes.join(", ")))
+                    .strong()
+                    .color(amarelo),
+            );
+        }
+        if let Some(n) = a.contagem_retomada() {
+            ui.label(
+                RichText::new(format!("Retomando em {n}…"))
+                    .strong()
+                    .color(Color32::from_rgb(120, 190, 240)),
+            );
+            // A contagem anda pelo relógio da tela: sem pedir quadro, ela travaria.
+            ui.ctx().request_repaint();
+        }
         if a.esperando.is_some() {
             ui.label(RichText::new("Esperando você tocar a nota…").color(Color32::from_rgb(230, 190, 70)));
         }

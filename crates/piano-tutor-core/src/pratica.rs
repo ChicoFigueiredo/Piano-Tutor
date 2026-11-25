@@ -85,7 +85,13 @@ pub enum Retomada {
 }
 
 impl Retomada {
-    pub const TODAS: [Self; 5] = [Self::Zero, Self::Uma, Self::Duas, Self::Quatro, Self::Inicio];
+    pub const TODAS: [Self; 5] = [
+        Self::Zero,
+        Self::Uma,
+        Self::Duas,
+        Self::Quatro,
+        Self::Inicio,
+    ];
 
     /// Quantas notas (passos) voltar; `None` = do início.
     pub fn notas(self) -> Option<usize> {
@@ -202,9 +208,14 @@ impl Resumo {
 enum Fluxo {
     Andando,
     /// Parou no passo `passo`, com o relógio congelado em `t_s`.
-    Parada { passo: usize, t_s: f64 },
+    Parada {
+        passo: usize,
+        t_s: f64,
+    },
     /// O passo parado foi completado: retomar em `t_s` (instante da partitura).
-    Retomar { t_s: f64 },
+    Retomar {
+        t_s: f64,
+    },
 }
 
 /// Sessão de prática sobre uma lista de notas esperadas.
@@ -697,7 +708,9 @@ mod testes {
 
     /// Dó Ré Mi Fá Sol, uma por segundo.
     fn escala() -> Vec<EventoEsperado> {
-        (0..5).map(|k| esp([60, 62, 64, 65, 67][k], k as f64)).collect()
+        (0..5)
+            .map(|k| esp([60, 62, 64, 65, 67][k], k as f64))
+            .collect()
     }
 
     #[test]
@@ -833,7 +846,11 @@ mod testes {
         assert!((r.precisao_pct() - 300.0 / 7.0).abs() < 1e-9);
         p.encerrar();
         let r = p.resumo();
-        assert_eq!((r.acertos, r.paradas, r.faltas), (3, 2, 4), "2 não tocadas + 2 paradas");
+        assert_eq!(
+            (r.acertos, r.paradas, r.faltas),
+            (3, 2, 4),
+            "2 não tocadas + 2 paradas"
+        );
         assert_eq!(p.parada(), None);
         assert!(p.concluida());
     }
@@ -846,7 +863,10 @@ mod testes {
         assert_eq!(p.nota_tocada(62, 0.9), Veredito::Acerto);
         let r = p.resumo();
         assert!(r.desvio_medio_ms.is_some_and(|d| d.abs() < 1e-6));
-        assert!(r.desvio_absoluto_ms.is_some_and(|d| (d - 100.0).abs() < 1e-6));
+        assert!(
+            r.desvio_absoluto_ms
+                .is_some_and(|d| (d - 100.0).abs() < 1e-6)
+        );
     }
 
     #[test]
@@ -855,7 +875,10 @@ mod testes {
             assert_eq!(ModoPratica::de_chave(m.chave()), Some(m));
             assert_eq!(ModoPratica::de_chave(&format!("{m:?}")), Some(m));
         }
-        assert_eq!(ModoPratica::de_chave("Espera"), Some(ModoPratica::NotaANota));
+        assert_eq!(
+            ModoPratica::de_chave("Espera"),
+            Some(ModoPratica::NotaANota)
+        );
         assert_eq!(ModoPratica::de_chave("lixo"), None);
         for r in Retomada::TODAS {
             assert_eq!(Retomada::de_chave(r.chave()), Some(r));

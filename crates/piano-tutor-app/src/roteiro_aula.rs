@@ -373,7 +373,7 @@ impl RoteiroAula {
             lua.create_function(move |_, texto: String| {
                 let Some(modo) = ModoAcompanhamento::de_texto(&texto) else {
                     return Err(ErroLua::runtime(format!(
-                        "aula.modo: modo «{texto}» desconhecido (use \"espera\", \"segue\" ou \"chamada\")"
+                        "aula.modo: modo «{texto}» desconhecido (use \"nota_a_nota\", \"espera_tocar\", \"segue\" ou \"chamada\")"
                     )));
                 };
                 fila(&p, Pedido::Modo(modo))
@@ -1158,6 +1158,28 @@ mod testes {
     }
 
     #[test]
+    fn modos_pelo_nome_novo_e_pelo_antigo() {
+        let mut r = carregar(
+            r#"
+            function ao_abrir()
+                aula.modo("nota_a_nota")
+                aula.modo("espera_tocar")
+                aula.modo("espera")
+            end
+            "#,
+        );
+        assert_eq!(
+            r.ao_abrir(),
+            Ok(vec![
+                Pedido::Modo(ModoAcompanhamento::NotaANota),
+                Pedido::Modo(ModoAcompanhamento::EsperaTocar),
+                // O nome antigo "espera" é o Nota a nota.
+                Pedido::Modo(ModoAcompanhamento::NotaANota),
+            ])
+        );
+    }
+
+    #[test]
     fn modo_desconhecido_e_argumentos_invalidos_dao_erro() {
         let mut r = carregar(
             r#"
@@ -1295,7 +1317,7 @@ mod testes {
             fim_s: 30.0,
             indice: 0,
         };
-        // Abrir não pede nada; entrar no primeiro trecho pede modo espera.
+        // Abrir não pede nada; entrar no primeiro trecho pede o modo Nota a nota.
         assert_eq!(r.ao_abrir(), Ok(vec![]));
         let entrada = r.ao_entrar_trecho(&t).expect("entra");
         assert!(
@@ -1323,7 +1345,7 @@ mod testes {
         assert!(p.iter().any(|x| matches!(x, Pedido::Mensagem(_))), "{p:?}");
         assert!(!p.contains(&Pedido::Repetir), "{p:?}");
 
-        // Em outro trecho, não força o modo espera.
+        // Em outro trecho, não força o modo Nota a nota.
         let outro = TrechoInfo {
             indice: 1,
             id: "outro".into(),
