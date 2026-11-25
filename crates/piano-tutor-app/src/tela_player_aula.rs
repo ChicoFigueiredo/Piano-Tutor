@@ -82,7 +82,104 @@ enum Transporte {
     Inicio,
     NotaAnterior,
     ProximaNota,
+    ProximoTrecho,
     Fim,
+}
+
+/// Ícones do transporte, desenhados à mão (a fonte da tela não tem os símbolos de tocador).
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+enum Icone {
+    Inicio,
+    Retroceder,
+    NotaAnterior,
+    Tocar,
+    Pausar,
+    ProximaNota,
+    Avancar,
+    Fim,
+}
+
+/// Botão de tocador: |◀  ◀◀  ◁  ▶/❚❚  ▷  ▶▶  ▶|.
+fn botao_icone(ui: &mut Ui, icone: Icone) -> egui::Response {
+    let principal = matches!(icone, Icone::Tocar | Icone::Pausar);
+    let tam = if principal {
+        vec2(40.0, 30.0)
+    } else {
+        vec2(32.0, 30.0)
+    };
+    let (r, resp) = ui.allocate_exact_size(tam, Sense::click());
+    let v = ui.style().interact(&resp);
+    let fundo = if principal {
+        ui.visuals().selection.bg_fill
+    } else {
+        v.weak_bg_fill
+    };
+    ui.painter().rect(
+        r,
+        CornerRadius::same(5),
+        fundo,
+        v.bg_stroke,
+        StrokeKind::Inside,
+    );
+    let cor = if principal {
+        ui.visuals().selection.stroke.color
+    } else {
+        v.fg_stroke.color
+    };
+    let pt = ui.painter();
+    let c = r.center();
+    let h = 7.0;
+    // Triângulo apontando para a direita (dir = 1) ou esquerda (dir = -1), com a ponta em x.
+    let tri = |x: f32, dir: f32, cheio: bool| {
+        let pts = vec![
+            pos2(x, c.y),
+            pos2(x - dir * h * 1.2, c.y - h),
+            pos2(x - dir * h * 1.2, c.y + h),
+        ];
+        if cheio {
+            pt.add(egui::Shape::convex_polygon(pts, cor, Stroke::NONE));
+        } else {
+            pt.add(egui::Shape::closed_line(pts, Stroke::new(1.6, cor)));
+        }
+    };
+    let barra = |x: f32| {
+        pt.rect_filled(
+            egui::Rect::from_center_size(pos2(x, c.y), vec2(2.5, h * 2.0)),
+            0.0,
+            cor,
+        );
+    };
+    match icone {
+        Icone::Tocar => tri(c.x + 6.0, 1.0, true),
+        Icone::Pausar => {
+            for dx in [-3.5, 3.5] {
+                pt.rect_filled(
+                    egui::Rect::from_center_size(pos2(c.x + dx, c.y), vec2(4.0, h * 2.0)),
+                    1.0,
+                    cor,
+                );
+            }
+        }
+        Icone::Inicio => {
+            barra(c.x - 6.0);
+            tri(c.x - 4.5, -1.0, true);
+        }
+        Icone::Fim => {
+            barra(c.x + 6.0);
+            tri(c.x + 4.5, 1.0, true);
+        }
+        Icone::Retroceder => {
+            tri(c.x - 8.0, -1.0, true);
+            tri(c.x + 0.5, -1.0, true);
+        }
+        Icone::Avancar => {
+            tri(c.x + 8.0, 1.0, true);
+            tri(c.x - 0.5, 1.0, true);
+        }
+        Icone::NotaAnterior => tri(c.x - 4.0, -1.0, false),
+        Icone::ProximaNota => tri(c.x + 4.0, 1.0, false),
+    }
+    resp
 }
 
 /// Uma correção pedida pelo menu de contexto (auditoria do professor).
@@ -692,6 +789,8 @@ pub fn desenhar_player(ui: &mut Ui, e: &mut EstadoCursos, espelho: &mut EstadoEs
                 Some(Transporte::NotaAnterior)
             } else if i.consume_key(Modifiers::NONE, Key::ArrowRight) {
                 Some(Transporte::ProximaNota)
+            } else if i.consume_key(Modifiers::NONE, Key::PageDown) {
+                Some(Transporte::ProximoTrecho)
             } else {
                 None
             }
@@ -726,6 +825,18 @@ fn executar_transporte(
             .last()
             .map(|x| x.fim_s)
             .or_else(|| p.video.as_ref().and_then(VideoEmbutido::duracao_s)),
+        Transporte::ProximoTrecho => {
+            let i = trecho_no_instante(&p.trechos, t);
+            match i.and_then(|i| p.trechos.get(i + 1)) {
+                Some(x) if x.inicio_s > t => Some(x.inicio_s),
+                _ => p
+                    .trechos
+                    .iter()
+                    .find(|x| x.inicio_s > t + 0.05)
+                    .map(|x| x.inicio_s),
+            }
+            .or_else(|| p.trechos.last().map(|x| x.fim_s))
+        }
         Transporte::NotaAnterior => al.and_then(|a| {
             nota_anterior(a, t - a.offset_aula_s).map(|x| x + a.offset_aula_s + 0.01)
         }),
@@ -832,49 +943,35 @@ fn aplicar_correcao(e: &mut EstadoCursos, p: &mut EstadoPlayer, c: Correcao) {
 fn desenhar_barra(ui: &mut Ui, p: &mut EstadoPlayer) {
     ui.horizontal_wrapped(|ui| {
         let t = p.posicao();
-        if ui
-            .button("Início")
-            .on_hover_text("Volta tudo: começo do primeiro trecho da Aula (Home)")
-            .clicked()
-        {
-            p.pedido_transporte = Some(Transporte::Inicio);
-        }
-        if ui
-            .button("‹ Nota")
-            .on_hover_text("Volta uma nota e pausa (seta para a esquerda)")
-            .clicked()
-        {
-            p.pedido_transporte = Some(Transporte::NotaAnterior);
-        }
-        let rotulo = if p.pausado() { "Tocar" } else { "Pausar" };
-        if ui.button(rotulo).on_hover_text("Espaço").clicked() {
-            p.alternar_pausa();
-        }
-        if ui
-            .button("Nota ›")
-            .on_hover_text("Avança uma nota e pausa (seta para a direita)")
-            .clicked()
-        {
-            p.pedido_transporte = Some(Transporte::ProximaNota);
-        }
-        if ui
-            .button("Fim")
-            .on_hover_text("Vai ao fim do último trecho (End)")
-            .clicked()
-        {
-            p.pedido_transporte = Some(Transporte::Fim);
-        }
-        ui.separator();
-        if ui
-            .button("Voltar trecho")
-            .on_hover_text("Volta ao início do trecho (Backspace ou botão 'voltar' do mouse; dois toques: trecho anterior)")
-            .clicked()
-        {
-            let agora = ui.input(|i| i.time);
-            if let Some(c) = p.acompanhamento.voltar(&p.trechos, t, agora) {
-                p.executar(c);
+        let botoes = [
+            (Icone::Inicio, "Início: volta tudo, ao começo da Aula (Home)"),
+            (Icone::Retroceder, "Trecho anterior: volta ao início do trecho; dois toques, ao anterior (Backspace ou botão 'voltar' do mouse)"),
+            (Icone::NotaAnterior, "Uma nota para trás, e pausa (seta ←)"),
+            (if p.pausado() { Icone::Tocar } else { Icone::Pausar }, "Tocar / pausar (Espaço)"),
+            (Icone::ProximaNota, "Uma nota para a frente, e pausa (seta →)"),
+            (Icone::Avancar, "Próximo trecho (Page Down)"),
+            (Icone::Fim, "Fim: vai ao fim do último trecho (End)"),
+        ];
+        ui.spacing_mut().item_spacing.x = 2.0;
+        for (icone, dica) in botoes {
+            if botao_icone(ui, icone).on_hover_text(dica).clicked() {
+                match icone {
+                    Icone::Inicio => p.pedido_transporte = Some(Transporte::Inicio),
+                    Icone::Retroceder => {
+                        let agora = ui.input(|i| i.time);
+                        if let Some(c) = p.acompanhamento.voltar(&p.trechos, t, agora) {
+                            p.executar(c);
+                        }
+                    }
+                    Icone::NotaAnterior => p.pedido_transporte = Some(Transporte::NotaAnterior),
+                    Icone::Tocar | Icone::Pausar => p.alternar_pausa(),
+                    Icone::ProximaNota => p.pedido_transporte = Some(Transporte::ProximaNota),
+                    Icone::Avancar => p.pedido_transporte = Some(Transporte::ProximoTrecho),
+                    Icone::Fim => p.pedido_transporte = Some(Transporte::Fim),
+                }
             }
         }
+        ui.spacing_mut().item_spacing.x = 8.0;
         ui.label(formatar_instante(t));
         ui.separator();
         ui.label("Velocidade:");
