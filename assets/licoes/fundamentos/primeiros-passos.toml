@@ -1,0 +1,186 @@
+# Os 10 exercícios originais da F05, agora em arquivo (ADR-0009).
+# Os ids "1".."10" mantêm o progresso antigo (chaves exN em progresso.txt).
+
+[licao]
+id = "primeiros-passos"
+trilha = "Fundamentos"
+ordem_trilha = 10
+ordem = 1
+titulo = "Primeiros passos"
+descricao = "Do Dó central ao primeiro arpejo: um passeio por tudo o que o professor assistido sabe corrigir."
+nivel = "iniciante"
+situacao = "proposta"
+fontes = ["Exercícios de fábrica da F05 (backlog/fases/F05.md)"]
+
+[[exercicio]]
+id = "1"
+titulo = "Encontrar o Dó central"
+tipo = "localizar"
+objetivo = "Localizar o Dó central (Dó4), a nota de referência do teclado."
+instrucoes = "O Dó central é a tecla branca logo à esquerda do grupo de duas teclas pretas, no meio do teclado. Toque essa tecla."
+passos = "C4"
+dedilhado = "1"
+roteiro = [
+  "Sente-se no centro do teclado, com os ombros soltos.",
+  "Ache o grupo de duas teclas pretas mais perto do meio.",
+  "Toque a tecla branca logo à esquerda dele com o polegar direito: é o Dó central.",
+]
+acerto = "Esse é o Dó central, o Dó do meio do teclado."
+erro = "Procure o grupo de duas teclas pretas perto do meio e toque a branca à esquerda dele."
+conclusao = "Você achou o Dó central. Todas as outras notas se medem a partir dele."
+
+[[exercicio]]
+id = "2"
+titulo = "Notas brancas de Dó a Sol"
+tipo = "sequencia"
+objetivo = "Tocar as cinco primeiras notas brancas, subindo e descendo."
+instrucoes = "Toque Dó, Ré, Mi, Fá, Sol; depois Sol, Fá, Mi, Ré, Dó, uma tecla por vez, na ordem."
+dedilhado = "Mão direita: 1-2-3-4-5-5-4-3-2-1"
+passos = "C4 D4 E4 F4 G4 G4 F4 E4 D4 C4"
+roteiro = [
+  "Polegar direito no Dó central e um dedo em cada tecla branca até o Sol.",
+  "Suba Dó, Ré, Mi, Fá, Sol com os dedos 1, 2, 3, 4 e 5.",
+  "Desça na mesma posição, do 5 ao 1, sem tirar a mão do lugar.",
+  "Mantenha os dedos curvos e toque uma tecla de cada vez.",
+]
+acerto = "Nota certa, siga para a próxima."
+erro = "Veja a tecla marcada no teclado e toque-a; a anterior continua valendo."
+conclusao = "Dez notas na ordem certa: você domina as cinco notas brancas de Dó a Sol."
+
+[[exercicio]]
+id = "3"
+titulo = "Três notas em ordem"
+tipo = "sequencia"
+objetivo = "Tocar três notas em ordem a partir de uma instrução escrita."
+instrucoes = "Toque Mi, depois Dó, depois Sol (todas na região do Dó central)."
+dedilhado = "Mão direita: 3-1-5"
+passos = "E4 C4 G4"
+roteiro = [
+  "Mantenha a mão na posição de Dó (polegar no Dó central).",
+  "Toque Mi com o dedo 3.",
+  "Toque Dó com o polegar e Sol com o dedo 5.",
+]
+acerto = "Certo, essa nota veio na ordem pedida."
+erro = "A ordem é Mi, Dó, Sol. Toque a nota marcada; sem pressa."
+conclusao = "Três notas na ordem certa."
+
+[[exercicio]]
+id = "4"
+titulo = "Sustenidos e bemóis"
+tipo = "sequencia"
+objetivo = "Localizar as teclas pretas (sustenidos e bemóis)."
+instrucoes = "Toque Dó#, Mib, Fá#, Sib, Sol# (as teclas pretas). Dó# e Réb são a mesma tecla."
+passos = "C#4 Eb4 F#4 Bb4 G#4"
+roteiro = [
+  "Repare nos grupos de duas e de três teclas pretas.",
+  "Dó# fica à direita do Dó; Mib à esquerda do Mi.",
+  "Fá#, Sol# e Sib são as três pretas do grupo de três, nessa ordem.",
+  "Toque cada preta com o dedo 2 ou 3, perto da ponta da tecla.",
+]
+acerto = "Tecla preta certa."
+erro = "Tecle a preta marcada: sustenido (#) fica à direita da branca, bemol (b) à esquerda da próxima."
+conclusao = "Cinco teclas pretas encontradas."
+
+[[exercicio]]
+id = "5"
+titulo = "Intervalos: terças e quintas"
+tipo = "intervalos"
+objetivo = "Tocar duas notas juntas e reconhecer terças e quintas."
+instrucoes = "Toque as duas notas ao mesmo tempo: Dó-Mi (terça maior), Ré-Fá (terça menor), Dó-Sol (quinta justa), Sol-Ré (quinta justa)."
+dedilhado = "Mão direita: 1-3 para terças, 1-5 para quintas"
+passos = "[C4 E4]:terça_maior [D4 F4]:terça_menor [C4 G4]:quinta_justa [G4 D5]:quinta_justa"
+roteiro = [
+  "Polegar no Dó central; as duas notas descem juntas, num golpe só.",
+  "Terça: dedos 1 e 3, pulando uma tecla branca.",
+  "Quinta: dedos 1 e 5, pulando três teclas brancas.",
+  "Solte as duas teclas antes do próximo intervalo.",
+]
+acerto = "Intervalo certo, as duas notas juntas."
+erro = "Toque só as duas notas marcadas, juntas, como um golpe só."
+conclusao = "Quatro intervalos (terças e quintas) tocados juntos."
+
+[[exercicio]]
+id = "6"
+titulo = "Escala de Dó maior subindo"
+tipo = "escala"
+objetivo = "Tocar a escala de Dó maior, uma oitava, subindo."
+instrucoes = "Toque Dó, Ré, Mi, Fá, Sol, Lá, Si, Dó (oitava acima), em ordem e sem pular nota."
+dedilhado = "Mão direita: 1-2-3-1-2-3-4-5"
+passos = "C4 D4 E4 F4 G4 A4 B4 C5"
+roteiro = [
+  "Polegar direito no Dó central.",
+  "Toque Dó, Ré, Mi com os dedos 1, 2 e 3.",
+  "Passe o polegar por baixo até o Fá e siga Fá, Sol, Lá, Si, Dó com 1, 2, 3, 4 e 5.",
+  "Mantenha o som contínuo, sem pular nota.",
+]
+acerto = "Degrau certo da escala."
+erro = "A escala de Dó maior só usa teclas brancas; toque a próxima marcada."
+conclusao = "Escala de Dó maior completa, subindo."
+
+[[exercicio]]
+id = "7"
+titulo = "Tríade de Dó maior"
+tipo = "acorde"
+objetivo = "Tocar Dó, Mi e Sol ao mesmo tempo, em três posições."
+instrucoes = "Toque as três notas juntas (dentro da janela de tempo). Vale qualquer inversão e notas dobradas em outra oitava."
+dedilhado = "Mão direita: 1-3-5"
+passos = "{C4 E4 G4}:Dó_maior {E4 G4 C5}:Dó_maior,_1ª_inversão {G4 C5 E5}:Dó_maior,_2ª_inversão"
+roteiro = [
+  "Polegar no Dó, dedo 3 no Mi e dedo 5 no Sol.",
+  "Desça as três notas juntas e solte.",
+  "Para as inversões, mova a mão para cima: Mi-Sol-Dó e depois Sol-Dó-Mi.",
+]
+acerto = "Acorde completo, as notas soaram juntas."
+erro = "Dó maior é só Dó, Mi e Sol; toque as três ao mesmo tempo, sem nota a mais."
+conclusao = "Tríade de Dó maior em três posições."
+
+[[exercicio]]
+id = "8"
+titulo = "Tríades maiores e menores"
+tipo = "acorde"
+objetivo = "Diferenciar acordes maiores e menores."
+instrucoes = "Toque Dó maior, Lá menor, Sol maior, Mi menor, Fá maior e Ré menor, cada um com as notas juntas."
+dedilhado = "Mão direita: 1-3-5"
+passos = "{C4 E4 G4}:Dó_maior {A3 C4 E4}:Lá_menor {G3 B3 D4}:Sol_maior {E3 G3 B3}:Mi_menor {F3 A3 C4}:Fá_maior {D3 F3 A3}:Ré_menor"
+roteiro = [
+  "Use sempre os dedos 1, 3 e 5, um acorde de cada vez.",
+  "Maior tem 4 semitons entre a primeira e a do meio; menor tem 3.",
+  "Leve a mão inteira para o próximo acorde antes de tocar.",
+]
+acerto = "Acorde certo."
+erro = "Maior tem a terça maior (4 semitons); menor tem a terça menor (3 semitons). Confira a nota do meio."
+conclusao = "Seis tríades, maiores e menores, tocadas corretamente."
+
+[[exercicio]]
+id = "9"
+titulo = "Arpejo de Dó maior"
+tipo = "arpejo"
+objetivo = "Tocar as notas do acorde uma de cada vez, na sequência correta."
+instrucoes = "Toque Dó, Mi, Sol, Dó (oitava acima) e desça Sol, Mi, Dó, uma nota de cada vez, na ordem."
+dedilhado = "Mão direita subindo: 1-2-3-5; descendo: 5-3-2-1"
+passos = "C4 E4 G4 C5 G4 E4 C4"
+roteiro = [
+  "Polegar no Dó central.",
+  "Suba Dó, Mi, Sol com 1, 2, 3 e alcance o Dó de cima com o 5.",
+  "Desça Sol, Mi, Dó com 3, 2, 1, uma nota de cada vez.",
+]
+acerto = "Nota do arpejo na ordem certa."
+erro = "No arpejo a ordem importa: toque a nota marcada, uma de cada vez."
+conclusao = "Arpejo de Dó maior completo, subindo e descendo."
+
+[[exercicio]]
+id = "10"
+titulo = "Ouvir e repetir"
+tipo = "ouvir"
+objetivo = "Repetir de ouvido uma frase curta tocada pelo app."
+instrucoes = "Use Ouvir para escutar a frase de seis notas e toque-a no teclado. As teclas não são marcadas; ouça quantas vezes quiser. Use a dica se travar."
+passos = "E4 E4 F4 G4 G4 F4"
+roteiro = [
+  "Aperte Ouvir [M] e escute a frase inteira.",
+  "Cante ou repita a frase de cabeça.",
+  "Toque as seis notas; se errar, ouça de novo.",
+  "Se travar, ligue a dica [V] para ver as teclas.",
+]
+acerto = "Você ouviu e acertou essa nota."
+erro = "Essa nota não é a da frase. Ouça de novo (botão Ouvir) e tente outra."
+conclusao = "Frase repetida de ouvido, sem ajuda visual."

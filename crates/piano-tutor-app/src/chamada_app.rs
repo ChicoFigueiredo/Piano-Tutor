@@ -44,7 +44,7 @@ pub enum OrigemChamada {
         exercicio_id: String,
     },
     /// Exercício de fábrica (número de 1 a 10).
-    Fabrica { exercicio: u8 },
+    Fabrica { exercicio: String },
 }
 
 /// O que o app precisa fazer depois de um passo da Chamada.
@@ -430,7 +430,9 @@ estado = "aprovada"
         let (mut p, voz) = professor();
         let mut c = ChamadaAtiva::nova(
             vec![frase()],
-            OrigemChamada::Fabrica { exercicio: 7 },
+            OrigemChamada::Fabrica {
+                exercicio: "primeiros-passos/7".into(),
+            },
             "t",
             true,
         )
@@ -479,7 +481,9 @@ estado = "aprovada"
         p.abrir("l", "x", Some(ler_roteiro(ROTEIRO).expect("roteiro")));
         let mut c = ChamadaAtiva::nova(
             vec![frase()],
-            OrigemChamada::Fabrica { exercicio: 7 },
+            OrigemChamada::Fabrica {
+                exercicio: "primeiros-passos/7".into(),
+            },
             "t",
             false,
         )
@@ -499,7 +503,9 @@ estado = "aprovada"
         let (mut p, voz) = professor();
         let mut c = ChamadaAtiva::nova(
             vec![frase(), frase()],
-            OrigemChamada::Fabrica { exercicio: 7 },
+            OrigemChamada::Fabrica {
+                exercicio: "primeiros-passos/7".into(),
+            },
             "t",
             true,
         )
@@ -529,7 +535,9 @@ estado = "aprovada"
         let (mut p, voz) = professor();
         let mut c = ChamadaAtiva::nova(
             vec![frase()],
-            OrigemChamada::Fabrica { exercicio: 7 },
+            OrigemChamada::Fabrica {
+                exercicio: "primeiros-passos/7".into(),
+            },
             "t",
             false,
         )
@@ -562,7 +570,9 @@ estado = "aprovada"
         let mut p = Professor::mudo();
         let mut c = ChamadaAtiva::nova(
             vec![frase(), frase()],
-            OrigemChamada::Fabrica { exercicio: 7 },
+            OrigemChamada::Fabrica {
+                exercicio: "primeiros-passos/7".into(),
+            },
             "t",
             false,
         )
@@ -630,14 +640,18 @@ estado = "aprovada"
     #[test]
     fn fabrica_acordes_e_intervalos_viram_chamadas_e_os_outros_tipos_nao() {
         let todos = exercicios_de_fabrica();
-        let tem: Vec<u8> = todos
+        let tem: Vec<String> = todos
             .iter()
             .filter(|e| fabrica_tem_chamada(e))
-            .map(|e| e.id)
+            .map(|e| e.id.clone())
             .collect();
         assert_eq!(
             tem,
-            [5, 7, 8],
+            [
+                "primeiros-passos/5",
+                "primeiros-passos/7",
+                "primeiros-passos/8"
+            ],
             "intervalos, tríade de Dó e tríades maiores e menores"
         );
         for e in &todos {
@@ -682,7 +696,9 @@ estado = "aprovada"
     fn sem_chamadas_e_um_erro_claro() {
         let e = ChamadaAtiva::nova(
             Vec::new(),
-            OrigemChamada::Fabrica { exercicio: 1 },
+            OrigemChamada::Fabrica {
+                exercicio: "primeiros-passos/1".into(),
+            },
             "t",
             false,
         )

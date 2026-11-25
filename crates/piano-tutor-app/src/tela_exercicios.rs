@@ -1,18 +1,25 @@
-//! Tela Exercícios (F05): professor assistido com 10 exercícios progressivos, feedback com
-//! texto e símbolo (nunca só cor), estatísticas e comandos de progresso.
+//! Tela Exercícios (F05): seletores de Lição e Exercício lado a lado, ficha com roteiro e
+//! sequência, feedback com texto e símbolo (nunca só cor), atalhos de teclado, estatísticas e
+//! comandos de progresso.
 
 use crate::chamada_app::{ChamadaAtiva, fabrica_tem_chamada};
 use crate::espelho::EstadoEspelho;
 use crate::exercicios::{
-    Classificacao, ConfigExercicios, EstadoExercicios, Fase, JANELA_MAX_MS, JANELA_MIN_MS, Tipo,
-    Tom, nome_nota,
+    Classificacao, ConfigExercicios, EstadoExercicios, Exercicio, Fase, JANELA_MAX_MS,
+    JANELA_MIN_MS, Tipo, Tom, nome_nota,
 };
 use crate::gravacao::agendar_gravacao;
+use crate::licoes::{Origem, Situacao};
 use crate::professor::Professor;
+use crate::ritmo::EstadoRitmo;
 use crate::som::ServicoSom;
 use crate::tela_cursos::{AcaoCursos, desenhar_chamada_de_fabrica, desenhar_professor};
 use crate::tela_espelho::desenhar_teclado_embutido;
-use bancada_casca::egui::{Button, Color32, RichText, ScrollArea, Slider, Ui, vec2};
+use crate::treino_andamento::{Momento, TreinoAndamento};
+use bancada_casca::egui::{
+    Button, Color32, ComboBox, CornerRadius, Frame, Key, Margin, Modifiers, RichText, ScrollArea,
+    Slider, Stroke, Ui, vec2,
+};
 use piano_tutor_core::NotaMidi;
 use piano_tutor_core::ritmo::{BPM_MAX, BPM_MIN};
 use std::time::Duration;
@@ -73,28 +80,179 @@ fn nomes(notas: &[NotaMidi]) -> String {
         .join(" + ")
 }
 
+/// Ações de teclado da tela (nenhuma colide com as letras que tocam no teclado do PC).
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum Atalho {
+    Ouvir,
+    OuvirTentativa,
+    Repetir,
+    Limpar,
+    Pausar,
+    Proximo,
+    Anterior,
+    Dica,
+}
+
+/// Tabela de atalhos: (tecla, ação, rótulo da tecla, descrição).
+pub const ATALHOS: [(Key, Atalho, &str, &str); 10] = [
+    (Key::M, Atalho::Ouvir, "M", "ouvir o modelo"),
+    (Key::C, Atalho::OuvirTentativa, "C", "conferir o que toquei"),
+    (Key::R, Atalho::Repetir, "R", "repetir o passo"),
+    (
+        Key::Backspace,
+        Atalho::Limpar,
+        "Backspace",
+        "limpar e recomeçar",
+    ),
+    (
+        Key::Space,
+        Atalho::Pausar,
+        "Espaço",
+        "pausar ou retomar (treino no tempo: tocar ou parar)",
+    ),
+    (Key::N, Atalho::Proximo, "N", "próximo exercício"),
+    (Key::PageDown, Atalho::Proximo, "PgDn", "próximo exercício"),
+    (Key::B, Atalho::Anterior, "B", "exercício anterior"),
+    (Key::PageUp, Atalho::Anterior, "PgUp", "exercício anterior"),
+    (Key::V, Atalho::Dica, "V", "ver ou esconder as teclas-guia"),
+];
+
+/// Rótulo da tecla de uma ação (a primeira da tabela).
+fn tecla_de(a: Atalho) -> &'static str {
+    ATALHOS
+        .iter()
+        .find(|(_, x, _, _)| *x == a)
+        .map_or("", |(_, _, r, _)| r)
+}
+
+/// Botão com a tecla de atalho no rótulo ("Repetir  [R]").
+fn botao(ui: &mut Ui, ativo: bool, texto: &str, a: Atalho, dica: &str) -> bool {
+    ui.add_enabled(
+        ativo,
+        Button::new(format!("{texto}  [{}]", tecla_de(a))).min_size(vec2(0.0, 30.0)),
+    )
+    .on_hover_text(dica)
+    .clicked()
+}
+
+/// Executa uma ação (botão ou atalho).
+pub fn executar(a: Atalho, e: &mut EstadoExercicios, som: &mut ServicoSom) {
+    match a {
+        Atalho::Ouvir => ouvir(som, e),
+        Atalho::OuvirTentativa => {
+            ouvir_tentativa(som, e);
+        }
+        Atalho::Repetir => {
+            e.repetir();
+            if e.exercicio().is_some_and(|x| x.de_ouvido()) {
+                ouvir(som, e);
+            }
+        }
+        Atalho::Limpar => e.reiniciar(),
+        Atalho::Pausar => {
+            if e.tentativa.pausado_desde.is_some() {
+                e.retomar(som.agora_ns());
+            } else {
+                e.pausar(som.agora_ns());
+            }
+        }
+        Atalho::Proximo => {
+            e.avancar();
+        }
+        Atalho::Anterior => {
+            e.voltar();
+        }
+        Atalho::Dica => {
+            e.config.mostrar_dica = !e.config.mostrar_dica;
+            e.salvar();
+        }
+    }
+}
+
+/// Como [`executar`], mas com o ritmo: nos exercícios com treino no tempo o Espaço alterna
+/// Tocar e Parar, e trocar de exercício ou limpar para o treino.
+pub fn executar_com_ritmo(
+    a: Atalho,
+    e: &mut EstadoExercicios,
+    ritmo: &mut EstadoRitmo,
+    som: &mut ServicoSom,
+) {
+    match a {
+        Atalho::Pausar if e.tem_andamento() => alternar_treino(e, ritmo, som),
+        Atalho::Proximo | Atalho::Anterior => {
+            e.parar_treino(ritmo, som);
+            executar(a, e, som);
+        }
+        Atalho::Limpar => {
+            e.parar_treino(ritmo, som);
+            if e.tem_andamento() {
+                e.treino = TreinoAndamento::default();
+            }
+            executar(a, e, som);
+        }
+        _ => executar(a, e, som),
+    }
+}
+
+/// Tocar (liga o ritmo e começa o treino) ou Parar.
+fn alternar_treino(e: &mut EstadoExercicios, ritmo: &mut EstadoRitmo, som: &mut ServicoSom) {
+    if e.treino.ativo() {
+        e.parar_treino(ritmo, som);
+    } else {
+        e.preparar_ritmo_e_tocar(ritmo, som);
+    }
+}
+
+/// Lê os atalhos do quadro (sem modificador, fora de campo de texto e de menu aberto).
+fn ler_atalhos(ui: &mut Ui) -> Vec<Atalho> {
+    if ui.ctx().egui_wants_keyboard_input() || !ui.input(|i| i.focused) {
+        return Vec::new();
+    }
+    ui.input_mut(|i| {
+        ATALHOS
+            .iter()
+            .filter(|(k, _, _, _)| i.consume_key(Modifiers::NONE, *k))
+            .map(|(_, a, _, _)| *a)
+            .collect()
+    })
+}
+
 pub fn desenhar_tela(
     ui: &mut Ui,
     e: &mut EstadoExercicios,
     espelho: &mut EstadoEspelho,
     som: &mut ServicoSom,
+    ritmo: &mut EstadoRitmo,
     professor: &Professor,
     chamada: Option<&ChamadaAtiva>,
 ) -> Vec<AcaoCursos> {
     let mut acoes = Vec::new();
     // Limite de tempo opcional e gravação do progresso quando as teclas estão soltas.
     e.verificar_tempo(som.agora_ns());
-    if espelho.teclas().notas_ligadas().next().is_none() {
+    let seguradas: Vec<NotaMidi> = espelho.teclas().notas_ligadas().collect();
+    if seguradas.is_empty() {
         e.salvar_se_sujo();
+    }
+    e.atualizar_treino(ritmo, som, &seguradas);
+    for a in ler_atalhos(ui) {
+        executar_com_ritmo(a, e, ritmo, som);
+    }
+    if e.treino.ativo() {
+        ui.ctx().request_repaint_after(Duration::from_millis(16));
     }
     ScrollArea::vertical()
         .id_salt("exercicios-vertical")
         .auto_shrink([false, false])
         .show(ui, |ui| {
-            ui.heading("Exercícios guiados");
-            desenhar_lista(ui, e);
+            desenhar_seletores(ui, e);
             ui.add_space(8.0);
-            desenhar_exercicio(ui, e, som);
+            desenhar_ficha(ui, e, espelho.nomenclatura);
+            ui.add_space(8.0);
+            if e.tem_andamento() {
+                desenhar_treino(ui, e, ritmo, som);
+                ui.add_space(8.0);
+            }
+            desenhar_execucao(ui, e, ritmo, som);
             ui.add_space(4.0);
             if let Some(a) = desenhar_professor(ui, professor) {
                 acoes.push(a);
@@ -102,20 +260,25 @@ pub fn desenhar_tela(
             let tem_chamada = e.exercicio().is_some_and(fabrica_tem_chamada);
             acoes.extend(desenhar_chamada_de_fabrica(ui, tem_chamada, chamada));
             ui.add_space(6.0);
-            desenhar_feedback(ui, e);
-            desenhar_erros(ui, e);
+            if !e.tem_andamento() {
+                desenhar_feedback(ui, e);
+                desenhar_erros(ui, e);
+            }
             ui.add_space(6.0);
-            desenhar_estatisticas(ui, e);
-            ui.add_space(6.0);
-            espelho.guias = e.guias();
+            espelho.definir_guias(e.guias(), e.dedos());
             desenhar_teclado_embutido(ui, espelho);
             ui.label(
                 RichText::new(
-                    "Bolinha verde = tecla a tocar. Azul = tecla que você está tocando. \
+                    "Bolinha verde = tecla a tocar, com o dedo sugerido dentro (escolha números ou \
+                     letras em Início > Dedilhado). Azul = tecla que você está tocando. \
                      O resultado também aparece em texto: [OK] certo, [X] errado, [...] falta nota.",
                 )
                 .weak(),
             );
+            ui.add_space(6.0);
+            desenhar_estatisticas(ui, e);
+            ui.add_space(6.0);
+            desenhar_atalhos(ui);
             ui.add_space(6.0);
             desenhar_ajustes(ui, e);
             ui.add_space(6.0);
@@ -124,68 +287,305 @@ pub fn desenhar_tela(
     acoes
 }
 
-fn desenhar_lista(ui: &mut Ui, e: &mut EstadoExercicios) {
-    let mut escolhido = None;
-    for i in 0..e.exercicios.len() {
-        let liberado = e.desbloqueado(i);
-        let ex = &e.exercicios[i];
-        let estado = if e.concluido(i) {
-            "[OK] concluído".to_owned()
-        } else if !liberado {
-            format!("[bloqueado] {}", e.motivo_bloqueio(i).unwrap_or_default())
-        } else if e.historico_atual().acertos > 0 && i == e.indice() {
-            "em andamento".to_owned()
-        } else {
-            "liberado".to_owned()
-        };
-        let texto = format!(
-            "{}. {}  ({})  -  {estado}",
-            ex.id,
-            ex.titulo,
-            ex.tipo.texto()
-        );
-        let marcado = i == e.indice();
-        let r = ui.add_enabled(
-            liberado,
-            Button::new(texto)
-                .selected(marcado)
-                .min_size(vec2(ui.available_width().min(560.0), 26.0)),
-        );
-        if r.clicked() {
-            escolhido = Some(i);
+fn trilhas(e: &EstadoExercicios) -> Vec<String> {
+    let mut v: Vec<String> = Vec::new();
+    for l in &e.licoes {
+        if !v.contains(&l.trilha) {
+            v.push(l.trilha.clone());
         }
     }
-    if let Some(i) = escolhido {
-        e.selecionar(i);
+    v
+}
+
+fn texto_licao(e: &EstadoExercicios, i: usize) -> String {
+    let l = &e.licoes[i];
+    let (f, t) = e.andamento_licao(i);
+    let marca = if f == t { "[OK] " } else { "" };
+    format!("{marca}{}  ({f}/{t})", l.titulo)
+}
+
+fn texto_exercicio(e: &EstadoExercicios, x: usize) -> String {
+    let ex = &e.exercicios[x];
+    let estado = if e.concluido(x) {
+        "  [OK]"
+    } else if e.desbloqueado(x) {
+        ""
+    } else {
+        "  [bloqueado]"
+    };
+    format!("{}. {}{estado}", ex.numero, ex.titulo)
+}
+
+/// Dois seletores lado a lado: Lição (agrupada por Trilha) e Exercício da Lição.
+fn desenhar_seletores(ui: &mut Ui, e: &mut EstadoExercicios) {
+    let atual_licao = e.exercicio().map_or(0, |x| x.licao);
+    let mut abrir_licao = None;
+    let mut escolhido = None;
+    let largura = ((ui.available_width() - 16.0) / 2.0).clamp(220.0, 520.0);
+    ui.horizontal_top(|ui| {
+        ui.vertical(|ui| {
+            ui.label(
+                RichText::new("Grupo de exercícios (Trilha e Lição)")
+                    .small()
+                    .weak(),
+            );
+            let atual = e
+                .licoes
+                .get(atual_licao)
+                .map(|l| format!("{}  >  {}", l.trilha, texto_licao(e, atual_licao)))
+                .unwrap_or_default();
+            ComboBox::from_id_salt("exercicios-licao")
+                .selected_text(RichText::new(atual).size(15.0))
+                .width(largura)
+                .height(520.0)
+                .show_ui(ui, |ui| {
+                    for trilha in trilhas(e) {
+                        ui.add_space(4.0);
+                        ui.label(RichText::new(&trilha).strong().size(15.0));
+                        for i in (0..e.licoes.len()).filter(|i| e.licoes[*i].trilha == trilha) {
+                            let livre = e.faixas[i].clone().any(|x| e.desbloqueado(x));
+                            let mut r = ui.add_enabled(
+                                livre,
+                                Button::selectable(
+                                    i == atual_licao,
+                                    format!("     {}", texto_licao(e, i)),
+                                ),
+                            );
+                            if !e.licoes[i].descricao.is_empty() {
+                                r = r.on_hover_text(&e.licoes[i].descricao);
+                            }
+                            if r.clicked() {
+                                abrir_licao = Some(i);
+                            }
+                        }
+                    }
+                });
+        });
+        ui.add_space(12.0);
+        ui.vertical(|ui| {
+            ui.label(RichText::new("Exercício da Lição").small().weak());
+            let atual = if e.indice() < e.exercicios.len() {
+                texto_exercicio(e, e.indice())
+            } else {
+                String::new()
+            };
+            ComboBox::from_id_salt("exercicios-exercicio")
+                .selected_text(RichText::new(atual).size(15.0))
+                .width(largura)
+                .height(520.0)
+                .show_ui(ui, |ui| {
+                    for x in e.faixas.get(atual_licao).cloned().unwrap_or_default() {
+                        let mut r = ui
+                            .add_enabled(
+                                e.desbloqueado(x),
+                                Button::selectable(x == e.indice(), texto_exercicio(e, x)),
+                            )
+                            .on_hover_text(&e.exercicios[x].objetivo);
+                        if let Some(m) = e.motivo_bloqueio(x) {
+                            r = r.on_disabled_hover_text(m);
+                        }
+                        if r.clicked() {
+                            escolhido = Some(x);
+                        }
+                    }
+                });
+        });
+    });
+    if let Some(i) = abrir_licao {
+        e.abrir_licao(i);
+    }
+    if let Some(x) = escolhido {
+        e.selecionar(x);
+    }
+    let total = e.exercicios.len();
+    let feitos = (0..total).filter(|i| e.concluido(*i)).count();
+    ui.label(
+        RichText::new(format!(
+            "{} Lições em {} Trilhas; {feitos} de {total} exercícios concluídos.",
+            e.licoes.len(),
+            trilhas(e).len()
+        ))
+        .small()
+        .weak(),
+    );
+    for erro in &e.erros_carga {
+        ui.label(RichText::new(format!("[!] {erro}")).color(AMARELO).small());
     }
 }
 
-fn desenhar_exercicio(ui: &mut Ui, e: &mut EstadoExercicios, som: &mut ServicoSom) {
-    let Some(ex) = e.exercicio().cloned() else {
+/// Roteiro do exercício: o do arquivo, ou um padrão montado com os dados do exercício.
+pub fn roteiro(ex: &Exercicio) -> Vec<String> {
+    if !ex.roteiro.is_empty() {
+        return ex.roteiro.clone();
+    }
+    let mut v = Vec::new();
+    match (ex.mao.is_empty(), ex.dedilhado.is_empty()) {
+        (true, true) => {}
+        (false, true) => v.push(format!("Use a mão {}.", ex.mao)),
+        (true, false) => v.push(format!("Dedilhado: {}.", ex.dedilhado)),
+        (false, false) => v.push(format!(
+            "Use a mão {}; dedilhado: {}.",
+            ex.mao, ex.dedilhado
+        )),
+    }
+    v.push(ex.instrucoes.clone());
+    if ex.de_ouvido() {
+        v.push(format!(
+            "Ouça o modelo [{}] e repita de ouvido; as teclas não são marcadas.",
+            tecla_de(Atalho::Ouvir)
+        ));
+    } else {
+        v.push(format!(
+            "Toque os {} passos na ordem; a bolinha verde mostra a próxima tecla.",
+            ex.passos.len()
+        ));
+    }
+    v.push(
+        "Errou? A nota conta como erro, mas o passo continua valendo: corrija e siga.".to_owned(),
+    );
+    v
+}
+
+/// Ficha do exercício: Lição, objetivo, roteiro numerado e sequência do gabarito.
+fn desenhar_ficha(ui: &mut Ui, e: &EstadoExercicios, dedos: crate::dedos::NomenclaturaDedos) {
+    let Some(ex) = e.exercicio() else {
         ui.label("Nenhum exercício disponível.");
         return;
     };
-    ui.label(
-        RichText::new(format!("Exercício {}: {}", ex.id, ex.titulo))
-            .size(22.0)
-            .strong(),
-    );
-    ui.label(format!("Objetivo: {}", ex.objetivo));
-    ui.label(format!("Instruções: {}", ex.instrucoes));
-    if !ex.dedilhado.is_empty() {
-        ui.label(format!("Dedilhado sugerido: {}", ex.dedilhado));
-    }
-    match ex.prerequisito {
-        Some(id) => {
-            ui.label(RichText::new(format!("Pré-requisito: exercício {id} concluído.")).weak())
-        }
-        None => ui.label(RichText::new("Pré-requisito: nenhum.").weak()),
+    let Some(l) = e.licao_atual() else {
+        return;
     };
-    ui.add_space(4.0);
+    Frame::group(ui.style())
+        .inner_margin(Margin::same(12))
+        .show(ui, |ui| {
+            ui.set_width(ui.available_width());
+            ui.label(RichText::new(format!("{}  >  {}", l.trilha, l.titulo)).weak());
+            let total = e.faixas.get(ex.licao).map_or(0, |f| f.len());
+            ui.label(
+                RichText::new(format!("Exercício {} de {total}: {}", ex.numero, ex.titulo))
+                    .size(22.0)
+                    .strong(),
+            );
+            ui.horizontal_wrapped(|ui| {
+                let mut chips = vec![ex.tipo.texto().to_owned()];
+                if !ex.mao.is_empty() {
+                    chips.push(format!("mão {}", ex.mao));
+                }
+                if !l.nivel.is_empty() {
+                    chips.push(format!("nível {}", l.nivel));
+                }
+                chips.push(match ex.passos.len() {
+                    1 => "1 passo".to_owned(),
+                    n => format!("{n} passos"),
+                });
+                ui.label(RichText::new(chips.join("  ·  ")).small());
+                match l.situacao {
+                    Situacao::Aprovada => {
+                        ui.label(RichText::new("Conteúdo aprovado").small().color(VERDE));
+                    }
+                    Situacao::Proposta => {
+                        ui.label(
+                            RichText::new("Proposta: aguardando sua revisão")
+                                .small()
+                                .color(AMARELO),
+                        )
+                        .on_hover_text(
+                            "Lição escrita a partir de fontes públicas e ainda não revisada. \
+                             Para aprovar, mude situacao para \"aprovada\" no arquivo da Lição.",
+                        );
+                    }
+                }
+                if !l.fontes.is_empty() {
+                    ui.label(RichText::new("Fontes").small().underline())
+                        .on_hover_text(l.fontes.join("\n"));
+                }
+                if let Origem::Usuario(c) = &l.origem {
+                    ui.label(
+                        RichText::new(format!("arquivo {}", c.display()))
+                            .small()
+                            .weak(),
+                    );
+                }
+            });
+            ui.add_space(6.0);
+            ui.label(RichText::new(format!("Objetivo: {}", ex.objetivo)).size(16.0));
+            ui.add_space(6.0);
+            ui.label(RichText::new("Roteiro").strong());
+            for (i, passo) in roteiro(ex).iter().enumerate() {
+                ui.label(format!("{}.  {passo}", i + 1));
+            }
+            ui.add_space(6.0);
+            ui.label(RichText::new("Sequência").strong());
+            desenhar_sequencia(ui, e, ex);
+            if !ex.dedilhado.is_empty() {
+                let texto = crate::dedos::dedilhado_na_nomenclatura(&ex.dedilhado, dedos);
+                ui.label(RichText::new(format!("Dedilhado: {texto}")).weak());
+            }
+            match ex.prerequisito.as_deref().and_then(|id| e.posicao(id)) {
+                Some(i) => ui.label(
+                    RichText::new(format!(
+                        "Pré-requisito: {} (concluído).",
+                        e.exercicios[i].titulo
+                    ))
+                    .weak()
+                    .small(),
+                ),
+                None => ui.label(RichText::new("Pré-requisito: nenhum.").weak().small()),
+            };
+        });
+}
 
+/// Passos do gabarito como etiquetas: feitos em verde com [OK], o atual destacado.
+fn desenhar_sequencia(ui: &mut Ui, e: &EstadoExercicios, ex: &Exercicio) {
+    let escondido = ex.de_ouvido() && !e.config.mostrar_dica;
+    let feito_tudo = e.tentativa.fase == Fase::Concluido;
+    ui.horizontal_wrapped(|ui| {
+        ui.spacing_mut().item_spacing = vec2(6.0, 6.0);
+        for (i, p) in ex.passos.iter().enumerate() {
+            let feito = feito_tudo || i < e.tentativa.passo;
+            let atual = !feito_tudo && i == e.tentativa.passo;
+            let nome = if escondido && !feito {
+                "?".to_owned()
+            } else if p.legenda.is_empty() {
+                nomes(&p.notas)
+            } else {
+                format!("{} ({})", p.legenda, nomes(&p.notas))
+            };
+            let texto = if feito {
+                RichText::new(format!("[OK] {nome}")).color(VERDE)
+            } else if atual {
+                RichText::new(format!("> {nome}")).strong()
+            } else {
+                RichText::new(nome).weak()
+            };
+            let cor = if atual {
+                ui.visuals().selection.stroke.color
+            } else {
+                ui.visuals().widgets.noninteractive.bg_stroke.color
+            };
+            Frame::new()
+                .stroke(Stroke::new(if atual { 2.0 } else { 1.0 }, cor))
+                .corner_radius(CornerRadius::same(4))
+                .inner_margin(Margin::symmetric(6, 3))
+                .show(ui, |ui| {
+                    ui.label(texto);
+                });
+        }
+    });
+}
+
+/// Passo atual, alvo e botões (cada um com sua tecla de atalho).
+fn desenhar_execucao(
+    ui: &mut Ui,
+    e: &mut EstadoExercicios,
+    ritmo: &mut EstadoRitmo,
+    som: &mut ServicoSom,
+) {
+    let Some(ex) = e.exercicio().cloned() else {
+        return;
+    };
     let total = ex.passos.len();
-    let t = &e.tentativa;
-    if t.fase == Fase::Concluido {
+    if e.tentativa.fase == Fase::Concluido {
         ui.label(
             RichText::new(format!("[OK] Concluído: {total} de {total} passos"))
                 .size(22.0)
@@ -202,7 +602,7 @@ fn desenhar_exercicio(ui: &mut Ui, e: &mut EstadoExercicios, som: &mut ServicoSo
         };
         ui.horizontal_wrapped(|ui| {
             ui.label(
-                RichText::new(format!("Passo {} de {total}", t.passo + 1))
+                RichText::new(format!("Passo {} de {total}", e.tentativa.passo + 1))
                     .size(16.0)
                     .strong(),
             );
@@ -215,65 +615,209 @@ fn desenhar_exercicio(ui: &mut Ui, e: &mut EstadoExercicios, som: &mut ServicoSo
             }
         });
     }
+    let mut acao = None;
     ui.horizontal_wrapped(|ui| {
-        if ui
-            .add(Button::new("Ouvir").min_size(vec2(80.0, 30.0)))
-            .on_hover_text("Toca o gabarito do exercício")
-            .clicked()
-        {
-            ouvir(som, e);
-        }
         let tem_toques = !e.tentativa.registro.is_empty();
-        if ui
-            .add_enabled(tem_toques, Button::new("Ouvir o que toquei"))
-            .on_hover_text("Toca de novo as notas que você tocou nesta tentativa")
-            .clicked()
-        {
-            ouvir_tentativa(som, e);
-        }
-        if ui
-            .button("Reiniciar")
-            .on_hover_text("Volta ao primeiro passo")
-            .clicked()
-        {
-            e.reiniciar();
-        }
-        if ui
-            .button("Repetir")
-            .on_hover_text("Repete o passo atual, sem contar")
-            .clicked()
-        {
-            e.repetir();
-            if ex.de_ouvido() {
-                ouvir(som, e);
-            }
-        }
         let pausado = e.tentativa.pausado_desde.is_some();
-        if ui
-            .button(if pausado { "Retomar" } else { "Pausar" })
-            .clicked()
-        {
-            if pausado {
-                e.retomar(som.agora_ns());
-            } else {
-                e.pausar(som.agora_ns());
-            }
-        }
-        if ui
-            .add_enabled(e.indice() > 0, Button::new("Anterior"))
-            .clicked()
-        {
-            e.voltar();
-        }
         let tem_proximo = e.desbloqueado(e.indice() + 1);
-        let r = ui.add_enabled(tem_proximo, Button::new("Próximo"));
-        if r.clicked() {
-            e.avancar();
+        let botoes = [
+            (true, "Ouvir", Atalho::Ouvir, "Toca o modelo do exercício"),
+            (
+                tem_toques,
+                "Ouvir o que toquei",
+                Atalho::OuvirTentativa,
+                "Toca de novo as notas que você tocou nesta tentativa",
+            ),
+            (
+                true,
+                "Repetir",
+                Atalho::Repetir,
+                "Repete o passo atual, sem contar",
+            ),
+            (
+                true,
+                "Limpar",
+                Atalho::Limpar,
+                "Limpa a tentativa e volta ao primeiro passo",
+            ),
+            (
+                true,
+                if pausado { "Retomar" } else { "Pausar" },
+                Atalho::Pausar,
+                "Notas não contam enquanto pausado",
+            ),
+            (
+                e.indice() > 0,
+                "Anterior",
+                Atalho::Anterior,
+                "Exercício anterior",
+            ),
+            (tem_proximo, "Próximo", Atalho::Proximo, "Próximo exercício"),
+        ];
+        for (ativo, texto, a, dica) in botoes {
+            if botao(ui, ativo, texto, a, dica) {
+                acao = Some(a);
+            }
         }
         if !tem_proximo && e.indice() + 1 < e.exercicios.len() {
             ui.label(RichText::new("Conclua este exercício para liberar o próximo.").weak());
         }
     });
+    if let Some(a) = acao {
+        executar_com_ritmo(a, e, ritmo, som);
+    }
+}
+
+/// Descrição do treino no tempo do exercício, em uma frase.
+fn texto_do_treino(ex: &Exercicio) -> String {
+    let Some(a) = &ex.andamento else {
+        return String::new();
+    };
+    let toca = if a.app_toca {
+        "o app toca cada acorde no tempo"
+    } else {
+        "o app só mostra o acorde e você toca"
+    };
+    let ritmo = a.ritmo.as_deref().unwrap_or("só metrônomo");
+    format!(
+        "{} BPM, compasso {}, {} compasso(s) por acorde, contagem de {} compasso(s), {toca}, \
+         ordem {}, {} volta(s), ritmo: {ritmo}.",
+        a.bpm,
+        a.formula.texto(),
+        a.compassos_por_passo,
+        a.contagem,
+        a.ordem.texto(),
+        a.voltas
+    )
+}
+
+/// Painel "Treino no tempo": Tocar e Parar, contagem, acorde da vez, próximo e placar.
+fn desenhar_treino(
+    ui: &mut Ui,
+    e: &mut EstadoExercicios,
+    ritmo: &mut EstadoRitmo,
+    som: &mut ServicoSom,
+) {
+    let Some(ex) = e.exercicio() else {
+        return;
+    };
+    let descricao = texto_do_treino(ex);
+    let mut alternar = false;
+    Frame::group(ui.style())
+        .inner_margin(Margin::same(12))
+        .show(ui, |ui| {
+            ui.set_width(ui.available_width());
+            ui.label(RichText::new("Treino no tempo").size(18.0).strong());
+            ui.label(RichText::new(descricao).weak());
+            ui.add_space(6.0);
+            let ativo = e.treino.ativo();
+            let rotulo = format!(
+                "{}  [{}]",
+                if ativo { "Parar" } else { "Tocar" },
+                tecla_de(Atalho::Pausar)
+            );
+            if ui
+                .add(
+                    Button::new(RichText::new(rotulo).size(20.0).strong())
+                        .min_size(vec2(180.0, 44.0)),
+                )
+                .on_hover_text(if ativo {
+                    "Para o metrônomo e o treino"
+                } else {
+                    "Liga o metrônomo, faz a contagem e começa o treino"
+                })
+                .clicked()
+            {
+                alternar = true;
+            }
+            ui.add_space(6.0);
+            desenhar_andamento_do_treino(ui, &e.treino, e.aproveitamento_treino());
+        });
+    if alternar {
+        alternar_treino(e, ritmo, som);
+    }
+}
+
+/// Estado do treino: preparação, acorde da vez, próximo, placar e o fim.
+fn desenhar_andamento_do_treino(ui: &mut Ui, t: &TreinoAndamento, aproveitamento: Option<u32>) {
+    match t.momento() {
+        Momento::Parado => {
+            ui.label(RichText::new("Toque em \"Tocar\" (ou Espaço) para começar.").weak());
+            return;
+        }
+        Momento::Contagem { pulso, pulsos } => {
+            ui.label(
+                RichText::new(format!("Prepare-se: pulso {pulso} de {pulsos}"))
+                    .size(22.0)
+                    .strong(),
+            );
+            if let Some(i) = t.atual() {
+                ui.label(RichText::new(format!("Primeiro: {}", i.rotulo)).size(18.0));
+            }
+        }
+        Momento::Item { vaga } => {
+            let total = t
+                .total_de_vagas()
+                .map_or(String::new(), |n| format!(" de {n}"));
+            ui.label(RichText::new(format!("Acorde {}{total}", vaga + 1)).weak());
+            if let Some(i) = t.atual() {
+                ui.label(RichText::new(&i.rotulo).size(48.0).strong().color(VERDE));
+                if !i.detalhe.is_empty() {
+                    ui.label(RichText::new(&i.detalhe).size(16.0));
+                }
+            }
+            let depois = t.proximo().map_or("fim".to_owned(), |i| i.rotulo.clone());
+            ui.label(RichText::new(format!("Depois: {depois}")).size(18.0));
+        }
+        Momento::Terminou => {
+            let (texto, cor) = match aproveitamento {
+                Some(a) if a >= crate::exercicios::APROVEITAMENTO_TREINO => (
+                    format!("[OK] Terminou: aproveitamento de {a}%. Exercício concluído."),
+                    Some(VERDE),
+                ),
+                Some(a) => (
+                    format!(
+                        "[!] Terminou: aproveitamento de {a}%. Para concluir, faça pelo menos {}%; tente de novo.",
+                        crate::exercicios::APROVEITAMENTO_TREINO
+                    ),
+                    Some(AMARELO),
+                ),
+                None => ("Terminou: nenhum acorde para conferir.".to_owned(), None),
+            };
+            let mut r = RichText::new(texto).size(20.0).strong();
+            if let Some(c) = cor {
+                r = r.color(c);
+            }
+            ui.label(r);
+        }
+    }
+    ui.add_space(4.0);
+    let p = t.placar;
+    ui.label(format!(
+        "No tempo: {}   Atrasados: {}   Não vieram: {}",
+        p.no_tempo, p.atrasados, p.errados
+    ));
+    if let Some(u) = t.texto_ultimo() {
+        ui.label(RichText::new(u).weak());
+    }
+}
+
+/// Legenda dos atalhos.
+fn desenhar_atalhos(ui: &mut Ui) {
+    ui.label(RichText::new("Atalhos do teclado do PC").strong());
+    let texto = ATALHOS
+        .iter()
+        .map(|(_, _, tecla, desc)| format!("[{tecla}] {desc}"))
+        .collect::<Vec<_>>()
+        .join("   ");
+    ui.label(RichText::new(texto).weak());
+    ui.label(
+        RichText::new(
+            "As letras A S D F G H J K L ; W E T Y U O P continuam tocando notas no modo simulação.",
+        )
+        .weak()
+        .small(),
+    );
 }
 
 fn desenhar_feedback(ui: &mut Ui, e: &EstadoExercicios) {
@@ -502,5 +1046,161 @@ mod testes {
         }
         assert_eq!(motor.notas_ativas(), 0, "tudo solto no fim");
         assert_eq!(v.iter().filter(|x| !x.0).count(), 4);
+    }
+    #[test]
+    fn atalhos_nao_colidem_com_as_teclas_que_tocam_notas() {
+        for (k, _, rotulo, _) in ATALHOS {
+            assert!(
+                !crate::espelho::MAPA_PC.iter().any(|(t, _, _)| *t == k),
+                "atalho [{rotulo}] tocaria uma nota na simulação"
+            );
+        }
+        let mut teclas: Vec<_> = ATALHOS.iter().map(|x| x.0).collect();
+        teclas.dedup();
+        assert_eq!(teclas.len(), ATALHOS.len(), "tecla repetida");
+    }
+
+    #[test]
+    fn roteiro_vem_do_arquivo_ou_e_montado_com_os_dados_do_exercicio() {
+        let mut ex = crate::exercicios::exercicios_de_fabrica()[1].clone();
+        assert!(!ex.roteiro.is_empty(), "primeiros-passos traz roteiro");
+        assert_eq!(roteiro(&ex), ex.roteiro);
+        ex.roteiro.clear();
+        let r = roteiro(&ex);
+        assert!(r.len() >= 3);
+        assert!(r.iter().any(|l| l.contains("10 passos")), "{r:?}");
+        assert!(r.iter().any(|l| l.contains(&ex.dedilhado)));
+    }
+
+    #[test]
+    fn atalhos_executam_as_acoes_da_tela() {
+        let relogio = RelogioManual::novo();
+        let (mut som, _motor) = servico_pronto(Arc::new(relogio.clone()) as Arc<dyn Relogio>);
+        let mut e = estado_no_exercicio_2();
+        e.classificar(true, n(60), 0);
+        assert_eq!(e.tentativa.passo, 1);
+        executar(Atalho::Limpar, &mut e, &mut som);
+        assert_eq!(e.tentativa.passo, 0, "Limpar volta ao primeiro passo");
+        executar(Atalho::Pausar, &mut e, &mut som);
+        assert!(e.tentativa.pausado_desde.is_some());
+        executar(Atalho::Pausar, &mut e, &mut som);
+        assert!(e.tentativa.pausado_desde.is_none());
+        let dica = e.config.mostrar_dica;
+        executar(Atalho::Dica, &mut e, &mut som);
+        assert_ne!(e.config.mostrar_dica, dica);
+        executar(Atalho::Anterior, &mut e, &mut som);
+        assert_eq!(e.indice(), 0);
+        executar(Atalho::Proximo, &mut e, &mut som);
+        assert_eq!(e.indice(), 1);
+    }
+
+    #[test]
+    fn abrir_licao_vai_ao_primeiro_exercicio_liberado_e_nao_concluido() {
+        let mut e = EstadoExercicios::novo(None);
+        e.progresso[0].concluido = true;
+        assert!(e.abrir_licao(0));
+        assert_eq!(e.indice(), 1);
+    }
+
+    fn estado_com_andamento() -> EstadoExercicios {
+        use crate::exercicios::{Andamento, Passo};
+        use crate::treino_andamento::Ordem;
+        use piano_tutor_core::ritmo::Formula;
+        let mut ex = crate::exercicios::exercicios_de_fabrica()[0].clone();
+        ex.passos = vec![
+            Passo::acorde(&[60, 64, 67], "I Dó"),
+            Passo::acorde(&[60, 65, 69], "IV Dó"),
+        ];
+        ex.andamento = Some(Andamento {
+            bpm: 120,
+            formula: Formula::QuatroQuatro,
+            compassos_por_passo: 1,
+            contagem: 1,
+            app_toca: true,
+            ordem: Ordem::Sequencial,
+            voltas: 1,
+            ritmo: None,
+        });
+        EstadoExercicios::com_exercicios(vec![ex], None)
+    }
+
+    fn quadro(
+        ctx: &bancada_casca::egui::Context,
+        e: &mut EstadoExercicios,
+        esp: &mut EstadoEspelho,
+        som: &mut ServicoSom,
+        r: &mut EstadoRitmo,
+    ) {
+        use bancada_casca::egui::{RawInput, Rect, pos2};
+        let entrada = RawInput {
+            screen_rect: Some(Rect::from_min_size(pos2(0.0, 0.0), vec2(1280.0, 900.0))),
+            ..Default::default()
+        };
+        let professor = crate::professor::Professor::novo(
+            Box::new(crate::professor_falante::VozMuda::nova()),
+            None,
+        );
+        ctx.run_ui(entrada, |ui| {
+            desenhar_tela(ui, e, esp, som, r, &professor, None);
+        })
+        .drop_without_applying_deltas();
+    }
+
+    #[test]
+    fn tela_desenha_exercicio_normal_e_com_treino_em_todos_os_momentos() {
+        let ctx = bancada_casca::egui::Context::default();
+        let relogio = RelogioManual::novo();
+        let (mut som, motor) = servico_pronto(Arc::new(relogio.clone()) as Arc<dyn Relogio>);
+        relogio.avancar(Duration::from_secs(1));
+        motor.renderizar(BLOCO, 0);
+        let mut esp = EstadoEspelho::novo();
+        let mut r = EstadoRitmo::novo(None);
+        // Exercício normal (lições de fábrica).
+        let mut normal = EstadoExercicios::novo(None);
+        quadro(&ctx, &mut normal, &mut esp, &mut som, &mut r);
+        // Treino: parado, contagem, item, terminou.
+        let mut e = estado_com_andamento();
+        quadro(&ctx, &mut e, &mut esp, &mut som, &mut r);
+        executar_com_ritmo(Atalho::Pausar, &mut e, &mut r, &mut som);
+        assert!(
+            e.treino.ativo() && r.tocando(),
+            "Espaço toca no modo andamento"
+        );
+        quadro(&ctx, &mut e, &mut esp, &mut som, &mut r);
+        for _ in 0..400 {
+            relogio.avancar(Duration::from_millis(20));
+            motor.renderizar_no_relogio(256);
+            quadro(&ctx, &mut e, &mut esp, &mut som, &mut r);
+        }
+        assert_eq!(
+            e.treino.momento(),
+            crate::treino_andamento::Momento::Terminou
+        );
+        assert!(!r.tocando());
+        executar_com_ritmo(Atalho::Pausar, &mut e, &mut r, &mut som);
+        assert!(e.treino.ativo(), "Espaço de novo recomeça");
+        executar_com_ritmo(Atalho::Pausar, &mut e, &mut r, &mut som);
+        assert!(
+            !e.treino.ativo() && !r.tocando(),
+            "Espaço durante o treino para"
+        );
+        quadro(&ctx, &mut e, &mut esp, &mut som, &mut r);
+    }
+
+    #[test]
+    fn texto_do_treino_descreve_os_ajustes() {
+        let e = estado_com_andamento();
+        let t = texto_do_treino(e.exercicio().expect("exercício"));
+        for parte in [
+            "120 BPM",
+            "4/4",
+            "1 compasso(s) por acorde",
+            "o app toca",
+            "em sequência",
+            "1 volta(s)",
+            "só metrônomo",
+        ] {
+            assert!(t.contains(parte), "faltou \"{parte}\" em: {t}");
+        }
     }
 }

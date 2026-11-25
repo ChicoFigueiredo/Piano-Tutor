@@ -836,10 +836,10 @@ impl ObservadorPratica {
 /// Passo certo ou nota errada isolados não geram evento (o retorno de cada nota é só o visual).
 /// Os 10 exercícios de fábrica têm de 1 a 10 passos, curtos: o trecho comentado é o exercício
 /// inteiro, ao concluir (não há comentário a cada N passos).
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+#[derive(Clone, Debug, PartialEq, Eq)]
 pub enum EventoFabrica {
-    /// O exercício `n` (1 a 10) foi aberto ou trocado: momento `antes` do Roteiro.
-    Abriu(u8),
+    /// O exercício de id dado foi aberto ou trocado: momento `antes` do Roteiro.
+    Abriu(String),
     /// O exercício foi concluído: `acerto` (`sem_erros`) ou `erro` sobre a tentativa toda e,
     /// em seguida, o momento `depois`.
     Concluiu { sem_erros: bool },
@@ -848,7 +848,7 @@ pub enum EventoFabrica {
 /// Olha o [`EstadoExercicios`] a cada quadro e diz o que o professor deve comentar.
 #[derive(Debug, Default)]
 pub struct ObservadorFabrica {
-    id: Option<u8>,
+    id: Option<String>,
     vistos: usize,
     /// Notas erradas da tentativa em curso (zera ao reiniciar ou ao concluir).
     erros: usize,
@@ -866,11 +866,11 @@ impl ObservadorFabrica {
             return Vec::new();
         };
         let registro = &e.tentativa.registro;
-        if self.id != Some(ex.id) {
-            self.id = Some(ex.id);
+        if self.id.as_deref() != Some(ex.id.as_str()) {
+            self.id = Some(ex.id.clone());
             self.vistos = registro.len();
             self.erros = 0;
-            return vec![EventoFabrica::Abriu(ex.id)];
+            return vec![EventoFabrica::Abriu(ex.id.clone())];
         }
         // "Reiniciar" esvazia o registro: a tentativa recomeça sem erros.
         if registro.len() < self.vistos {
@@ -2379,7 +2379,10 @@ estado = "aprovada"
         let n = |x| NotaMidi::nova(x).expect("nota");
         let mut e = EstadoExercicios::novo(None);
         let mut o = ObservadorFabrica::default();
-        assert_eq!(o.observar(&e), [EventoFabrica::Abriu(1)]);
+        assert_eq!(
+            o.observar(&e),
+            [EventoFabrica::Abriu("primeiros-passos/1".into())]
+        );
         assert!(o.observar(&e).is_empty());
         // Ex. 1: errar (61) não gera evento; acertar (60) conclui, e a tentativa teve erro.
         e.classificar(true, n(61), 1_000);
@@ -2393,7 +2396,10 @@ estado = "aprovada"
         // Ex. 2 (10 notas): passos certos não geram evento; o erro conta só na tentativa em
         // curso; reiniciar zera.
         assert!(e.selecionar(1));
-        assert_eq!(o.observar(&e), [EventoFabrica::Abriu(2)]);
+        assert_eq!(
+            o.observar(&e),
+            [EventoFabrica::Abriu("primeiros-passos/2".into())]
+        );
         e.classificar(true, n(60), 3_000);
         assert!(o.observar(&e).is_empty(), "passo certo isolado não comenta");
         e.classificar(true, n(61), 3_500);
@@ -2411,7 +2417,10 @@ estado = "aprovada"
         );
         // Ao entrar na tela de novo, o professor abre o exercício outra vez.
         o.reiniciar();
-        assert_eq!(o.observar(&e), [EventoFabrica::Abriu(2)]);
+        assert_eq!(
+            o.observar(&e),
+            [EventoFabrica::Abriu("primeiros-passos/2".into())]
+        );
     }
 
     #[test]

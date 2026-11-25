@@ -1,0 +1,160 @@
+[licao]
+id = "acordes-setimas"
+trilha = "Acordes"
+ordem_trilha = 30
+ordem = 7
+titulo = "Acordes de sétima"
+descricao = "Acordes de sétima maior (maj7), de sétima (7) e menor com sétima (m7)."
+nivel = "intermediario"
+situacao = "proposta"
+fontes = ["Acorde, Wikipédia: https://pt.wikipedia.org/wiki/Acorde", "Intervalo (música), Wikipédia: https://pt.wikipedia.org/wiki/Intervalo_(música)", "Introduction to Chords, musictheory.net: https://musictheory.net/lessons/40", "Seventh Chords, musictheory.net: https://musictheory.net/lessons/45"]
+requer = []
+
+[[exercicio]]
+id = "do-maj7"
+titulo = "Dó maior com sétima maior (Cmaj7)"
+tipo = "acorde"
+mao = "direita"
+objetivo = "Tocar o acorde Dó maj7."
+instrucoes = "Some uma sétima maior (Si) à tríade de Dó maior. Soa suave e aberto. Toque as notas de cada acorde ao mesmo tempo: Dó maj7 (Dó, Mi, Sol e Si)."
+passos = "{C4 E4 G4 B4}:Dó_maj7"
+roteiro = [
+  "Ponha a mão direita sobre as teclas, com os dedos curvos e o punho solto.",
+  "Primeiro acorde: Dó maj7. Ache Dó, Mi, Sol e Si antes de apertar.",
+  "Com quatro notas, use os dedos 1, 2, 3 e 5.",
+  "Aperte todas as notas ao mesmo tempo, com o mesmo peso, e solte.",
+  "Confira o desenho: maj7: tríade maior mais sétima maior.",
+]
+erro = "Confira as teclas pretas de cada acorde."
+conclusao = "Acordes tocados com as notas certas."
+
+[[exercicio]]
+id = "do-7"
+titulo = "Dó com sétima (C7)"
+tipo = "acorde"
+mao = "direita"
+objetivo = "Tocar o acorde Dó 7."
+instrucoes = "Some uma sétima menor (Sib) à tríade de Dó maior. Soa tenso e pede resolução. Toque as notas de cada acorde ao mesmo tempo: Dó 7 (Dó, Mi, Sol e Sib)."
+passos = "{C4 E4 G4 Bb4}:Dó_7"
+roteiro = [
+  "Ponha a mão direita sobre as teclas, com os dedos curvos e o punho solto.",
+  "Primeiro acorde: Dó 7. Ache Dó, Mi, Sol e Sib antes de apertar.",
+  "Com quatro notas, use os dedos 1, 2, 3 e 5.",
+  "Aperte todas as notas ao mesmo tempo, com o mesmo peso, e solte.",
+  "Confira o desenho: 7: tríade maior mais sétima menor.",
+]
+erro = "Confira as teclas pretas de cada acorde."
+conclusao = "Acordes tocados com as notas certas."
+
+[[exercicio]]
+id = "do-m7"
+titulo = "Dó menor com sétima (Cm7)"
+tipo = "acorde"
+mao = "direita"
+objetivo = "Tocar o acorde Dó m7."
+instrucoes = "Some uma sétima menor (Sib) à tríade de Dó menor. Soa suave e escuro. Toque as notas de cada acorde ao mesmo tempo: Dó m7 (Dó, Mib, Sol e Sib)."
+passos = "{C4 Eb4 G4 Bb4}:Dó_m7"
+roteiro = [
+  "Ponha a mão direita sobre as teclas, com os dedos curvos e o punho solto.",
+  "Primeiro acorde: Dó m7. Ache Dó, Mib, Sol e Sib antes de apertar.",
+  "Com quatro notas, use os dedos 1, 2, 3 e 5.",
+  "Aperte todas as notas ao mesmo tempo, com o mesmo peso, e solte.",
+  "Confira o desenho: m7: tríade menor mais sétima menor.",
+]
+erro = "Confira as teclas pretas de cada acorde."
+conclusao = "Acordes tocados com as notas certas."
+
+[[exercicio]]
+id = "do-tres-setimas"
+titulo = "As três sétimas de Dó"
+tipo = "acorde"
+mao = "direita"
+objetivo = "Comparar Dó maj7, Dó 7 e Dó m7."
+instrucoes = "A fundamental é a mesma. Mude só a terça e a sétima. Toque as notas de cada acorde ao mesmo tempo: Dó maj7 (Dó, Mi, Sol e Si); Dó 7 (Dó, Mi, Sol e Sib); Dó m7 (Dó, Mib, Sol e Sib)."
+passos = "{C4 E4 G4 B4}:Dó_maj7 {C4 E4 G4 Bb4}:Dó_7 {C4 Eb4 G4 Bb4}:Dó_m7"
+roteiro = [
+  "Ponha a mão direita sobre as teclas, com os dedos curvos e o punho solto.",
+  "Primeiro acorde: Dó maj7. Ache Dó, Mi, Sol e Si antes de apertar.",
+  "Com quatro notas, use os dedos 1, 2, 3 e 5.",
+  "Aperte todas as notas ao mesmo tempo, com o mesmo peso, e solte.",
+  "Passe ao próximo acorde sem pressa, achando as teclas antes de apertar.",
+  "Confira o desenho: maj7: tríade maior mais sétima maior; 7: tríade maior mais sétima menor.",
+]
+erro = "Confira as teclas pretas de cada acorde."
+conclusao = "Acordes tocados com as notas certas."
+
+[[exercicio]]
+id = "sol7-do-maj7"
+titulo = "Sol 7 resolvendo em Dó maj7"
+tipo = "acorde"
+mao = "direita"
+objetivo = "Sentir o acorde de sétima resolver."
+instrucoes = "O Sol 7 leva o Fá, que pede para descer ao Mi do Dó maj7. Toque as notas de cada acorde ao mesmo tempo: Sol 7 (Sol, Si, Ré e Fá); Dó maj7 (Dó, Mi, Sol e Si)."
+passos = "{G3 B3 D4 F4}:Sol_7 {C4 E4 G4 B4}:Dó_maj7"
+roteiro = [
+  "Ponha a mão direita sobre as teclas, com os dedos curvos e o punho solto.",
+  "Primeiro acorde: Sol 7. Ache Sol, Si, Ré e Fá antes de apertar.",
+  "Com quatro notas, use os dedos 1, 2, 3 e 5.",
+  "Aperte todas as notas ao mesmo tempo, com o mesmo peso, e solte.",
+  "Passe ao próximo acorde sem pressa, achando as teclas antes de apertar.",
+  "Confira o desenho: 7: tríade maior mais sétima menor; maj7: tríade maior mais sétima maior.",
+]
+erro = "Confira as teclas pretas de cada acorde."
+conclusao = "Acordes tocados com as notas certas."
+
+[[exercicio]]
+id = "fa-maj7-sol7-do-maj7"
+titulo = "Fá maj7, Sol 7 e Dó maj7"
+tipo = "acorde"
+mao = "direita"
+objetivo = "Tocar uma cadência IV-V-I com sétimas."
+instrucoes = "Fá maj7, Sol 7 e Dó maj7 formam IV, V e I com sétimas. Toque as notas de cada acorde ao mesmo tempo: Fá maj7 (Fá, Lá, Dó e Mi); Sol 7 (Sol, Si, Ré e Fá); Dó maj7 (Dó, Mi, Sol e Si)."
+passos = "{F4 A4 C5 E5}:Fá_maj7 {G3 B3 D4 F4}:Sol_7 {C4 E4 G4 B4}:Dó_maj7"
+roteiro = [
+  "Ponha a mão direita sobre as teclas, com os dedos curvos e o punho solto.",
+  "Primeiro acorde: Fá maj7. Ache Fá, Lá, Dó e Mi antes de apertar.",
+  "Com quatro notas, use os dedos 1, 2, 3 e 5.",
+  "Aperte todas as notas ao mesmo tempo, com o mesmo peso, e solte.",
+  "Passe ao próximo acorde sem pressa, achando as teclas antes de apertar.",
+  "Confira o desenho: maj7: tríade maior mais sétima maior; 7: tríade maior mais sétima menor.",
+]
+erro = "Confira as teclas pretas de cada acorde."
+conclusao = "Acordes tocados com as notas certas."
+
+[[exercicio]]
+id = "ii-v-i-do"
+titulo = "Ré m7, Sol 7 e Dó maj7"
+tipo = "acorde"
+mao = "direita"
+objetivo = "Tocar a sequência ii-V-I em Dó maior."
+instrucoes = "A sequência ii-V-I é a mais usada no jazz. Toque as notas de cada acorde ao mesmo tempo: Ré m7 (Ré, Fá, Lá e Dó); Sol 7 (Sol, Si, Ré e Fá); Dó maj7 (Dó, Mi, Sol e Si)."
+passos = "{D4 F4 A4 C5}:Ré_m7 {G3 B3 D4 F4}:Sol_7 {C4 E4 G4 B4}:Dó_maj7"
+roteiro = [
+  "Ponha a mão direita sobre as teclas, com os dedos curvos e o punho solto.",
+  "Primeiro acorde: Ré m7. Ache Ré, Fá, Lá e Dó antes de apertar.",
+  "Com quatro notas, use os dedos 1, 2, 3 e 5.",
+  "Aperte todas as notas ao mesmo tempo, com o mesmo peso, e solte.",
+  "Passe ao próximo acorde sem pressa, achando as teclas antes de apertar.",
+  "Confira o desenho: m7: tríade menor mais sétima menor; 7: tríade maior mais sétima menor.",
+]
+erro = "Confira as teclas pretas de cada acorde."
+conclusao = "Acordes tocados com as notas certas."
+
+[[exercicio]]
+id = "vi-ii-v-i-do"
+titulo = "Lá m7, Ré m7, Sol 7 e Dó maj7"
+tipo = "acorde"
+mao = "direita"
+objetivo = "Tocar a sequência vi-ii-V-I em Dó maior."
+instrucoes = "Cada acorde está a uma quinta do anterior. Toque as notas de cada acorde ao mesmo tempo: Lá m7 (Lá, Dó, Mi e Sol); Ré m7 (Ré, Fá, Lá e Dó); Sol 7 (Sol, Si, Ré e Fá); Dó maj7 (Dó, Mi, Sol e Si)."
+passos = "{A3 C4 E4 G4}:Lá_m7 {D4 F4 A4 C5}:Ré_m7 {G3 B3 D4 F4}:Sol_7 {C4 E4 G4 B4}:Dó_maj7"
+roteiro = [
+  "Ponha a mão direita sobre as teclas, com os dedos curvos e o punho solto.",
+  "Primeiro acorde: Lá m7. Ache Lá, Dó, Mi e Sol antes de apertar.",
+  "Com quatro notas, use os dedos 1, 2, 3 e 5.",
+  "Aperte todas as notas ao mesmo tempo, com o mesmo peso, e solte.",
+  "Passe ao próximo acorde sem pressa, achando as teclas antes de apertar.",
+  "Confira o desenho: m7: tríade menor mais sétima menor; 7: tríade maior mais sétima menor.",
+]
+erro = "Confira as teclas pretas de cada acorde."
+conclusao = "Acordes tocados com as notas certas."

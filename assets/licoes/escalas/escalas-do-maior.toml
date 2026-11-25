@@ -1,0 +1,122 @@
+[licao]
+id = "escalas-do-maior"
+trilha = "Escalas"
+ordem_trilha = 20
+ordem = 1
+titulo = "Escala de Dó maior"
+descricao = "Dó maior, uma oitava, subindo e descendo, mão direita e mão esquerda."
+nivel = "iniciante"
+situacao = "proposta"
+fontes = ["Fingering charts, piano scales (Univ. de Miami): https://www.cs.miami.edu/~burt/music/finger-charts.html", "Piano Major Scales (pianoscales.org): https://pianoscales.org/major.html", "Wikiversity, Piano: how to read piano music and play scales using proper technique: https://en.wikiversity.org/wiki/Piano/How_to_read_piano_music_and_play_scales_using_proper_technique"]
+requer = []
+
+[[exercicio]]
+id = "c-maior-md-sub"
+titulo = "Dó maior: subindo, mão direita"
+tipo = "escala"
+mao = "direita"
+objetivo = "Tocar a escala de Dó maior subindo, uma oitava, com a mão direita."
+instrucoes = "Use a mão direita. Toque Dó, Ré, Mi, Fá, Sol, Lá, Si e Dó, de baixo para cima. Todas as teclas são brancas. Comece com o dedo 1."
+dedilhado = "1-2-3-1-2-3-4-5"
+passos = "C4 D4 E4 F4 G4 A4 B4 C5"
+roteiro = [
+  "Sente-se de frente para o teclado, com a mão direita solta e os dedos curvos, perto do Dó central.",
+  "Ponha o dedo 1 no Dó. Confira as teclas pretas da escala. Todas as teclas são brancas.",
+  "Depois do Mi, passe o polegar por baixo e toque o Fá com o dedo 1.",
+  "Termine no Dó com o dedo 5, tocando parelho e sem pressa.",
+]
+erro = "Confira as teclas: Todas as teclas são brancas."
+conclusao = "Dó maior, subindo, mão direita, concluída."
+
+[[exercicio]]
+id = "c-maior-md-desc"
+titulo = "Dó maior: descendo, mão direita"
+tipo = "escala"
+mao = "direita"
+objetivo = "Tocar a escala de Dó maior descendo, uma oitava, com a mão direita."
+instrucoes = "Use a mão direita. Comece no Dó agudo e desça: Dó, Si, Lá, Sol, Fá, Mi, Ré e Dó. Todas as teclas são brancas. Comece com o dedo 5."
+dedilhado = "5-4-3-2-1-3-2-1"
+passos = "C5 B4 A4 G4 F4 E4 D4 C4"
+roteiro = [
+  "Sente-se de frente para o teclado, com a mão direita solta e os dedos curvos, perto do Dó central.",
+  "Ponha o dedo 5 no Dó. Confira as teclas pretas da escala. Todas as teclas são brancas.",
+  "Depois do Sol, passe o polegar por baixo e toque o Fá com o dedo 1.",
+  "Depois do Fá, passe o dedo 3 por cima do polegar até o Mi.",
+  "Termine no Dó com o dedo 1, tocando parelho e sem pressa.",
+]
+erro = "Confira as teclas: Todas as teclas são brancas."
+conclusao = "Dó maior, descendo, mão direita, concluída."
+
+[[exercicio]]
+id = "c-maior-md-subdesc"
+titulo = "Dó maior: subindo e descendo, mão direita"
+tipo = "escala"
+mao = "direita"
+objetivo = "Tocar a escala de Dó maior subindo e descendo, uma oitava, com a mão direita."
+instrucoes = "Use a mão direita. Suba e volte sem parar na nota mais aguda: Dó, Ré, Mi, Fá, Sol, Lá, Si, Dó, Si, Lá, Sol, Fá, Mi, Ré e Dó. Todas as teclas são brancas. Comece com o dedo 1."
+dedilhado = "1-2-3-1-2-3-4-5-4-3-2-1-3-2-1"
+passos = "C4 D4 E4 F4 G4 A4 B4 C5 B4 A4 G4 F4 E4 D4 C4"
+roteiro = [
+  "Sente-se de frente para o teclado, com a mão direita solta e os dedos curvos, perto do Dó central.",
+  "Ponha o dedo 1 no Dó. Confira as teclas pretas da escala. Todas as teclas são brancas.",
+  "Depois do Mi, passe o polegar por baixo e toque o Fá com o dedo 1.",
+  "Chegue ao Dó sem parar e volte pelo mesmo caminho, com os dedos ao contrário.",
+]
+erro = "Confira as teclas: Todas as teclas são brancas."
+conclusao = "Dó maior, subindo e descendo, mão direita, concluída."
+
+[[exercicio]]
+id = "c-maior-me-sub"
+titulo = "Dó maior: subindo, mão esquerda"
+tipo = "escala"
+mao = "esquerda"
+objetivo = "Tocar a escala de Dó maior subindo, uma oitava, com a mão esquerda."
+instrucoes = "Use a mão esquerda. Toque Dó, Ré, Mi, Fá, Sol, Lá, Si e Dó, de baixo para cima. Todas as teclas são brancas. Comece com o dedo 5."
+dedilhado = "5-4-3-2-1-3-2-1"
+passos = "C3 D3 E3 F3 G3 A3 B3 C4"
+roteiro = [
+  "Sente-se de frente para o teclado, com a mão esquerda solta e os dedos curvos, uma oitava abaixo do Dó central.",
+  "Ponha o dedo 5 no Dó. Confira as teclas pretas da escala. Todas as teclas são brancas.",
+  "Depois do Fá, passe o polegar por baixo e toque o Sol com o dedo 1.",
+  "Depois do Sol, passe o dedo 3 por cima do polegar até o Lá.",
+  "Termine no Dó com o dedo 1, tocando parelho e sem pressa.",
+]
+erro = "Confira as teclas: Todas as teclas são brancas."
+conclusao = "Dó maior, subindo, mão esquerda, concluída."
+
+[[exercicio]]
+id = "c-maior-me-desc"
+titulo = "Dó maior: descendo, mão esquerda"
+tipo = "escala"
+mao = "esquerda"
+objetivo = "Tocar a escala de Dó maior descendo, uma oitava, com a mão esquerda."
+instrucoes = "Use a mão esquerda. Comece no Dó agudo e desça: Dó, Si, Lá, Sol, Fá, Mi, Ré e Dó. Todas as teclas são brancas. Comece com o dedo 1."
+dedilhado = "1-2-3-1-2-3-4-5"
+passos = "C4 B3 A3 G3 F3 E3 D3 C3"
+roteiro = [
+  "Sente-se de frente para o teclado, com a mão esquerda solta e os dedos curvos, uma oitava abaixo do Dó central.",
+  "Ponha o dedo 1 no Dó. Confira as teclas pretas da escala. Todas as teclas são brancas.",
+  "Depois do Lá, passe o polegar por baixo e toque o Sol com o dedo 1.",
+  "Termine no Dó com o dedo 5, tocando parelho e sem pressa.",
+]
+erro = "Confira as teclas: Todas as teclas são brancas."
+conclusao = "Dó maior, descendo, mão esquerda, concluída."
+
+[[exercicio]]
+id = "c-maior-me-subdesc"
+titulo = "Dó maior: subindo e descendo, mão esquerda"
+tipo = "escala"
+mao = "esquerda"
+objetivo = "Tocar a escala de Dó maior subindo e descendo, uma oitava, com a mão esquerda."
+instrucoes = "Use a mão esquerda. Suba e volte sem parar na nota mais aguda: Dó, Ré, Mi, Fá, Sol, Lá, Si, Dó, Si, Lá, Sol, Fá, Mi, Ré e Dó. Todas as teclas são brancas. Comece com o dedo 5."
+dedilhado = "5-4-3-2-1-3-2-1-2-3-1-2-3-4-5"
+passos = "C3 D3 E3 F3 G3 A3 B3 C4 B3 A3 G3 F3 E3 D3 C3"
+roteiro = [
+  "Sente-se de frente para o teclado, com a mão esquerda solta e os dedos curvos, uma oitava abaixo do Dó central.",
+  "Ponha o dedo 5 no Dó. Confira as teclas pretas da escala. Todas as teclas são brancas.",
+  "Depois do Fá, passe o polegar por baixo e toque o Sol com o dedo 1.",
+  "Depois do Sol, passe o dedo 3 por cima do polegar até o Lá.",
+  "Chegue ao Dó sem parar e volte pelo mesmo caminho, com os dedos ao contrário.",
+]
+erro = "Confira as teclas: Todas as teclas são brancas."
+conclusao = "Dó maior, subindo e descendo, mão esquerda, concluída."

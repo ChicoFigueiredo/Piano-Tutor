@@ -1,0 +1,119 @@
+[licao]
+id = "acordes-cadencias"
+trilha = "Acordes"
+ordem_trilha = 30
+ordem = 6
+titulo = "Cadências e progressões em Dó, Sol e Fá"
+descricao = "Cadência I-IV-V-I e progressão I-V-vi-IV nas tonalidades de Dó, Sol e Fá maior."
+nivel = "basico"
+situacao = "proposta"
+fontes = ["Acorde, Wikipédia: https://pt.wikipedia.org/wiki/Acorde", "Intervalo (música), Wikipédia: https://pt.wikipedia.org/wiki/Intervalo_(música)", "Introduction to Chords, musictheory.net: https://musictheory.net/lessons/40", "Circle of fifths (Wikipedia): https://en.wikipedia.org/wiki/Circle_of_fifths"]
+requer = []
+
+[[exercicio]]
+id = "i-iv-v-i-do"
+titulo = "Cadência I-IV-V-I em Dó maior"
+tipo = "acorde"
+mao = "direita"
+objetivo = "Tocar a cadência I-IV-V-I em Dó maior."
+instrucoes = "A cadência I-IV-V-I volta ao acorde de repouso. Toque, na ordem: I = Dó maior (Dó, Mi e Sol); IV = Fá maior (Dó, Fá e Lá); V = Sol maior (Si, Ré e Sol); I = Dó maior (Dó, Mi e Sol). As notas estão escolhidas para a mão quase não sair do lugar."
+passos = "{C4 E4 G4}:I_Dó {C4 F4 A4}:IV_Dó {B3 D4 G4}:V_Dó {C4 E4 G4}:I_Dó"
+roteiro = [
+  "Ponha a mão direita perto do Dó central, com os dedos curvos.",
+  "O primeiro acorde é o I: Dó maior.",
+  "Os acordes estão escolhidos para a mão mexer pouco: ache cada grupo de teclas antes de apertar.",
+  "Aperte as notas juntas e solte na hora de trocar de acorde.",
+  "Ouça como o V pede para voltar ao I.",
+]
+erro = "Confira cada acorde: eles seguem a escala da tonalidade."
+conclusao = "Cadência completa."
+
+[[exercicio]]
+id = "i-iv-v-i-sol"
+titulo = "Cadência I-IV-V-I em Sol maior"
+tipo = "acorde"
+mao = "direita"
+objetivo = "Tocar a cadência I-IV-V-I em Sol maior."
+instrucoes = "Em Sol maior, o V é Ré maior e leva o Fá#. Toque, na ordem: I = Sol maior (Si, Ré e Sol); IV = Dó maior (Dó, Mi e Sol); V = Ré maior (Lá, Ré e Fá#); I = Sol maior (Si, Ré e Sol). As notas estão escolhidas para a mão quase não sair do lugar."
+passos = "{B3 D4 G4}:I_Sol {C4 E4 G4}:IV_Sol {A3 D4 F#4}:V_Sol {B3 D4 G4}:I_Sol"
+roteiro = [
+  "Ponha a mão direita perto do Dó central, com os dedos curvos.",
+  "O primeiro acorde é o I: Sol maior.",
+  "Os acordes estão escolhidos para a mão mexer pouco: ache cada grupo de teclas antes de apertar.",
+  "Aperte as notas juntas e solte na hora de trocar de acorde.",
+  "Ouça como o V pede para voltar ao I.",
+]
+erro = "Confira cada acorde: eles seguem a escala da tonalidade."
+conclusao = "Cadência completa."
+
+[[exercicio]]
+id = "i-iv-v-i-fa"
+titulo = "Cadência I-IV-V-I em Fá maior"
+tipo = "acorde"
+mao = "direita"
+objetivo = "Tocar a cadência I-IV-V-I em Fá maior."
+instrucoes = "Em Fá maior, o IV é Sib maior e leva o Sib. Toque, na ordem: I = Fá maior (Fá, Lá e Dó); IV = Sib maior (Fá, Sib e Ré); V = Dó maior (Mi, Sol e Dó); I = Fá maior (Fá, Lá e Dó). As notas estão escolhidas para a mão quase não sair do lugar."
+passos = "{F3 A3 C4}:I_Fá {F3 Bb3 D4}:IV_Fá {E3 G3 C4}:V_Fá {F3 A3 C4}:I_Fá"
+roteiro = [
+  "Ponha a mão direita perto do Dó central, com os dedos curvos.",
+  "O primeiro acorde é o I: Fá maior.",
+  "Os acordes estão escolhidos para a mão mexer pouco: ache cada grupo de teclas antes de apertar.",
+  "Aperte as notas juntas e solte na hora de trocar de acorde.",
+  "Ouça como o V pede para voltar ao I.",
+]
+erro = "Confira cada acorde: eles seguem a escala da tonalidade."
+conclusao = "Cadência completa."
+
+[[exercicio]]
+id = "i-v-vi-iv-do"
+titulo = "Progressão I-V-vi-IV em Dó maior"
+tipo = "acorde"
+mao = "direita"
+objetivo = "Tocar a progressão I-V-vi-IV em Dó maior."
+instrucoes = "O vi é o acorde menor da tonalidade: Lá menor. Toque, na ordem: I = Dó maior (Dó, Mi e Sol); V = Sol maior (Si, Ré e Sol); vi = Lá menor (Dó, Mi e Lá); IV = Fá maior (Dó, Fá e Lá). As notas estão escolhidas para a mão quase não sair do lugar."
+passos = "{C4 E4 G4}:I_Dó {B3 D4 G4}:V_Dó {C4 E4 A4}:vi_Dó {C4 F4 A4}:IV_Dó"
+roteiro = [
+  "Ponha a mão direita perto do Dó central, com os dedos curvos.",
+  "O primeiro acorde é o I: Dó maior.",
+  "Os acordes estão escolhidos para a mão mexer pouco: ache cada grupo de teclas antes de apertar.",
+  "Aperte as notas juntas e solte na hora de trocar de acorde.",
+  "Ouça como a progressão termina e pede para recomeçar.",
+]
+erro = "Confira cada acorde: eles seguem a escala da tonalidade."
+conclusao = "Cadência completa."
+
+[[exercicio]]
+id = "i-v-vi-iv-sol"
+titulo = "Progressão I-V-vi-IV em Sol maior"
+tipo = "acorde"
+mao = "direita"
+objetivo = "Tocar a progressão I-V-vi-IV em Sol maior."
+instrucoes = "Em Sol maior, o vi é Mi menor. Toque, na ordem: I = Sol maior (Si, Ré e Sol); V = Ré maior (Lá, Ré e Fá#); vi = Mi menor (Si, Mi e Sol); IV = Dó maior (Dó, Mi e Sol). As notas estão escolhidas para a mão quase não sair do lugar."
+passos = "{B3 D4 G4}:I_Sol {A3 D4 F#4}:V_Sol {B3 E4 G4}:vi_Sol {C4 E4 G4}:IV_Sol"
+roteiro = [
+  "Ponha a mão direita perto do Dó central, com os dedos curvos.",
+  "O primeiro acorde é o I: Sol maior.",
+  "Os acordes estão escolhidos para a mão mexer pouco: ache cada grupo de teclas antes de apertar.",
+  "Aperte as notas juntas e solte na hora de trocar de acorde.",
+  "Ouça como a progressão termina e pede para recomeçar.",
+]
+erro = "Confira cada acorde: eles seguem a escala da tonalidade."
+conclusao = "Cadência completa."
+
+[[exercicio]]
+id = "i-v-vi-iv-fa"
+titulo = "Progressão I-V-vi-IV em Fá maior"
+tipo = "acorde"
+mao = "direita"
+objetivo = "Tocar a progressão I-V-vi-IV em Fá maior."
+instrucoes = "Em Fá maior, o vi é Ré menor e o IV é Sib maior. Toque, na ordem: I = Fá maior (Fá, Lá e Dó); V = Dó maior (Sol, Dó e Mi); vi = Ré menor (Lá, Ré e Fá); IV = Sib maior (Sib, Ré e Fá). As notas estão escolhidas para a mão quase não sair do lugar."
+passos = "{F3 A3 C4}:I_Fá {G3 C4 E4}:V_Fá {A3 D4 F4}:vi_Fá {Bb3 D4 F4}:IV_Fá"
+roteiro = [
+  "Ponha a mão direita perto do Dó central, com os dedos curvos.",
+  "O primeiro acorde é o I: Fá maior.",
+  "Os acordes estão escolhidos para a mão mexer pouco: ache cada grupo de teclas antes de apertar.",
+  "Aperte as notas juntas e solte na hora de trocar de acorde.",
+  "Ouça como a progressão termina e pede para recomeçar.",
+]
+erro = "Confira cada acorde: eles seguem a escala da tonalidade."
+conclusao = "Cadência completa."

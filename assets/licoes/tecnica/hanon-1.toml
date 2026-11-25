@@ -1,0 +1,117 @@
+[licao]
+id = "tecnica-hanon-1"
+trilha = "Técnica"
+ordem_trilha = 40
+ordem = 3
+titulo = "Hanon 1, versão curta"
+descricao = "O primeiro exercício de Hanon reduzido a um, dois e três grupos de oito notas, subindo."
+nivel = "basico"
+situacao = "proposta"
+fontes = ["Hanon, C.-L., Le Pianiste virtuose en 60 exercices (Boulogne, 1873), exercícios 1 a 3, domínio público (IMSLP: https://imslp.org/wiki/The_Virtuoso_Pianist_(Hanon,_Charles-Louis))", "Mutopia Project: The Virtuoso Pianist, Part I (https://www.mutopiaproject.org/cgibin/piece-info.cgi?id=2037), usada só para conferir notas e dedos", "Wikipedia: The Virtuoso Pianist in 60 Exercises (https://en.wikipedia.org/wiki/The_Virtuoso_Pianist_in_60_Exercises)"]
+requer = ["tecnica-cinco-dedos-legato"]
+
+[[exercicio]]
+id = "direita-um-grupo"
+titulo = "Direita, um grupo"
+tipo = "sequencia"
+mao = "direita"
+objetivo = "Tocar o primeiro grupo do Hanon 1."
+instrucoes = "Toque Dó, Mi, Fá, Sol, Lá, Sol, Fá e Mi. Os dedos são 1, 2, 3, 4, 5, 4, 3 e 2."
+dedilhado = "1-2-3-4-5-4-3-2"
+passos = "C4 E4 F4 G4 A4 G4 F4 E4"
+roteiro = [
+  "Ponha o polegar direito no Dó central, com o pulso solto.",
+  "Toque Dó (1) e pule o Ré para tocar o Mi (2).",
+  "Siga com Fá (3), Sol (4) e Lá (5).",
+  "Volte tocando Sol (4), Fá (3) e Mi (2), sem apertar.",
+]
+acerto = "Nota certa."
+erro = "Dó, Mi, Fá, Sol, Lá, e volte por Sol, Fá e Mi."
+
+[[exercicio]]
+id = "esquerda-um-grupo"
+titulo = "Esquerda, um grupo"
+tipo = "sequencia"
+mao = "esquerda"
+objetivo = "Tocar o mesmo grupo com a mão esquerda."
+instrucoes = "Com a esquerda, uma oitava abaixo, toque Dó, Mi, Fá, Sol, Lá, Sol, Fá e Mi."
+dedilhado = "5-4-3-2-1-2-3-4"
+passos = "C3 E3 F3 G3 A3 G3 F3 E3"
+roteiro = [
+  "Ponha a mão esquerda uma oitava abaixo do Dó central.",
+  "O dedo 5 fica no Dó grave. Toque o Dó e pule o Ré para tocar o Mi (4).",
+  "Siga com Fá (3), Sol (2) e Lá (1).",
+  "Volte tocando Sol (2), Fá (3) e Mi (4).",
+]
+acerto = "Nota certa."
+
+[[exercicio]]
+id = "direita-dois-grupos"
+titulo = "Direita, dois grupos"
+tipo = "sequencia"
+mao = "direita"
+objetivo = "Subir um passo e repetir o desenho."
+instrucoes = "Toque o primeiro grupo e depois o mesmo desenho começando no Ré: Ré, Fá, Sol, Lá, Si, Lá, Sol, Fá."
+dedilhado = "1-2-3-4-5-4-3-2-1-2-3-4-5-4-3-2"
+passos = "C4 E4 F4 G4 A4 G4 F4 E4 D4 F4 G4 A4 B4 A4 G4 F4"
+roteiro = [
+  "Ponha o polegar direito no Dó central.",
+  "Toque o primeiro grupo, até voltar ao Mi com o dedo 2.",
+  "Suba o polegar para o Ré, uma tecla acima.",
+  "Toque o mesmo desenho: Ré, Fá, Sol, Lá, Si e volte.",
+]
+acerto = "Nota certa."
+erro = "O segundo grupo começa uma tecla acima do primeiro."
+
+[[exercicio]]
+id = "esquerda-dois-grupos"
+titulo = "Esquerda, dois grupos"
+tipo = "sequencia"
+mao = "esquerda"
+objetivo = "Repetir os dois grupos com a esquerda."
+instrucoes = "Com a esquerda, toque o primeiro grupo e o mesmo desenho começando no Ré grave."
+dedilhado = "5-4-3-2-1-2-3-4-5-4-3-2-1-2-3-4"
+passos = "C3 E3 F3 G3 A3 G3 F3 E3 D3 F3 G3 A3 B3 A3 G3 F3"
+roteiro = [
+  "Ponha a mão esquerda no Dó grave, com o dedo 5 nele.",
+  "Toque o primeiro grupo, subindo até o Lá e voltando ao Mi.",
+  "Leve o dedo 5 para o Ré, uma tecla acima.",
+  "Toque o mesmo desenho: Ré, Fá, Sol, Lá, Si e volte.",
+]
+acerto = "Nota certa."
+
+[[exercicio]]
+id = "direita-tres-grupos"
+titulo = "Direita, três grupos"
+tipo = "sequencia"
+mao = "direita"
+objetivo = "Subir até o Dó, com três grupos seguidos."
+instrucoes = "Toque o grupo começando no Dó, depois no Ré e depois no Mi. São vinte e quatro notas, sem pausa."
+dedilhado = "1-2-3-4-5-4-3-2"
+passos = "C4 E4 F4 G4 A4 G4 F4 E4 D4 F4 G4 A4 B4 A4 G4 F4 E4 G4 A4 B4 C5 B4 A4 G4"
+roteiro = [
+  "Ponha o polegar direito no Dó central.",
+  "Toque o grupo do Dó, depois o do Ré, sem parar.",
+  "No fim do segundo, suba o polegar para o Mi.",
+  "Toque o grupo do Mi até o Sol, e termine com calma.",
+]
+acerto = "Nota certa."
+conclusao = "Hanon 1 curto completo."
+
+[[exercicio]]
+id = "ouvir-um-grupo"
+titulo = "Ouvir e repetir"
+tipo = "ouvir"
+mao = "direita"
+objetivo = "Ouvir o grupo e repeti-lo de memória."
+instrucoes = "Ouça o grupo uma vez. Depois toque de memória, com os dedos que aprendeu."
+dedilhado = "1-2-3-4-5-4-3-2"
+passos = "C4 E4 F4 G4 A4 G4 F4 E4"
+roteiro = [
+  "Ouça o grupo com atenção, do começo ao fim.",
+  "Ponha o polegar direito no Dó central.",
+  "Lembre do desenho: sobe de Dó a Lá, volta a Mi.",
+  "Toque de memória, com os dedos 1, 2, 3, 4, 5, 4, 3, 2.",
+]
+acerto = "Grupo repetido."
+erro = "Ouça de novo."

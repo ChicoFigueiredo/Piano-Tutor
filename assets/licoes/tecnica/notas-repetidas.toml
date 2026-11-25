@@ -1,0 +1,137 @@
+[licao]
+id = "tecnica-notas-repetidas"
+trilha = "Técnica"
+ordem_trilha = 40
+ordem = 1
+titulo = "Notas repetidas"
+descricao = "Tocar a mesma nota várias vezes, com dedo fixo ou trocando de dedo."
+nivel = "iniciante"
+situacao = "proposta"
+fontes = ["Wikipedia: Fingering (music) (https://en.wikipedia.org/wiki/Fingering_(music))", "Dummies: Piano for Dummies, posições de Dó e Sol (https://www.dummies.com/article/academics-the-arts/music/instruments/piano/how-to-play-the-piano-or-keyboard-in-c-and-g-position-153031/)", "Prática pedagógica comum: notas repetidas e troca de dedo na mesma tecla"]
+requer = ["fundamentos-cinco-dedos-do"]
+
+[[exercicio]]
+id = "uma-nota-quatro-vezes"
+titulo = "Uma nota, quatro vezes"
+tipo = "sequencia"
+mao = "direita"
+objetivo = "Repetir a mesma nota com som parelho."
+instrucoes = "Toque o Mi quatro vezes com o dedo 3. Solte a tecla por inteiro antes de tocar de novo."
+dedilhado = "3-3-3-3"
+passos = "E4 E4 E4 E4"
+roteiro = [
+  "Ponha a mão direita na posição de Dó, com o pulso solto.",
+  "Leve o dedo 3 sobre o Mi.",
+  "Toque quatro vezes seguidas, com a mesma força.",
+  "Deixe a tecla subir de verdade entre uma nota e outra.",
+]
+acerto = "Nota repetida."
+erro = "Toque sempre a mesma tecla, com a mesma força."
+
+[[exercicio]]
+id = "trocando-de-dedo"
+titulo = "Trocando de dedo"
+tipo = "sequencia"
+mao = "direita"
+objetivo = "Repetir a mesma nota trocando de dedo."
+instrucoes = "Toque o Mi quatro vezes, alternando os dedos 3 e 2. O som deve ficar igual."
+dedilhado = "3-2-3-2"
+passos = "E4 E4 E4 E4"
+roteiro = [
+  "Ponha a mão direita na posição de Dó.",
+  "Toque o Mi com o dedo 3.",
+  "Toque o mesmo Mi com o dedo 2, trocando de dedo sobre a tecla.",
+  "Alterne 3 e 2 até soarem quatro notas iguais.",
+]
+acerto = "Nota repetida."
+erro = "O som dos dois dedos deve ser igual."
+
+[[exercicio]]
+id = "duas-a-duas"
+titulo = "Notas em pares"
+tipo = "sequencia"
+mao = "direita"
+objetivo = "Tocar cada nota duas vezes, subindo."
+instrucoes = "Toque cada nota duas vezes antes de passar para a próxima: Dó, Dó, Ré, Ré, e assim por diante."
+dedilhado = "1-1-2-2-3-3-4-4-5-5"
+passos = "C4 C4 D4 D4 E4 E4 F4 F4 G4 G4"
+roteiro = [
+  "Ponha o polegar direito no Dó central.",
+  "Toque o Dó duas vezes com o polegar.",
+  "Passe para o Ré e toque duas vezes com o dedo 2.",
+  "Siga assim até o Sol, com o dedo 5.",
+]
+acerto = "Nota certa."
+erro = "Duas vezes cada nota, antes de subir."
+
+[[exercicio]]
+id = "tres-vezes"
+titulo = "Notas em trios"
+tipo = "sequencia"
+mao = "direita"
+objetivo = "Repetir três vezes e subir."
+instrucoes = "Toque três vezes o Dó, o Ré e o Mi, sempre com o mesmo dedo em cada nota."
+dedilhado = "1-1-1-2-2-2-3-3-3"
+passos = "C4 C4 C4 D4 D4 D4 E4 E4 E4"
+roteiro = [
+  "Ponha o polegar direito no Dó central.",
+  "Toque três vezes o Dó com o polegar.",
+  "Mude para o Ré e toque três vezes com o dedo 2.",
+  "Termine com três vezes o Mi, com o dedo 3.",
+]
+acerto = "Nota certa."
+erro = "Três vezes cada nota, antes de subir."
+
+[[exercicio]]
+id = "repetindo-descendo"
+titulo = "Repetindo, descendo"
+tipo = "sequencia"
+mao = "direita"
+objetivo = "Repetir cada nota duas vezes, descendo."
+instrucoes = "Comece no Sol e desça até o Dó, tocando cada nota duas vezes."
+dedilhado = "5-5-4-4-3-3-2-2-1-1"
+passos = "G4 G4 F4 F4 E4 E4 D4 D4 C4 C4"
+roteiro = [
+  "Ponha o dedo 5 no Sol, com a mão na posição de Dó.",
+  "Toque o Sol duas vezes.",
+  "Desça um dedo e toque a nota seguinte duas vezes.",
+  "Termine com o polegar no Dó, duas vezes.",
+]
+acerto = "Nota certa."
+
+[[exercicio]]
+id = "esquerda-repetindo"
+titulo = "Repetindo na esquerda"
+tipo = "sequencia"
+mao = "esquerda"
+objetivo = "Fazer o mesmo com a mão esquerda."
+instrucoes = "Com a esquerda, uma oitava abaixo, toque cada nota duas vezes, de Dó a Sol."
+dedilhado = "5-5-4-4-3-3-2-2-1-1"
+passos = "C3 C3 D3 D3 E3 E3 F3 F3 G3 G3"
+roteiro = [
+  "Ponha a mão esquerda uma oitava abaixo do Dó central.",
+  "O dedo 5 fica no Dó grave e o polegar no Sol.",
+  "Toque cada nota duas vezes, subindo.",
+  "Termine com o polegar, duas vezes no Sol.",
+]
+acerto = "Nota certa."
+erro = "Duas vezes cada nota, antes de subir."
+
+[[exercicio]]
+id = "repeticao-com-salto"
+titulo = "Repetição com salto"
+tipo = "sequencia"
+mao = "direita"
+objetivo = "Repetir e dar um salto de quinta."
+instrucoes = "Toque Dó, Dó, Sol, Sol, Dó, Dó, Sol, Sol. O polegar toca o Dó e o dedo 5 o Sol."
+dedilhado = "1-1-5-5-1-1-5-5"
+passos = "C4 C4 G4 G4 C4 C4 G4 G4"
+roteiro = [
+  "Ponha a mão direita na posição de Dó, com o pulso solto.",
+  "Toque o Dó duas vezes com o polegar.",
+  "Salte até o Sol e toque duas vezes com o dedo 5.",
+  "Alterne os dois trechos, sem apertar a mão.",
+]
+acerto = "Nota certa."
+erro = "Dó com o polegar, Sol com o dedo 5."
+conclusao = "Notas repetidas dominadas."

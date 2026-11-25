@@ -20,6 +20,7 @@ use crate::baixar_sf2::{BaixadorSf2, FLUIDR3_GM, abridor_http, caminho_baixado};
 use crate::calibracao::{Calibracao, PerfilTeclado};
 use crate::chamada_app::ChamadaAtiva;
 use crate::cursos::{EstadoCursos, ObservadorFabrica};
+use crate::dedos::{NOMENCLATURAS, NomenclaturaDedos};
 use crate::espelho::EstadoEspelho;
 use crate::estado::{
     Efeito, EstadoApp, ROTA_ACORDES, ROTA_CALIBRACAO, ROTA_CURSOS, ROTA_EXERCICIOS, ROTA_GRAVACAO,
@@ -29,7 +30,8 @@ use crate::exercicios::EstadoExercicios;
 use crate::gravacao::EstadoGravacao;
 use crate::monitor::{EstadoMonitor, pasta_de_sessoes_do_ambiente};
 use crate::mpv::{ExecutorReal, Midia};
-use crate::preferencias::PreferenciasSom;
+use crate::perfis::{ARQUIVO_BANCO, BancoPreferencias, Gravacao, Perfil, secoes};
+use crate::preferencias::{PreferenciasExibicao, PreferenciasPartitura, PreferenciasSom};
 use crate::professor::Professor;
 use crate::professor_falante::{VozMuda, voz_do_sistema};
 use crate::ritmo::EstadoRitmo;
@@ -153,6 +155,15 @@ pub struct AppPianoTutor {
     mensagem_calibracao: Option<String>,
     pasta_dados: Option<PathBuf>,
     prefs_pendentes: Option<PreferenciasSom>,
+    /// Perfis de preferências (SQLite, ADR-0010).
+    banco: BancoPreferencias,
+    /// Campo de nome do seletor de perfil e o último aviso dele.
+    nome_perfil: String,
+    aviso_perfil: Option<String>,
+    /// A casca avisa o tema na abertura; só as trocas seguintes são gravadas no perfil.
+    tema_sincronizado: bool,
+    /// Último texto gravado de cada retrato de tela ([`crate::retratos`]).
+    retratos_gravados: Vec<(&'static str, String)>,
     rota_atual: String,
     relogio: Arc<dyn Relogio>,
     ultimo_quadro: Option<u64>,
@@ -218,19 +229,33 @@ impl AppPianoTutor {
             Some(t) => EstadoEspelho::calibrado(t),
             None => EstadoEspelho::novo(),
         };
-        let prefs_pendentes = pasta_dados
-            .as_ref()
-            .and_then(|p| PreferenciasSom::ler(&p.join(ARQUIVO_PREFERENCIAS)));
+        let banco = abrir_banco(pasta_dados.as_deref());
+        let exibicao = PreferenciasExibicao::de_texto(&ler_secao(&banco, secoes::EXIBICAO));
+        let mut estado = EstadoApp::novo();
+        estado.definir_nomenclatura_dedos(exibicao.dedos);
+        let mut espelho = espelho;
+        espelho.nomenclatura = exibicao.dedos;
+        espelho.mapa_dedos = exibicao.mapa_dedos;
+        espelho.modo_mapa = exibicao.modo_mapa;
+        let prefs_pendentes = Some(PreferenciasSom::de_texto(&ler_secao(&banco, secoes::SOM)));
+        let mut partitura = EstadoPartitura::novo(pasta_dados.clone());
+        partitura.definir_preferencias(PreferenciasPartitura::de_texto(&ler_secao(
+            &banco,
+            secoes::PARTITURA,
+        )));
+        let mut monitor =
+            EstadoMonitor::novo(d.fonte_midi, Arc::clone(&d.relogio), d.pasta_sessoes);
+        monitor.definir_porta_automatica(perfil.as_ref().map(|p| p.dispositivo.clone()));
         let professor = Professor::novo(Box::new(VozMuda::nova()), pasta_dados.as_deref());
         let mut cursos = EstadoCursos::novo(
             pasta_dados.clone(),
             Midia::com(Box::new(ExecutorReal), None),
         );
         cursos.usar_nao_revisado = professor.usar_nao_revisado();
-        Self {
-            estado: EstadoApp::novo(),
+        let mut app = Self {
+            estado,
             espelho,
-            monitor: EstadoMonitor::novo(d.fonte_midi, Arc::clone(&d.relogio), d.pasta_sessoes),
+            monitor,
             som: d.som,
             baixador_sf2: d.baixador_sf2,
             timbres: EstadoTimbres::default(),
@@ -238,7 +263,7 @@ impl AppPianoTutor {
             acordes: EstadoAcordes::default(),
             exercicios: EstadoExercicios::novo(pasta_dados.clone()),
             gravacao: EstadoGravacao::novo(pasta_dados.clone()),
-            partitura: EstadoPartitura::novo(pasta_dados.clone()),
+            partitura,
             revisao: EstadoRevisao::novo(pasta_dados.clone()),
             cursos,
             professor,
@@ -249,12 +274,65 @@ impl AppPianoTutor {
             mensagem_calibracao: None,
             pasta_dados,
             prefs_pendentes,
+            banco,
+            nome_perfil: String::new(),
+            aviso_perfil: None,
+            tema_sincronizado: false,
+            retratos_gravados: Vec::new(),
             rota_atual: String::new(),
             relogio: d.relogio,
             ultimo_quadro: None,
             aviso_instalado: false,
             seletor: EstadoSeletor::default(),
             abertura: Abertura::desligada(),
+        };
+        app.carregar_retratos();
+        app
+    }
+
+    /// Texto atual de um retrato de tela.
+    fn retrato(&mut self, secao: &str) -> String {
+        use crate::retratos::{self as r, secoes as s};
+        match secao {
+            s::TECLADO => r::retrato_teclado(&self.espelho),
+            s::ACORDES => r::retrato_acordes(&self.acordes),
+            s::RITMOS => r::retrato_ritmos(&mut self.ritmo),
+            s::RITMOS_PADRAO => r::retrato_padrao(&self.ritmo),
+            s::GRAVACAO => r::retrato_gravacao(&self.gravacao),
+            s::PARTITURA => r::retrato_partitura(&self.partitura),
+            _ => String::new(),
+        }
+    }
+
+    /// Aplica os retratos do perfil ativo (ao abrir e ao trocar de perfil), sem gravar nada.
+    fn carregar_retratos(&mut self) {
+        use crate::retratos::{self as r, secoes as s};
+        self.retratos_gravados.clear();
+        for secao in s::TODAS {
+            let t = ler_secao(&self.banco, secao);
+            match secao {
+                s::TECLADO => r::aplicar_teclado(&mut self.espelho, &t),
+                s::ACORDES => r::aplicar_acordes(&mut self.acordes, &t),
+                s::RITMOS => r::aplicar_ritmos(&mut self.ritmo, &t),
+                s::RITMOS_PADRAO => r::aplicar_padrao(&mut self.ritmo, &t),
+                s::GRAVACAO => r::aplicar_gravacao(&mut self.gravacao, &t),
+                s::PARTITURA => r::aplicar_partitura(&mut self.partitura, &t),
+                _ => {}
+            }
+            let atual = self.retrato(secao);
+            self.retratos_gravados.push((secao, atual));
+        }
+    }
+
+    /// Grava na hora cada opção de tela que mudou (chamado a cada quadro, fora de arrasto).
+    pub fn gravar_retratos(&mut self) {
+        for i in 0..self.retratos_gravados.len() {
+            let secao = self.retratos_gravados[i].0;
+            let atual = self.retrato(secao);
+            if atual != self.retratos_gravados[i].1 {
+                self.gravar_secao(secao, &atual);
+                self.retratos_gravados[i].1 = atual;
+            }
         }
     }
 
@@ -274,16 +352,221 @@ impl AppPianoTutor {
         let _ = self.som.definir_config_teclado(p.teclado);
     }
 
-    fn salvar_preferencias(&mut self) {
-        let Some(pasta) = self.pasta_dados.as_ref() else {
-            return;
+    /// Troca a nomenclatura dos dedos no teclado e grava nas preferências de exibição.
+    pub fn trocar_dedos(&mut self, n: NomenclaturaDedos) {
+        self.estado.definir_nomenclatura_dedos(n);
+        self.espelho.nomenclatura = n;
+        self.gravar_exibicao();
+    }
+
+    /// Liga, desliga ou troca a tônica do mapa de dedos em todas as teclas e grava.
+    pub fn trocar_mapa_dedos(&mut self, mapa: Option<u8>) {
+        self.espelho.mapa_dedos = mapa.map(|t| t % 12);
+        self.gravar_exibicao();
+    }
+
+    fn gravar_exibicao(&mut self) {
+        let p = PreferenciasExibicao {
+            dedos: self.espelho.nomenclatura,
+            mapa_dedos: self.espelho.mapa_dedos,
+            modo_mapa: self.espelho.modo_mapa,
         };
+        self.gravar_secao(secoes::EXIBICAO, &p.para_texto());
+    }
+
+    /// Grava uma seção no perfil ativo; sobre o de fábrica, avisa que criou "Meu perfil".
+    fn gravar_secao(&mut self, secao: &str, texto: &str) {
+        match self.banco.gravar(secao, texto) {
+            Ok(Gravacao::CriouPessoal) => {
+                self.aviso_perfil = Some(format!(
+                    "O perfil de fábrica não muda: suas preferências agora ficam em \"{}\".",
+                    crate::perfis::NOME_PESSOAL
+                ));
+            }
+            Ok(_) => {}
+            Err(e) => self.aviso_perfil = Some(e),
+        }
+    }
+
+    /// Grava as preferências da Partitura quando a tela as muda.
+    fn gravar_preferencias_da_partitura(&mut self) {
+        if let Some(p) = self.partitura.tomar_preferencias_mudadas() {
+            self.gravar_secao(secoes::PARTITURA, &p.para_texto());
+        }
+    }
+
+    /// Seletor de perfil: escolher, criar (cópia do atual), renomear e apagar. Devolve o tema a
+    /// pedir à casca quando a troca de perfil muda o tema.
+    fn desenhar_seletor_perfil(&mut self, ui: &mut egui::Ui, compacto: bool) -> Vec<Pedido> {
+        let (perfis, ativo) = self.perfis();
+        let ativo_id = ativo.as_ref().map(|p| p.id);
+        let fabrica = ativo.as_ref().is_some_and(|p| p.de_fabrica);
+        let nome_ativo = ativo.map(|p| p.nome).unwrap_or_default();
+        let mut escolhido = None;
+        let mut criar = false;
+        let mut renomear = false;
+        let mut apagar = false;
+        ui.vertical(|ui| {
+            egui::ComboBox::from_id_salt("piano.seletor-perfil")
+                .width(if compacto { 110.0 } else { 140.0 })
+                .selected_text(&nome_ativo)
+                .show_ui(ui, |ui| {
+                    for p in &perfis {
+                        let r = ui.selectable_label(Some(p.id) == ativo_id, &p.nome);
+                        let r = if p.de_fabrica {
+                            r.on_hover_text(
+                                "Os padrões do app. Não muda: mexer em algo com ele \
+                                             ativo cria \"Meu perfil\".",
+                            )
+                        } else {
+                            r
+                        };
+                        if r.clicked() && Some(p.id) != ativo_id {
+                            escolhido = Some(p.id);
+                        }
+                    }
+                    ui.separator();
+                    ui.add(
+                        egui::TextEdit::singleline(&mut self.nome_perfil)
+                            .hint_text("nome do perfil")
+                            .desired_width(150.0),
+                    );
+                    ui.horizontal(|ui| {
+                        criar = ui
+                            .button("Novo")
+                            .on_hover_text(
+                                "Cria um perfil com as preferências atuais e passa a usá-lo",
+                            )
+                            .clicked();
+                        renomear = ui
+                            .add_enabled(!fabrica, egui::Button::new("Renomear"))
+                            .clicked();
+                    });
+                    apagar = ui
+                        .add_enabled(!fabrica, egui::Button::new("Apagar este perfil"))
+                        .on_hover_text("Apaga o perfil em uso e volta ao de fábrica")
+                        .clicked();
+                })
+                .response
+                .on_hover_text(
+                    "Perfil de preferências (som, dedilhado, partitura e tema), guardado no \
+                     computador. \"De fábrica\" devolve tudo ao padrão.",
+                );
+            if !compacto && let Some(a) = &self.aviso_perfil {
+                ui.label(egui::RichText::new(a).small().weak());
+            }
+        });
+        let nome = self.nome_perfil.clone();
+        if criar {
+            self.criar_perfil(&nome);
+        }
+        if renomear {
+            self.renomear_perfil(&nome);
+        }
+        if apagar {
+            return self.apagar_perfil();
+        }
+        escolhido.map_or_else(Vec::new, |id| self.trocar_perfil(id))
+    }
+
+    /// Perfis para o seletor do Ribbon e o ativo.
+    pub fn perfis(&self) -> (Vec<Perfil>, Option<Perfil>) {
+        (
+            self.banco.perfis().unwrap_or_default(),
+            self.banco.ativo().ok(),
+        )
+    }
+
+    /// Ativa um perfil e aplica tudo o que ele guarda (som, exibição, partitura); devolve o
+    /// tema do perfil, se houver, para a casca trocar.
+    pub fn trocar_perfil(&mut self, id: i64) -> Vec<Pedido> {
+        if let Err(e) = self.banco.ativar(id) {
+            self.aviso_perfil = Some(e);
+            return Vec::new();
+        }
+        self.aviso_perfil = None;
+        let exibicao = PreferenciasExibicao::de_texto(&ler_secao(&self.banco, secoes::EXIBICAO));
+        self.estado.definir_nomenclatura_dedos(exibicao.dedos);
+        self.espelho.nomenclatura = exibicao.dedos;
+        self.espelho.mapa_dedos = exibicao.mapa_dedos;
+        self.espelho.modo_mapa = exibicao.modo_mapa;
+        self.prefs_pendentes = Some(PreferenciasSom::de_texto(&ler_secao(
+            &self.banco,
+            secoes::SOM,
+        )));
+        self.aplicar_preferencias();
+        self.partitura
+            .definir_preferencias(PreferenciasPartitura::de_texto(&ler_secao(
+                &self.banco,
+                secoes::PARTITURA,
+            )));
+        self.carregar_retratos();
+        // Janela: tema, densidade e escala do perfil (padrões no de fábrica ou sem registro).
+        let janela = preferencias_da_janela(&self.banco);
+        let tema = janela
+            .as_ref()
+            .map(|p| p.tema.clone())
+            .or_else(|| self.banco.ler(secoes::TEMA).ok().flatten())
+            .unwrap_or_else(|| TEMAS[0].id.to_owned());
+        vec![
+            Pedido::Tema(tema),
+            Pedido::Densidade(janela.as_ref().map(|p| p.densidade).unwrap_or_default()),
+            Pedido::Escala(janela.as_ref().map_or(1.0, |p| p.escala)),
+        ]
+    }
+
+    /// Cria um perfil com as preferências do ativo e passa a usá-lo.
+    pub fn criar_perfil(&mut self, nome: &str) {
+        let resultado = self
+            .banco
+            .ativo()
+            .and_then(|a| self.banco.criar(nome, a.id))
+            .and_then(|p| self.banco.ativar(p.id));
+        match resultado {
+            Ok(p) => {
+                self.aviso_perfil = Some(format!("Perfil \"{}\" criado e em uso.", p.nome));
+                self.nome_perfil.clear();
+            }
+            Err(e) => self.aviso_perfil = Some(e),
+        }
+    }
+
+    pub fn renomear_perfil(&mut self, nome: &str) {
+        let r = self
+            .banco
+            .ativo()
+            .and_then(|a| self.banco.renomear(a.id, nome));
+        match r {
+            Ok(()) => {
+                self.aviso_perfil = None;
+                self.nome_perfil.clear();
+            }
+            Err(e) => self.aviso_perfil = Some(e),
+        }
+    }
+
+    /// Apaga o perfil ativo (nunca o de fábrica) e volta ao de fábrica; devolve o tema dele.
+    pub fn apagar_perfil(&mut self) -> Vec<Pedido> {
+        let r = self.banco.ativo().and_then(|a| self.banco.apagar(a.id));
+        match r {
+            Ok(()) => match self.banco.ativo() {
+                Ok(f) => self.trocar_perfil(f.id),
+                Err(_) => Vec::new(),
+            },
+            Err(e) => {
+                self.aviso_perfil = Some(e);
+                Vec::new()
+            }
+        }
+    }
+
+    fn salvar_preferencias(&mut self) {
         let p = PreferenciasSom {
             timbre: self.som.timbre(),
             volume: self.som.volume(),
             teclado: self.som.config_teclado(),
         };
-        let _ = p.gravar(&pasta.join(ARQUIVO_PREFERENCIAS));
+        self.gravar_secao(secoes::SOM, &p.para_texto());
     }
 
     /// Executa os pedidos da tela Calibração.
@@ -305,7 +588,13 @@ impl AppPianoTutor {
     }
 
     fn trocar_faixa(&mut self, perfil: Option<&PerfilTeclado>) {
-        let (zoom, nomes) = (self.espelho.zoom(), self.espelho.nomes);
+        let (zoom, nomes, dedos, mapa, opcoes) = (
+            self.espelho.zoom(),
+            self.espelho.nomes,
+            self.espelho.nomenclatura,
+            (self.espelho.mapa_dedos, self.espelho.modo_mapa),
+            self.espelho.opcoes_tela,
+        );
         self.panico();
         self.espelho = match perfil.and_then(PerfilTeclado::teclado) {
             Some(t) => EstadoEspelho::calibrado(t),
@@ -313,12 +602,17 @@ impl AppPianoTutor {
         };
         self.espelho.definir_zoom(zoom);
         self.espelho.nomes = nomes;
+        self.espelho.nomenclatura = dedos;
+        (self.espelho.mapa_dedos, self.espelho.modo_mapa) = mapa;
+        self.espelho.opcoes_tela = opcoes;
     }
 
     fn salvar_calibracao(&mut self) {
         let Some(perfil) = self.calibracao.perfil() else {
             return;
         };
+        self.monitor
+            .definir_porta_automatica(Some(perfil.dispositivo.clone()));
         let mut msg = String::from("Perfil em uso no Espelho.");
         if let Some(pasta) = self.pasta_dados.clone() {
             let r = std::fs::create_dir_all(&pasta)
@@ -369,6 +663,11 @@ impl AppPianoTutor {
         }
         self.tick();
         self.atualizar_roda_bend(ctx);
+        self.gravar_preferencias_da_partitura();
+        // Grava as opções de tela que mudaram; durante um arrasto (zoom, volume), só ao soltar.
+        if !ctx.input(|i| i.pointer.any_down()) {
+            self.gravar_retratos();
+        }
         let mut proximo = self.monitor.proxima_varredura_em();
         if self.som.carregando().is_some()
             || self
@@ -452,23 +751,39 @@ impl AppPianoTutor {
 
     /// Desafio de acordes: confere as teclas seguradas (físicas ou simuladas).
     fn conferir_desafio(&mut self) {
+        if self.rota_atual != ROTA_EXERCICIOS && self.exercicios.treino.ativo() {
+            self.exercicios.parar_treino(&mut self.ritmo, &mut self.som);
+        }
         if self.rota_atual != ROTA_ACORDES {
+            if self.acordes.treino.ativo() {
+                self.acordes.treino.parar(&mut self.ritmo, &mut self.som);
+            }
             return;
         }
         let seguradas: Vec<_> = self.espelho.teclas().notas_ligadas().collect();
         let agora = self.som.agora_ns();
         self.acordes.conferir(&seguradas, agora);
+        self.acordes
+            .treino
+            .atualizar(&mut self.ritmo, &mut self.som, &seguradas);
     }
 
     /// Aplica as saídas do gerenciador MIDI, na ordem.
     pub fn rotear(&mut self, saidas: Vec<SaidaMidi>) {
         for s in saidas {
             match s {
-                SaidaMidi::Evento(ev) => {
-                    self.gravacao.evento(&ev);
+                SaidaMidi::Evento(mut ev) => {
                     if self.rota_atual == ROTA_CALIBRACAO {
+                        // A calibração do bend precisa do valor cru da roda.
                         self.calibracao.evento(&ev);
                     }
+                    if let EventoMidi::PitchBend { valor, .. } = &mut ev {
+                        if let Some(p) = &self.perfil {
+                            *valor = p.bend_corrigido(*valor);
+                        }
+                        self.espelho.bend_fisico = *valor;
+                    }
+                    self.gravacao.evento(&ev);
                     if let EventoMidi::NotaLigada {
                         timestamp_monotonico_ns,
                         ..
@@ -526,6 +841,7 @@ impl AppPianoTutor {
                 }
                 SaidaMidi::LimparNotas => {
                     self.espelho.roda_bend.zerar();
+                    self.espelho.bend_fisico = 0;
                     self.espelho.limpar_tudo();
                     self.som.limpar_notas();
                 }
@@ -683,6 +999,108 @@ pub fn data_civil(dias: i64) -> String {
     format!("{y:04}-{m:02}-{d:02}")
 }
 
+/// Seletor do Ribbon: ícone de mão e lista com as três nomenclaturas; abaixo (fora do modo
+/// compacto) a legenda polegar/mínimo da escolhida. Devolve a nova escolha.
+fn seletor_dedos(
+    ui: &mut egui::Ui,
+    atual: NomenclaturaDedos,
+    compacto: bool,
+) -> Option<NomenclaturaDedos> {
+    let mut escolhida = atual;
+    ui.vertical(|ui| {
+        ui.horizontal(|ui| {
+            ui.label(egui::RichText::new(crate::icones::glifo("dedos")).size(18.0))
+                .on_hover_text("Como o dedo aparece nas bolinhas do teclado");
+            egui::ComboBox::from_id_salt("piano.seletor-dedos")
+                .width(if compacto { 96.0 } else { 112.0 })
+                .selected_text(egui::RichText::new(atual.curto()).monospace())
+                .show_ui(ui, |ui| {
+                    for n in NOMENCLATURAS {
+                        ui.selectable_value(&mut escolhida, n, n.curto())
+                            .on_hover_text(n.dica());
+                    }
+                })
+                .response
+                .on_hover_text(atual.dica());
+        });
+        if !compacto {
+            let (p, m) = (atual.rotulo(1).unwrap_or(""), atual.rotulo(5).unwrap_or(""));
+            ui.label(
+                egui::RichText::new(format!("polegar {p} · mínimo {m}"))
+                    .small()
+                    .weak(),
+            );
+        }
+    });
+    (escolhida != atual).then_some(escolhida)
+}
+
+/// Abre o banco de perfis na pasta de dados (importando os `.txt` antigos na primeira vez);
+/// sem pasta ou com erro, um banco na memória (o app funciona, só não guarda).
+fn abrir_banco(pasta: Option<&Path>) -> BancoPreferencias {
+    let aberto = pasta.map(|p| {
+        BancoPreferencias::abrir(&p.join(ARQUIVO_BANCO)).and_then(|b| {
+            b.importar_legado(p)?;
+            Ok(b)
+        })
+    });
+    match aberto {
+        Some(Ok(b)) => b,
+        other => {
+            if let Some(Err(e)) = other {
+                eprintln!("Piano Tutor: {e}; preferências só nesta sessão.");
+            }
+            BancoPreferencias::em_memoria().expect("SQLite em memória")
+        }
+    }
+}
+
+/// Preferências da janela guardadas no perfil ativo.
+fn preferencias_da_janela(banco: &BancoPreferencias) -> Option<Preferencias> {
+    serde_json::from_str(&banco.ler(secoes::CASCA).ok().flatten()?).ok()
+}
+
+/// Preferências da janela do perfil ativo, para o executável aplicar antes de abrir a janela.
+pub fn preferencias_da_janela_salvas() -> Option<Preferencias> {
+    let pasta = pasta_de_sessoes_do_ambiente()?.parent()?.to_path_buf();
+    let banco = BancoPreferencias::abrir(&pasta.join(ARQUIVO_BANCO)).ok()?;
+    preferencias_da_janela(&banco)
+}
+
+/// Texto de uma seção no perfil ativo (vazio = padrão).
+fn ler_secao(banco: &BancoPreferencias, secao: &str) -> String {
+    banco.ler(secao).ok().flatten().unwrap_or_default()
+}
+
+/// "Dedos em todas as teclas" (mapa para decorar) e a tônica da escala maior usada. Devolve a
+/// escolha nova quando muda.
+fn seletor_mapa_dedos(ui: &mut egui::Ui, atual: Option<u8>) -> Option<Option<u8>> {
+    let mut ligado = atual.is_some();
+    let mut tonica = atual.unwrap_or(0);
+    ui.horizontal(|ui| {
+        ui.checkbox(&mut ligado, "Em todas as teclas")
+            .on_hover_text(
+                "Mostra o dedo em todas as teclas da escala maior escolhida, para decorar o \
+             dedilhado (mão esquerda abaixo do ponto de divisão ou do Dó central). Quando a \
+             tela mostra um acorde, escala ou Lição, vale o dedilhado dela.",
+            );
+        if ligado {
+            egui::ComboBox::from_id_salt("piano.mapa-dedos")
+                .width(64.0)
+                .selected_text(crate::dedos::TONICAS_MAPA[usize::from(tonica % 12)])
+                .show_ui(ui, |ui| {
+                    for (i, nome) in crate::dedos::TONICAS_MAPA.iter().enumerate() {
+                        ui.selectable_value(&mut tonica, i as u8, format!("{nome} maior"));
+                    }
+                })
+                .response
+                .on_hover_text("Escala maior cujo dedilhado aparece nas teclas");
+        }
+    });
+    let nova = ligado.then_some(tonica);
+    (nova != atual).then_some(nova)
+}
+
 /// Configuração da casca: título, tokens, temas e tema inicial.
 pub fn config() -> ConfigCasca {
     let mut config = ConfigCasca::nova(TITULO, TOKENS_JSON, TEMAS_JSON);
@@ -735,8 +1153,25 @@ impl AppCasca for AppPianoTutor {
         ]
     }
 
+    /// Início, ou a rota de `PIANO_TUTOR_ROTA` (por exemplo `exercicios`) para abrir direto numa
+    /// tela (capturas e demonstração). Valor desconhecido volta ao Início.
     fn rota_inicial(&self) -> Rota {
-        Rota::nova(ROTA_INICIO)
+        let pedida = std::env::var("PIANO_TUTOR_ROTA").unwrap_or_default();
+        let conhecidas = [
+            ROTA_TECLADO,
+            ROTA_MONITOR,
+            ROTA_TIMBRES,
+            ROTA_CALIBRACAO,
+            ROTA_RITMOS,
+            ROTA_ACORDES,
+            ROTA_EXERCICIOS,
+            ROTA_PARTITURA,
+            ROTA_GRAVACAO,
+        ];
+        match conhecidas.into_iter().find(|r| *r == pedida) {
+            Some(r) => Rota::nova(r),
+            None => Rota::nova(ROTA_INICIO),
+        }
     }
 
     fn trilha(&self, rota: &Rota) -> Vec<Elo> {
@@ -765,7 +1200,7 @@ impl AppCasca for AppPianoTutor {
         self.ao_mudar_de_rota(&anterior);
         let com_teclado = [ROTA_TECLADO, ROTA_ACORDES, ROTA_EXERCICIOS, ROTA_CURSOS];
         if rota.como_texto() != ROTA_ACORDES && rota.como_texto() != ROTA_EXERCICIOS {
-            self.espelho.guias.clear();
+            self.espelho.limpar_guias();
         }
         if !com_teclado.contains(&rota.como_texto()) {
             // Fora da tela Espelho ninguém recebe o "solta": não deixa nota presa.
@@ -809,6 +1244,7 @@ impl AppCasca for AppPianoTutor {
                     &mut self.exercicios,
                     &mut self.espelho,
                     &mut self.som,
+                    &mut self.ritmo,
                     &self.professor,
                     self.chamada.as_ref(),
                 );
@@ -821,6 +1257,7 @@ impl AppCasca for AppPianoTutor {
                     &mut self.acordes,
                     &mut self.espelho,
                     &mut self.som,
+                    &mut self.ritmo,
                 );
             }
             ROTA_CALIBRACAO => {
@@ -886,6 +1323,45 @@ impl AppCasca for AppPianoTutor {
     }
 
     fn desenhar_controle_ribbon(&mut self, ui: &mut egui::Ui, id: &str, compacto: bool) {
+        if id == acoes::CONTROLE_PERFIL {
+            for p in self.desenhar_seletor_perfil(ui, compacto) {
+                pedir(ui.ctx(), p);
+            }
+            return;
+        }
+        if id == acoes::CONTROLE_DEDOS {
+            let atual = self.estado.nomenclatura_dedos();
+            if let Some(n) = seletor_dedos(ui, atual, compacto) {
+                self.trocar_dedos(n);
+            }
+            if let Some(m) = seletor_mapa_dedos(ui, self.espelho.mapa_dedos) {
+                self.trocar_mapa_dedos(m);
+            }
+            if self.espelho.mapa_dedos.is_some() {
+                let atual = self.espelho.modo_mapa;
+                let mut modo = atual;
+                egui::ComboBox::from_id_salt("piano.modo-mapa")
+                    .width(if compacto { 120.0 } else { 190.0 })
+                    .selected_text(modo.nome())
+                    .show_ui(ui, |ui| {
+                        for m in crate::dedos::MODOS_MAPA {
+                            ui.selectable_value(&mut modo, m, m.nome());
+                        }
+                    })
+                    .response
+                    .on_hover_text(
+                        "Escala em todas as oitavas: dedilhado contínuo (o 5 só entra no fim da \
+                         escala; as teclas fora dela mostram o dedo da escala cromática, num \
+                         círculo mais claro). Uma oitava: cada mão faz a escala de uma oitava, \
+                         com o 5 na ponta. Cinco dedos: um dedo por tecla na tônica.",
+                    );
+                if modo != atual {
+                    self.espelho.modo_mapa = modo;
+                    self.gravar_exibicao();
+                }
+            }
+            return;
+        }
         if id != acoes::CONTROLE_INSTRUMENTO {
             return;
         }
@@ -979,6 +1455,10 @@ impl AppCasca for AppPianoTutor {
                 self.panico();
                 ctx.request_repaint();
             }
+            Some(Efeito::TrocarDedos(n)) => {
+                self.trocar_dedos(n);
+                ctx.request_repaint();
+            }
             None => {}
         }
     }
@@ -996,6 +1476,24 @@ impl AppCasca for AppPianoTutor {
             &preferencias.tema,
             preferencias.modo_ribbon == ModoRibbon::Recolhido,
         );
+        if self.tema_sincronizado {
+            let atual = self.banco.ler(secoes::TEMA).ok().flatten();
+            let fabrica = self.banco.ativo().is_ok_and(|p| p.de_fabrica);
+            // No de fábrica, o tema padrão não é mudança.
+            let padrao = fabrica && atual.is_none() && preferencias.tema == TEMAS[0].id;
+            if !padrao && atual.as_deref() != Some(preferencias.tema.as_str()) {
+                let tema = preferencias.tema.clone();
+                self.gravar_secao(secoes::TEMA, &tema);
+            }
+            // Ribbon recolhido, densidade, escala, painéis e tela cheia, na hora.
+            if let Ok(json) = serde_json::to_string(preferencias) {
+                let antes = self.banco.ler(secoes::CASCA).ok().flatten();
+                if antes.as_deref() != Some(json.as_str()) {
+                    self.gravar_secao(secoes::CASCA, &json);
+                }
+            }
+        }
+        self.tema_sincronizado = true;
     }
 }
 
@@ -1056,6 +1554,78 @@ mod testes {
         fonte: FonteFalsa,
         relogio: RelogioManual,
         motor: MotorDeTeste,
+    }
+
+    #[test]
+    fn perfis_guardam_e_trocam_dedilhado_e_partitura_e_o_de_fabrica_volta_ao_padrao() {
+        let mut b = bancada();
+        let (_, ativo) = b.app.perfis();
+        let fabrica = ativo.expect("ativo");
+        assert!(fabrica.de_fabrica);
+        b.app.trocar_dedos(NomenclaturaDedos::LetrasPt);
+        b.app.trocar_mapa_dedos(Some(7));
+        let (perfis, ativo) = b.app.perfis();
+        let meu = ativo.expect("ativo");
+        assert_eq!(
+            meu.nome,
+            crate::perfis::NOME_PESSOAL,
+            "mudança sobre o de fábrica"
+        );
+        assert_eq!(perfis.len(), 2);
+        b.app.trocar_perfil(fabrica.id);
+        assert_eq!(b.app.espelho.nomenclatura, NomenclaturaDedos::Numeros);
+        assert_eq!(b.app.espelho.mapa_dedos, None);
+        b.app.trocar_perfil(meu.id);
+        assert_eq!(b.app.espelho.nomenclatura, NomenclaturaDedos::LetrasPt);
+        assert_eq!(b.app.espelho.mapa_dedos, Some(7));
+        b.app.criar_perfil("Aula");
+        let (_, ativo) = b.app.perfis();
+        assert_eq!(ativo.expect("ativo").nome, "Aula");
+        assert_eq!(b.app.espelho.mapa_dedos, Some(7), "cópia do atual");
+        b.app.apagar_perfil();
+        assert!(b.app.perfis().1.expect("ativo").de_fabrica);
+        assert_eq!(b.app.espelho.mapa_dedos, None);
+    }
+
+    #[test]
+    fn toda_opcao_de_tela_mudada_e_gravada_na_hora_e_volta_com_o_perfil() {
+        use crate::teclado_visual::Rotulos;
+        let mut b = bancada();
+        let fabrica = b.app.perfis().1.expect("ativo");
+        b.app.espelho.opcoes_tela.ajustar_a_largura = true;
+        b.app.espelho.opcoes_tela.rotulos = Rotulos::Todas;
+        b.app.espelho.definir_zoom(1.5);
+        b.app.acordes.de_ouvido = true;
+        b.app.acordes.treino.config.app_toca = false;
+        b.app.ritmo.config.bateria = true;
+        b.app.ritmo.definir_bpm(137);
+        b.app.ritmo.pulso_salvo = (80, -12);
+        b.app.gravacao.bpm_contagem = 90;
+        b.app.partitura.modo_pratica = piano_tutor_core::pratica::ModoPratica::Tempo;
+        b.app.gravar_retratos();
+        let meu = b.app.perfis().1.expect("ativo");
+        assert!(
+            !meu.de_fabrica,
+            "mudança sobre o de fábrica cria Meu perfil"
+        );
+        b.app.trocar_perfil(fabrica.id);
+        assert!(!b.app.espelho.opcoes_tela.ajustar_a_largura);
+        assert!(!b.app.acordes.de_ouvido);
+        assert_ne!(b.app.ritmo.bpm(), 137);
+        b.app.trocar_perfil(meu.id);
+        assert!(b.app.espelho.opcoes_tela.ajustar_a_largura);
+        assert_eq!(b.app.espelho.opcoes_tela.rotulos, Rotulos::Todas);
+        assert!((b.app.espelho.zoom() - 1.5).abs() < 1e-6);
+        assert!(b.app.acordes.de_ouvido);
+        assert!(!b.app.acordes.treino.config.app_toca);
+        assert!(b.app.ritmo.config.bateria);
+        assert_eq!(b.app.ritmo.bpm(), 137);
+        assert_eq!(b.app.ritmo.pulso_salvo, (80, -12));
+        assert_eq!(b.app.gravacao.bpm_contagem, 90);
+        assert_eq!(
+            b.app.partitura.modo_pratica,
+            piano_tutor_core::pratica::ModoPratica::Tempo
+        );
     }
 
     fn bancada() -> Bancada {
@@ -1276,6 +1846,10 @@ mod testes {
         let novos = bends(&b.motor.registro())[antes..].to_vec();
         // 0x60 << 7 = 12288 - 8192 = 4096 em cada canal do teclado.
         assert_eq!(novos, vec![(0, 4096), (1, 4096), (2, 4096)]);
+        // O indicador da tela acompanha a roda do teclado físico.
+        assert_eq!(b.app.espelho.bend_fisico, 4096);
+        let (fracao, fisico) = b.app.espelho.bend_exibido();
+        assert!(fisico && (fracao - 0.5).abs() < 0.01, "{fracao}");
     }
 
     #[test]

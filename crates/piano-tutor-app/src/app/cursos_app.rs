@@ -58,7 +58,7 @@ impl AppPianoTutor {
                 match ev {
                     EventoFabrica::Abriu(n) => {
                         let roteiro = self.roteiro_da_fabrica();
-                        self.professor.abrir_fabrica(n, roteiro);
+                        self.professor.abrir_fabrica(&n, roteiro);
                     }
                     EventoFabrica::Concluiu { sem_erros } => {
                         let m = if sem_erros {
@@ -194,7 +194,7 @@ impl AppPianoTutor {
         let Some(ex) = self.exercicios.exercicio() else {
             return;
         };
-        let (id, titulo) = (ex.id, ex.titulo.to_owned());
+        let (id, titulo) = (ex.id.clone(), ex.titulo.to_owned());
         let Some(chamadas) = chamadas_de_fabrica(ex) else {
             self.exercicios.mensagem =
                 Some("Chamada e resposta só existe nos exercícios de acordes e intervalos.".into());
@@ -690,7 +690,12 @@ estado = "aprovada"
         b.app
             .executar_acoes_cursos(&Context::default(), vec![AcaoCursos::IniciarChamadaFabrica]);
         let c = b.app.chamada.as_ref().expect("chamada");
-        assert_eq!(c.origem, OrigemChamada::Fabrica { exercicio: 8 });
+        assert_eq!(
+            c.origem,
+            OrigemChamada::Fabrica {
+                exercicio: "primeiros-passos/8".into()
+            }
+        );
         assert_eq!(
             c.anuncio.as_deref(),
             Some("Vamos tocar em chamada e resposta. Agora o acorde de Dó.")

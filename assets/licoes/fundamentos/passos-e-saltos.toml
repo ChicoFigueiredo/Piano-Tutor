@@ -1,0 +1,153 @@
+[licao]
+id = "fundamentos-passos-e-saltos"
+trilha = "Fundamentos"
+ordem_trilha = 10
+ordem = 6
+titulo = "Passos e saltos"
+descricao = "Diferença entre passo conjunto (teclas vizinhas) e salto, com terças e quintas."
+nivel = "iniciante"
+situacao = "proposta"
+fontes = ["Wikipedia: Piano keyboard (https://en.wikipedia.org/wiki/Piano_keyboard)", "Wikipedia: Fingering (music) (https://en.wikipedia.org/wiki/Fingering_(music))", "Teoria elementar: movimento conjunto e disjunto (conteúdo geral de teoria musical)"]
+requer = ["fundamentos-cinco-dedos-do"]
+
+[[exercicio]]
+id = "passos-subindo"
+titulo = "Passos subindo"
+tipo = "sequencia"
+mao = "direita"
+objetivo = "Tocar notas vizinhas, subindo."
+instrucoes = "Um passo é ir para a branca vizinha. Toque Dó, Ré, Mi, Fá e Sol. Cada nota é um passo."
+dedilhado = "1-2-3-4-5"
+passos = "C4 D4 E4 F4 G4"
+roteiro = [
+  "Ponha a mão direita na posição de Dó.",
+  "Toque cada tecla branca vizinha, de Dó a Sol.",
+  "Cada nota é um passo curto para a direita.",
+  "Observe: não sobra tecla no meio.",
+]
+acerto = "Passo certo."
+erro = "Um passo é a branca vizinha."
+
+[[exercicio]]
+id = "passos-descendo"
+titulo = "Passos descendo"
+tipo = "sequencia"
+mao = "direita"
+objetivo = "Tocar notas vizinhas, descendo."
+instrucoes = "Desça de Sol a Dó, uma branca por vez."
+dedilhado = "5-4-3-2-1"
+passos = "G4 F4 E4 D4 C4"
+roteiro = [
+  "Comece no Sol com o dedo 5.",
+  "Desça uma branca por vez até o Dó.",
+  "Cada nota é um passo curto para a esquerda.",
+  "Ouça o som descendo.",
+]
+acerto = "Passo certo."
+
+[[exercicio]]
+id = "saltos-de-terca"
+titulo = "Saltos de terça"
+tipo = "sequencia"
+mao = "direita"
+objetivo = "Pular uma tecla branca por vez."
+instrucoes = "Um salto de terça pula uma branca. Toque Dó, Mi, Sol, Mi e Dó."
+dedilhado = "1-3-5-3-1"
+passos = "C4 E4 G4 E4 C4"
+roteiro = [
+  "Ponha a mão direita na posição de Dó.",
+  "Toque o Dó (dedo 1) e pule o Ré para tocar o Mi (dedo 3).",
+  "Pule o Fá e toque o Sol (dedo 5).",
+  "Volte pelo mesmo caminho.",
+]
+acerto = "Salto certo."
+erro = "Pule uma branca entre uma nota e outra."
+
+[[exercicio]]
+id = "saltos-de-quinta"
+titulo = "Salto de quinta"
+tipo = "sequencia"
+mao = "direita"
+objetivo = "Sentir um salto maior."
+instrucoes = "Dó e Sol ficam cinco brancas distantes, contando o Dó. Toque Dó, Sol, Dó, Sol. O dedo 5 pula bem."
+dedilhado = "1-5-1-5"
+passos = "C4 G4 C4 G4"
+roteiro = [
+  "Use a mão direita na posição de Dó.",
+  "Toque o Dó com o polegar e o Sol com o dedo 5.",
+  "Entre os dois ficam três teclas brancas.",
+  "Repita: Dó, Sol, Dó, Sol.",
+]
+acerto = "Salto certo."
+erro = "Do Dó ao Sol são quatro teclas brancas de distância."
+
+[[exercicio]]
+id = "passo-e-salto-juntos"
+titulo = "Passos e salto na mesma frase"
+tipo = "sequencia"
+mao = "direita"
+objetivo = "Misturar passo e salto."
+instrucoes = "Suba por passos: Dó, Ré, Mi. Dê um salto até o Sol. Depois desça por passos."
+dedilhado = "1-2-3-5-4-3-2-1"
+passos = "C4 D4 E4 G4 F4 E4 D4 C4"
+roteiro = [
+  "Ponha a mão direita na posição de Dó.",
+  "Suba por passos: Dó, Ré e Mi (dedos 1, 2 e 3).",
+  "Dê um salto até o Sol com o dedo 5.",
+  "Desça por passos, de Fá até o Dó.",
+]
+acerto = "Nota certa."
+erro = "O único salto é de Mi para Sol."
+
+[[exercicio]]
+id = "esquerda-saltos"
+titulo = "Saltos na mão esquerda"
+tipo = "sequencia"
+mao = "esquerda"
+objetivo = "Fazer saltos com a mão esquerda."
+instrucoes = "Toque Dó, Mi, Sol e Dó, subindo. Depois desça de volta, na mão esquerda."
+dedilhado = "5-3-1-1-1-3-5"
+passos = "C3 E3 G3 C4 G3 E3 C3"
+roteiro = [
+  "Use a mão esquerda uma oitava abaixo.",
+  "Toque Dó, Mi e Sol com os dedos 5, 3 e 1.",
+  "Passe para o Dó acima com o polegar e volte pelo Sol, Mi e Dó.",
+  "Mantenha o pulso solto nos saltos.",
+]
+acerto = "Salto certo."
+
+[[exercicio]]
+id = "tercas-juntas"
+titulo = "Terças tocadas juntas"
+tipo = "intervalos"
+mao = "direita"
+objetivo = "Tocar duas teclas ao mesmo tempo."
+instrucoes = "Toque as duas notas ao mesmo tempo, com os dedos 1 e 3. Depois 2 e 4, depois 3 e 5."
+dedilhado = "1+3, 2+4, 3+5"
+passos = "[C4 E4] [D4 F4] [E4 G4]"
+roteiro = [
+  "Use a mão direita na posição de Dó.",
+  "Aperte juntas as teclas Dó e Mi, com os dedos 1 e 3.",
+  "Depois Ré e Fá, com os dedos 2 e 4.",
+  "Depois Mi e Sol, com os dedos 3 e 5.",
+]
+acerto = "Intervalo certo."
+erro = "As duas teclas soam juntas."
+
+[[exercicio]]
+id = "ouvir-passo-ou-salto"
+titulo = "Ouvir e repetir"
+tipo = "ouvir"
+mao = "direita"
+objetivo = "Ouvir uma frase e repetir de memória."
+instrucoes = "Ouça a frase. Ela tem passos e saltos. Toque do mesmo jeito."
+passos = "E4 D4 C4 E4 G4 F4 E4 C4"
+roteiro = [
+  "Ouça a frase com atenção até o fim.",
+  "Pense: quais notas são vizinhas e quais são pulos?",
+  "Ponha a mão direita na posição de Dó.",
+  "Toque a frase de memória, nota por nota.",
+]
+acerto = "Frase repetida."
+erro = "Ouça de novo e tente outra vez."
+conclusao = "Você reconhece passos e saltos."

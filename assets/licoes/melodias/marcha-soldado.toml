@@ -1,0 +1,149 @@
+[licao]
+id = "melodias-marcha-soldado"
+trilha = "Melodias"
+ordem_trilha = 60
+ordem = 2
+titulo = "Marcha Soldado"
+descricao = "Cantiga folclórica brasileira em Dó, com repetições, passos e saltos."
+nivel = "iniciante"
+situacao = "proposta"
+fontes = ["Folclore brasileiro, autoria desconhecida: domínio público", "Mendes, A.; Santiago, G., Introdução ao teclado, vol. 2, UFSCar (https://www.servidores.ufscar.br/glauber/wp-content/uploads/2021/04/Santiago_Mendes_Introducao_ao_Teclado_v2.pdf)", "Santos, C. E. F., Teclado I, SEAD/UFBA (https://educapes.capes.gov.br/bitstream/capes/1175040/2/eBook_Teclado%20I_SEAD-UFBA.pdf)"]
+requer = ["melodias-ode-a-alegria"]
+
+[[exercicio]]
+id = "comeco"
+titulo = "Começo da marcha"
+tipo = "sequencia"
+mao = "direita"
+objetivo = "Tocar o começo da melodia."
+instrucoes = "Toque Sol, Sol, Mi, Dó, Dó e Mi. Os dedos são 5, 5, 3, 1, 1 e 3."
+dedilhado = "5-5-3-1-1-3"
+passos = "G4 G4 E4 C4 C4 E4"
+roteiro = [
+  "Ponha a mão direita na posição de Dó.",
+  "Toque o Sol duas vezes com o dedo 5.",
+  "Desça para o Mi e o Dó.",
+  "Repita o Dó e suba ao Mi.",
+]
+acerto = "Nota certa."
+erro = "Sol, Sol, Mi, Dó, Dó, Mi."
+
+[[exercicio]]
+id = "meio"
+titulo = "Meio da marcha"
+tipo = "sequencia"
+mao = "direita"
+objetivo = "Tocar o trecho do meio."
+instrucoes = "Toque Sol, Sol, Sol, Mi, Ré e Mi. Os dedos são 5, 5, 5, 3, 2 e 3."
+dedilhado = "5-5-5-3-2-3"
+passos = "G4 G4 G4 E4 D4 E4"
+roteiro = [
+  "Ponha a mão direita na posição de Dó.",
+  "Toque o Sol três vezes com o dedo 5.",
+  "Desça ao Mi com o dedo 3 e ao Ré com o dedo 2.",
+  "Suba de novo ao Mi.",
+]
+acerto = "Nota certa."
+
+[[exercicio]]
+id = "terceiro-trecho"
+titulo = "Terceiro trecho"
+tipo = "sequencia"
+mao = "direita"
+objetivo = "Tocar o trecho com o Fá repetido."
+instrucoes = "Toque Fá, Fá, Fá, Ré, Sol, Sol e Lá. O Lá fica uma tecla além do Sol."
+passos = "F4 F4 F4 D4 G4 G4 A4"
+roteiro = [
+  "Ponha a mão direita na posição de Dó.",
+  "Toque o Fá três vezes com o dedo 4.",
+  "Desça ao Ré com o dedo 2.",
+  "Pule ao Sol, toque duas vezes e estique o dedo 5 até o Lá.",
+]
+acerto = "Nota certa."
+erro = "Fá, Fá, Fá, Ré, Sol, Sol, Lá."
+
+[[exercicio]]
+id = "final"
+titulo = "Final da marcha"
+tipo = "sequencia"
+mao = "direita"
+objetivo = "Tocar a descida final."
+instrucoes = "Toque Sol, Fá, Mi, Ré e Dó. A melodia desce em passos e termina no Dó."
+dedilhado = "5-4-3-2-1"
+passos = "G4 F4 E4 D4 C4"
+roteiro = [
+  "Ponha a mão direita na posição de Dó.",
+  "Comece no Sol com o dedo 5.",
+  "Desça uma tecla por vez.",
+  "Termine no Dó com o polegar.",
+]
+acerto = "Nota certa."
+
+[[exercicio]]
+id = "primeira-metade"
+titulo = "Primeira metade"
+tipo = "sequencia"
+mao = "direita"
+objetivo = "Juntar o começo e o meio."
+instrucoes = "Toque as doze notas: G G E C C E G G G E D E."
+passos = "G4 G4 E4 C4 C4 E4 G4 G4 G4 E4 D4 E4"
+roteiro = [
+  "Ponha a mão direita na posição de Dó.",
+  "Toque o começo: Sol, Sol, Mi, Dó, Dó, Mi.",
+  "Toque o meio: Sol, Sol, Sol, Mi, Ré, Mi.",
+  "Mantenha o ritmo de marcha, sempre firme.",
+]
+acerto = "Nota certa."
+erro = "Siga a ordem: começo e depois o meio."
+
+[[exercicio]]
+id = "segunda-metade"
+titulo = "Segunda metade"
+tipo = "sequencia"
+mao = "direita"
+objetivo = "Juntar o terceiro trecho e a descida."
+instrucoes = "Toque as doze notas: F F F D G G A G F E D C."
+passos = "F4 F4 F4 D4 G4 G4 A4 G4 F4 E4 D4 C4"
+roteiro = [
+  "Ponha a mão direita na posição de Dó.",
+  "Toque Fá, Fá, Fá, Ré e Sol, Sol, Lá.",
+  "Volte ao Sol e desça por Fá, Mi e Ré.",
+  "Termine no Dó com o polegar.",
+]
+acerto = "Nota certa."
+erro = "Siga a ordem: terceiro trecho e depois a descida."
+
+[[exercicio]]
+id = "ouvir-primeira"
+titulo = "Ouvir a primeira metade"
+tipo = "ouvir"
+mao = "direita"
+objetivo = "Ouvir e repetir a primeira metade."
+instrucoes = "Ouça a frase. Depois toque de memória."
+passos = "G4 G4 E4 C4 C4 E4 G4 G4 G4 E4 D4 E4"
+roteiro = [
+  "Ouça a frase uma vez, até o fim.",
+  "Ponha a mão direita na posição de Dó.",
+  "Lembre: começa no Sol, desce ao Dó, depois repete o Sol.",
+  "Toque de memória, em ritmo de marcha.",
+]
+acerto = "Frase repetida."
+erro = "Ouça de novo."
+
+[[exercicio]]
+id = "ouvir-segunda"
+titulo = "Ouvir a segunda metade"
+tipo = "ouvir"
+mao = "direita"
+objetivo = "Ouvir e repetir a segunda metade."
+instrucoes = "Ouça a frase. Depois toque de memória."
+passos = "F4 F4 F4 D4 G4 G4 A4 G4 F4 E4 D4 C4"
+roteiro = [
+  "Ouça a frase uma vez, até o fim.",
+  "Ponha a mão direita na posição de Dó.",
+  "Lembre: três Fás, depois o Sol, o Lá e a descida.",
+  "Toque de memória, até o Dó final.",
+]
+acerto = "Frase repetida."
+erro = "Ouça de novo."
+conclusao = "Você tocou a Marcha Soldado inteira."

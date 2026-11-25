@@ -717,8 +717,17 @@ pub const ROTEIRO_DE_FABRICA_TOML: &str = include_str!("../dados/roteiro-fabrica
 pub const LICAO_DE_FABRICA: &str = "fabrica";
 
 /// Id do exercício de fábrica `n` (1 a 10) no roteiro: `ex01` a `ex10`.
-pub fn id_de_exercicio_de_fabrica(n: u8) -> String {
-    format!("ex{n:02}")
+/// Id do exercício de fábrica no roteiro: os 10 originais (`primeiros-passos/1` a
+/// `primeiros-passos/10`) viram `ex01`..`ex10`; outro id passa como está.
+pub fn id_de_exercicio_de_fabrica(id: &str) -> String {
+    let curto = id
+        .strip_prefix(crate::exercicios::LICAO_INICIAL)
+        .and_then(|r| r.strip_prefix('/'))
+        .unwrap_or(id);
+    match curto.parse::<u8>() {
+        Ok(n) => format!("ex{n:02}"),
+        Err(_) => id.to_owned(),
+    }
 }
 
 pub fn roteiro_de_fabrica() -> Result<Roteiro, ErroRoteiro> {
@@ -1199,7 +1208,7 @@ estado = "aprovada"
         // Todo exercício referenciado existe.
         let existentes: Vec<String> = exercicios
             .iter()
-            .map(|e| id_de_exercicio_de_fabrica(e.id))
+            .map(|e| id_de_exercicio_de_fabrica(&e.id))
             .collect();
         for f in &r.falas {
             assert_eq!(f.licao, LICAO_DE_FABRICA, "fala {}", f.id);

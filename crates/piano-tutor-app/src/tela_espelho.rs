@@ -8,7 +8,7 @@
 use crate::espelho::{
     EstadoEspelho, ResumoDesenho, ZOOM_MAX, ZOOM_MIN, geometria, texto_frequencia,
 };
-use crate::roda_bend::{PONTOS_POR_ENTALHE, texto_bend};
+use crate::roda_bend::{BEND_MAX, PONTOS_POR_ENTALHE, UNIDADES_POR_SEMITOM, texto_bend};
 use crate::teclado_visual::{
     EstiloTeclado, Rotulos, area_das_teclas, fase_do_pulso, largura_branca_ajustada,
     pintar_teclado, tamanho_do_teclado, tecla_no_ponto,
@@ -143,7 +143,7 @@ fn desenhar_opcoes(ui: &mut Ui, e: &mut EstadoEspelho) {
         ui.selectable_value(&mut e.nomes.convencao, ConvencaoOitava::Do4, "C4 (MIDI 60)");
         ui.selectable_value(&mut e.nomes.convencao, ConvencaoOitava::Do3, "C3 (MIDI 60)");
     });
-    let mut opcoes = opcoes_visuais(ui.ctx());
+    let mut opcoes = e.opcoes_tela;
     ui.horizontal_wrapped(|ui| {
         ui.spacing_mut().slider_width = 160.0;
         ui.add_enabled_ui(!opcoes.ajustar_a_largura, |ui| {
@@ -165,7 +165,7 @@ fn desenhar_opcoes(ui: &mut Ui, e: &mut EstadoEspelho) {
         ui.selectable_value(&mut opcoes.rotulos, Rotulos::Nenhum, "Nenhum");
         ui.checkbox(&mut opcoes.pulso, "Pulso da guia");
     });
-    guardar_opcoes(ui.ctx(), opcoes);
+    e.opcoes_tela = opcoes;
 }
 
 // ---------------------------------------------------------------------------------------------
@@ -180,10 +180,10 @@ pub fn desenhar_teclado_embutido(ui: &mut Ui, e: &mut EstadoEspelho) {
 /// Preferências visuais do teclado, guardadas na memória temporária do egui (valem para todas
 /// as telas que desenham o teclado).
 #[derive(Clone, Copy, Debug, PartialEq)]
-struct OpcoesVisuais {
-    ajustar_a_largura: bool,
-    rotulos: Rotulos,
-    pulso: bool,
+pub struct OpcoesVisuais {
+    pub ajustar_a_largura: bool,
+    pub rotulos: Rotulos,
+    pub pulso: bool,
 }
 
 impl Default for OpcoesVisuais {
@@ -196,22 +196,9 @@ impl Default for OpcoesVisuais {
     }
 }
 
-fn id_opcoes() -> egui::Id {
-    egui::Id::new("piano-tutor-teclado-opcoes")
-}
-
-fn opcoes_visuais(ctx: &egui::Context) -> OpcoesVisuais {
-    ctx.data(|d| d.get_temp::<OpcoesVisuais>(id_opcoes()))
-        .unwrap_or_default()
-}
-
-fn guardar_opcoes(ctx: &egui::Context, o: OpcoesVisuais) {
-    ctx.data_mut(|d| d.insert_temp(id_opcoes(), o));
-}
-
 fn desenhar_teclado(ui: &mut Ui, e: &mut EstadoEspelho, aviso_simulacao_visivel: bool) {
     let geo = geometria(e.teclado());
-    let opcoes = opcoes_visuais(ui.ctx());
+    let opcoes = e.opcoes_tela;
     let mut estilo = EstiloTeclado::para_visuals(ui.visuals());
     estilo.divisao = e.divisao;
     estilo.rotulos = opcoes.rotulos;
@@ -284,10 +271,16 @@ fn girar_roda_bend(ui: &Ui, e: &mut EstadoEspelho, rect: egui::Rect) {
 
 /// Indicador discreto do bend: texto pequeno e uma barra fina com o marcador do centro.
 fn desenhar_indicador_bend(ui: &mut Ui, e: &EstadoEspelho) {
-    let r = &e.roda_bend;
-    let ativo = !r.centrada();
+    let (fracao, fisico) = e.bend_exibido();
+    let ativo = fracao != 0.0;
+    let semitons = fracao * BEND_MAX / UNIDADES_POR_SEMITOM;
     ui.horizontal(|ui| {
-        let texto = RichText::new(texto_bend(r.semitons())).small();
+        let rotulo = if fisico {
+            format!("{} (teclado)", texto_bend(semitons))
+        } else {
+            texto_bend(semitons)
+        };
+        let texto = RichText::new(rotulo).small();
         let texto = if ativo { texto.strong() } else { texto.weak() };
         let resposta = ui.label(texto);
         let (barra, _) = ui.allocate_exact_size(egui::vec2(96.0, 8.0), Sense::hover());
@@ -299,7 +292,7 @@ fn desenhar_indicador_bend(ui: &mut Ui, e: &EstadoEspelho) {
             2.0,
             cor.gamma_multiply(0.18),
         );
-        let ponta = meio.x + r.fracao() * barra.width() * 0.5;
+        let ponta = meio.x + fracao * barra.width() * 0.5;
         let cheio = egui::Rect::from_two_pos(
             egui::pos2(meio.x, barra.top() + 2.0),
             egui::pos2(ponta, barra.bottom() - 2.0),
@@ -314,7 +307,8 @@ fn desenhar_indicador_bend(ui: &mut Ui, e: &EstadoEspelho) {
         );
         resposta.on_hover_text(
             "Role a roda do mouse sobre o teclado para curvar a afinação (±2 semitons), \
-             como a roda de pitch bend. Ela volta ao centro sozinha. Shift + roda move o \
+             como a roda de pitch bend. Ela volta ao centro sozinha. A roda de pitch do \
+             teclado físico também aparece aqui. Shift + roda move o \
              teclado quando ele está ampliado.",
         );
     });

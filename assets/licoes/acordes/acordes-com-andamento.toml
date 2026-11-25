@@ -1,0 +1,238 @@
+[licao]
+id = "acordes-com-andamento"
+trilha = "Acordes"
+ordem_trilha = 30
+ordem = 8
+titulo = "Acordes no tempo: troque no 1 do compasso"
+descricao = "Cadências e progressões em Dó, Sol e Fá com metrônomo, contagem e troca de acorde no tempo, do andamento lento ao mais vivo."
+nivel = "basico"
+situacao = "proposta"
+fontes = ["Acorde, Wikipédia: https://pt.wikipedia.org/wiki/Acorde", "Metrônomo, Wikipédia: https://pt.wikipedia.org/wiki/Metrônomo", "Introduction to Chords, musictheory.net: https://musictheory.net/lessons/40", "Circle of fifths (Wikipedia): https://en.wikipedia.org/wiki/Circle_of_fifths"]
+requer = ["acordes-cadencias"]
+
+[[exercicio]]
+id = "i-iv-v-i-do-ouvir-60"
+titulo = "I-IV-V-I em Dó, ouvindo e acompanhando (60 BPM)"
+tipo = "acorde"
+mao = "direita"
+objetivo = "Acompanhar o app trocando de acorde no 1 de cada compasso."
+instrucoes = "O app toca o metrônomo e os acordes por você. Depois da contagem, toque junto com ele, na ordem: I = Dó maior (Dó, Mi e Sol); IV = Fá maior (Dó, Fá e Lá); V = Sol maior (Si, Ré e Sol); I = Dó maior (Dó, Mi e Sol). Cada acorde dura um compasso de quatro tempos, e são duas voltas."
+passos = "{C4 E4 G4}:I_Dó {C4 F4 A4}:IV_Dó {B3 D4 G4}:V_Dó {C4 E4 G4}:I_Dó"
+andamento = 60
+compasso = "4/4"
+compassos_por_passo = 1
+contagem = 1
+app_toca = true
+ordem = "sequencial"
+voltas = 2
+roteiro = [
+  "Ponha a mão direita perto do Dó central, com os dedos curvos.",
+  "Inicie e espere a contagem: são quatro batidas de preparação, sem tocar.",
+  "Ouça o primeiro acorde e aperte as mesmas notas junto com ele.",
+  "Troque no 1 do compasso: solte e aperte o acorde seguinte na hora em que o app troca.",
+  "Mantenha a mão perto das teclas e conte baixinho 1, 2, 3, 4.",
+]
+acerto = "No tempo."
+erro = "Confira o acorde e tente de novo na próxima volta."
+conclusao = "Você acompanhou as duas voltas."
+requer = ""
+
+[[exercicio]]
+id = "i-iv-v-i-do-voce-60"
+titulo = "I-IV-V-I em Dó, só você (60 BPM)"
+tipo = "acorde"
+mao = "direita"
+objetivo = "Tocar sozinho a cadência em Dó, trocando de acorde no 1 do compasso."
+instrucoes = "Agora o app só marca o tempo e mostra o acorde da vez. Depois da contagem, toque, na ordem: I = Dó maior (Dó, Mi e Sol); IV = Fá maior (Dó, Fá e Lá); V = Sol maior (Si, Ré e Sol); I = Dó maior (Dó, Mi e Sol). Cada acorde dura um compasso, e são duas voltas."
+passos = "{C4 E4 G4}:I_Dó {C4 F4 A4}:IV_Dó {B3 D4 G4}:V_Dó {C4 E4 G4}:I_Dó"
+andamento = 60
+compasso = "4/4"
+compassos_por_passo = 1
+contagem = 1
+app_toca = false
+ordem = "sequencial"
+voltas = 2
+roteiro = [
+  "Olhe o acorde indicado e ache as três notas antes de a contagem terminar.",
+  "Espere a contagem: quatro batidas, sem tocar.",
+  "Aperte o acorde no 1 do compasso e deixe soar até o fim do compasso.",
+  "Troque no 1 do compasso seguinte, sem atrasar nem adiantar.",
+  "Se errar, não pare: respire e acerte o próximo acorde.",
+]
+erro = "Confira o acorde da vez e acompanhe a batida."
+conclusao = "Cadência no tempo, sem ajuda."
+
+[[exercicio]]
+id = "i-v-vi-iv-do-66"
+titulo = "I-V-vi-IV em Dó no tempo (66 BPM)"
+tipo = "acorde"
+mao = "direita"
+objetivo = "Tocar a progressão I-V-vi-IV em Dó maior, um acorde por compasso."
+instrucoes = "Toque, na ordem: I = Dó maior (Dó, Mi e Sol); V = Sol maior (Si, Ré e Sol); vi = Lá menor (Dó, Mi e Lá); IV = Fá maior (Dó, Fá e Lá). A mão quase não sai do lugar: o Dó fica quase sempre embaixo. São duas voltas."
+passos = "{C4 E4 G4}:I_Dó {B3 D4 G4}:V_Dó {C4 E4 A4}:vi_Dó {C4 F4 A4}:IV_Dó"
+andamento = 66
+compasso = "4/4"
+compassos_por_passo = 1
+contagem = 1
+app_toca = false
+ordem = "sequencial"
+voltas = 2
+roteiro = [
+  "Ache os quatro acordes antes de começar, sem pressa.",
+  "Espere a contagem: quatro batidas de preparação.",
+  "Toque o I no 1 do compasso e troque para o V no 1 do compasso seguinte.",
+  "Do V para o vi a mão só sobe um pouco: troque no 1 do compasso.",
+  "Na segunda volta, tente olhar menos para as teclas.",
+]
+erro = "Confira cada acorde e acompanhe a batida."
+conclusao = "Progressão no tempo."
+
+[[exercicio]]
+id = "ii-v-i-do-66"
+titulo = "ii-V-I em Dó no tempo (66 BPM)"
+tipo = "acorde"
+mao = "direita"
+objetivo = "Tocar a progressão ii-V-I em Dó maior, um acorde por compasso."
+instrucoes = "Toque, na ordem: ii = Ré menor (Ré, Fá e Lá); V = Sol maior (Si, Ré e Sol); I = Dó maior (Dó, Mi e Sol). Os acordes ficam juntinhos: o Ré e o Si quase não se afastam. São três voltas, e o I volta ao ii na emenda."
+passos = "{D4 F4 A4}:ii_Dó {B3 D4 G4}:V_Dó {C4 E4 G4}:I_Dó"
+andamento = 66
+compasso = "4/4"
+compassos_por_passo = 1
+contagem = 1
+app_toca = false
+ordem = "sequencial"
+voltas = 3
+roteiro = [
+  "Ache o ii (Ré, Fá e Lá) com a mão perto do Dó central.",
+  "Espere a contagem: quatro batidas de preparação.",
+  "Troque no 1 do compasso: do ii para o V a mão só desce um pouco.",
+  "O V pede o I: ouça o repouso e aproveite para respirar.",
+  "Na emenda, volte ao ii também no 1 do compasso.",
+]
+erro = "Confira cada acorde e acompanhe a batida."
+conclusao = "ii-V-I no tempo."
+
+[[exercicio]]
+id = "i-iv-v-i-sol-2-compassos-70"
+titulo = "I-IV-V-I em Sol, dois compassos por acorde (70 BPM)"
+tipo = "acorde"
+mao = "direita"
+objetivo = "Segurar cada acorde por dois compassos e trocar só no 1 do terceiro."
+instrucoes = "Cada acorde dura dois compassos de quatro tempos. Toque, na ordem: I = Sol maior (Si, Ré e Sol); IV = Dó maior (Dó, Mi e Sol); V = Ré maior (Lá, Ré e Fá#); I = Sol maior (Si, Ré e Sol). O Fá# do V é tecla preta. São duas voltas."
+passos = "{B3 D4 G4}:I_Sol {C4 E4 G4}:IV_Sol {A3 D4 F#4}:V_Sol {B3 D4 G4}:I_Sol"
+andamento = 70
+compasso = "4/4"
+compassos_por_passo = 2
+contagem = 1
+app_toca = false
+ordem = "sequencial"
+voltas = 2
+roteiro = [
+  "Ache os quatro acordes e lembre do Fá# no V.",
+  "Espere a contagem: quatro batidas de preparação.",
+  "Aperte o acorde no 1 e conte oito tempos antes de trocar.",
+  "Troque no 1 do compasso, só a cada dois compassos.",
+  "Use o segundo compasso para preparar a mão no próximo acorde.",
+]
+erro = "Confira o acorde da vez e conte os dois compassos."
+conclusao = "Dois compassos por acorde, no tempo."
+
+[[exercicio]]
+id = "i-vi-iv-v-do-balada-72"
+titulo = "I-vi-IV-V em Dó com Pop balada (72 BPM)"
+tipo = "acorde"
+mao = "direita"
+objetivo = "Tocar I-vi-IV-V em Dó maior acompanhando a bateria da Pop balada."
+instrucoes = "O app toca a bateria Pop balada. Depois da contagem, toque, na ordem: I = Dó maior (Dó, Mi e Sol); vi = Lá menor (Dó, Mi e Lá); IV = Fá maior (Dó, Fá e Lá); V = Sol maior (Si, Ré e Sol). Um acorde por compasso, e são duas voltas. Entre os três primeiros acordes só uma nota muda de cada vez."
+passos = "{C4 E4 G4}:I_Dó {C4 E4 A4}:vi_Dó {C4 F4 A4}:IV_Dó {B3 D4 G4}:V_Dó"
+andamento = 72
+ritmo = "Pop balada"
+compassos_por_passo = 1
+contagem = 1
+app_toca = false
+ordem = "sequencial"
+voltas = 2
+roteiro = [
+  "Ouça a bateria durante a contagem e sinta onde está o 1 do compasso.",
+  "Espere a contagem: não toque até ela terminar.",
+  "Aperte o I no 1 do compasso e deixe soar com calma.",
+  "Troque no 1 do compasso, acompanhando o bumbo da bateria.",
+  "O V no fim pede para recomeçar: volte ao I sem parar.",
+]
+erro = "Confira o acorde e escute o 1 da bateria."
+conclusao = "Acordes com bateria, no tempo."
+
+[[exercicio]]
+id = "valsa-i-iv-i-v-do-76"
+titulo = "Valsa em Dó: I-IV-I-V (76 BPM)"
+tipo = "acorde"
+mao = "direita"
+objetivo = "Trocar de acorde no 1 de cada compasso de três tempos, com a bateria Valsa."
+instrucoes = "A Valsa tem três tempos por compasso: 1, 2, 3. Toque, na ordem: I = Dó maior (Dó, Mi e Sol); IV = Fá maior (Dó, Fá e Lá); I = Dó maior (Dó, Mi e Sol); V = Sol maior (Si, Ré e Sol). Um acorde por compasso, e são duas voltas."
+passos = "{C4 E4 G4}:I_Dó {C4 F4 A4}:IV_Dó {C4 E4 G4}:I_Dó {B3 D4 G4}:V_Dó"
+andamento = 76
+ritmo = "Valsa"
+compassos_por_passo = 1
+contagem = 1
+app_toca = false
+ordem = "sequencial"
+voltas = 2
+roteiro = [
+  "Sinta os três tempos da Valsa: forte, fraco, fraco.",
+  "Espere a contagem: três batidas de preparação.",
+  "Aperte o acorde no 1 do compasso, que é o tempo forte.",
+  "Troque no 1 do compasso, a cada três batidas, e não no 4.",
+  "Balance o corpo de leve: 1, 2, 3 e troca.",
+]
+erro = "Confira o acorde e conte três tempos."
+conclusao = "Valsa no tempo."
+
+[[exercicio]]
+id = "triades-aleatorias-do-fa-sol-84"
+titulo = "Dó, Fá e Sol maior em ordem aleatória (84 BPM)"
+tipo = "acorde"
+mao = "direita"
+objetivo = "Reconhecer e tocar a tempo o acorde que o app sortear."
+instrucoes = "O app sorteia entre Dó maior (Dó, Mi e Sol), Fá maior (Dó, Fá e Lá) e Sol maior (Si, Ré e Sol), um por compasso. São três voltas: nove acordes no total. Olhe o nome do acorde da vez e troque no 1 do compasso."
+passos = "{C4 E4 G4}:Dó_maior {C4 F4 A4}:Fá_maior {B3 D4 G4}:Sol_maior"
+andamento = 84
+compasso = "4/4"
+compassos_por_passo = 1
+contagem = 1
+app_toca = false
+ordem = "aleatoria"
+voltas = 3
+roteiro = [
+  "Deixe a mão perto do Dó central: os três acordes ficam a poucos centímetros.",
+  "Espere a contagem: quatro batidas de preparação.",
+  "Leia o acorde da vez e ache as notas durante o compasso anterior.",
+  "Troque no 1 do compasso, mesmo se o acorde se repetir.",
+  "Não pare se errar: o próximo acorde vem no próximo 1.",
+]
+erro = "Confira o nome do acorde da vez."
+conclusao = "Nove acordes sorteados, no tempo."
+
+[[exercicio]]
+id = "i-v-vi-iv-sol-96"
+titulo = "I-V-vi-IV em Sol, andamento vivo (96 BPM)"
+tipo = "acorde"
+mao = "direita"
+objetivo = "Tocar I-V-vi-IV em Sol maior em andamento mais vivo, sem errar o 1 do compasso."
+instrucoes = "Toque, na ordem: I = Sol maior (Si, Ré e Sol); V = Ré maior (Lá, Ré e Fá#); vi = Mi menor (Si, Mi e Sol); IV = Dó maior (Dó, Mi e Sol). Um acorde por compasso, e são três voltas. Aqui o andamento é mais rápido: procure a próxima posição antes da hora."
+passos = "{B3 D4 G4}:I_Sol {A3 D4 F#4}:V_Sol {B3 E4 G4}:vi_Sol {C4 E4 G4}:IV_Sol"
+andamento = 96
+compasso = "4/4"
+compassos_por_passo = 1
+contagem = 1
+app_toca = false
+ordem = "sequencial"
+voltas = 3
+roteiro = [
+  "Toque a progressão devagar uma vez para lembrar das posições.",
+  "Espere a contagem: quatro batidas, e comece só no 1.",
+  "Troque no 1 do compasso: solte as teclas já no 4 e deixe a mão pronta.",
+  "Mantenha a mão perto das teclas, sem levantar muito.",
+  "Nas três voltas, o tempo não pode mudar: respire e acompanhe a batida.",
+]
+erro = "Confira o acorde e acompanhe a batida."
+conclusao = "Progressão em andamento vivo."

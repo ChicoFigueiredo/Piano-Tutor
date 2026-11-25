@@ -1,6 +1,7 @@
 //! Preferências de som salvas entre aberturas (timbre, volume, divisão, camada,
 //! transposição, efeitos) em `~/.local/share/piano-tutor/preferencias.txt`.
 
+use crate::dedos::NomenclaturaDedos;
 use crate::partitura_visual::{ModoRolagem, ZOOM_MAX, ZOOM_MIN};
 use crate::som::{ConfigTeclado, Timbre};
 use std::fmt::Write as _;
@@ -177,9 +178,87 @@ impl PreferenciasPartitura {
     }
 }
 
+/// Nome do arquivo das preferências de exibição gerais (por enquanto, a nomenclatura dos
+/// dedos). Separado do de som pelo mesmo motivo do da Partitura.
+pub const ARQUIVO_PREFERENCIAS_EXIBICAO: &str = "preferencias-exibicao.txt";
+
+/// Preferências de exibição que valem em todas as telas.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub struct PreferenciasExibicao {
+    pub dedos: NomenclaturaDedos,
+    /// Mapa de dedos para decorar em todas as teclas: tônica maior (0 = Dó) ou desligado.
+    pub mapa_dedos: Option<u8>,
+    pub modo_mapa: crate::dedos::ModoMapa,
+}
+
+impl PreferenciasExibicao {
+    pub fn para_texto(&self) -> String {
+        let mut s = String::from("# Piano Tutor: preferências de exibição v1\n");
+        let _ = writeln!(s, "dedos={}", self.dedos.chave());
+        let _ = writeln!(s, "modo_mapa={}", self.modo_mapa.chave());
+        match self.mapa_dedos {
+            Some(t) => {
+                let _ = writeln!(s, "mapa_dedos={t}");
+            }
+            None => {
+                let _ = writeln!(s, "mapa_dedos=nao");
+            }
+        }
+        s
+    }
+
+    /// Lê o texto; chaves desconhecidas ou valores inválidos ficam no padrão.
+    pub fn de_texto(t: &str) -> Self {
+        let mut p = Self::default();
+        for l in t.lines() {
+            match l.trim().split_once('=').map(|(k, v)| (k.trim(), v.trim())) {
+                Some(("dedos", v)) => p.dedos = NomenclaturaDedos::de_chave(v).unwrap_or(p.dedos),
+                Some(("modo_mapa", v)) => {
+                    p.modo_mapa = crate::dedos::ModoMapa::de_chave(v).unwrap_or(p.modo_mapa);
+                }
+                Some(("mapa_dedos", v)) => {
+                    p.mapa_dedos = v.parse::<u8>().ok().filter(|t| *t < 12);
+                }
+                _ => {}
+            }
+        }
+        p
+    }
+
+    pub fn ler(caminho: &Path) -> Option<Self> {
+        let t = std::fs::read_to_string(caminho).ok()?;
+        (t.len() <= 16 * 1024).then(|| Self::de_texto(&t))
+    }
+
+    pub fn gravar(&self, caminho: &Path) -> std::io::Result<()> {
+        if let Some(p) = caminho.parent() {
+            std::fs::create_dir_all(p)?;
+        }
+        std::fs::write(caminho, self.para_texto())
+    }
+}
+
 #[cfg(test)]
 mod testes {
     use super::*;
+
+    #[test]
+    fn exibicao_ida_e_volta_e_lixo_vira_padrao() {
+        for dedos in crate::dedos::NOMENCLATURAS {
+            for mapa_dedos in [None, Some(0), Some(11)] {
+                let p = PreferenciasExibicao {
+                    dedos,
+                    mapa_dedos,
+                    modo_mapa: crate::dedos::ModoMapa::UmaOitava,
+                };
+                assert_eq!(PreferenciasExibicao::de_texto(&p.para_texto()), p);
+            }
+        }
+        assert_eq!(
+            PreferenciasExibicao::de_texto("dedos=klingon\nx=1"),
+            PreferenciasExibicao::default()
+        );
+    }
 
     #[test]
     fn ida_e_volta() {

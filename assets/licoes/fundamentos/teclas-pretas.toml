@@ -1,0 +1,150 @@
+[licao]
+id = "fundamentos-teclas-pretas"
+trilha = "Fundamentos"
+ordem_trilha = 10
+ordem = 7
+titulo = "Teclas pretas"
+descricao = "Sustenidos e bemóis: nomes das pretas, semitons e a ideia de duas notas para a mesma tecla."
+nivel = "iniciante"
+situacao = "proposta"
+fontes = ["Wikipedia: Piano keyboard (https://en.wikipedia.org/wiki/Piano_keyboard)", "Dummies: Piano for Dummies, posições de Dó e Sol (https://www.dummies.com/article/academics-the-arts/music/instruments/piano/how-to-play-the-piano-or-keyboard-in-c-and-g-position-153031/)", "Teoria elementar: sustenido, bemol e semitom (conteúdo geral de teoria musical)"]
+requer = ["fundamentos-geografia-do-teclado"]
+
+[[exercicio]]
+id = "duas-pretas"
+titulo = "As duas pretas"
+tipo = "sequencia"
+mao = "direita"
+objetivo = "Tocar o grupo de duas pretas perto do meio."
+instrucoes = "Perto do Dó central, toque Dó sustenido e Ré sustenido. O sustenido sobe meio tom."
+dedilhado = "2-3-2"
+passos = "C#4 D#4 C#4"
+roteiro = [
+  "Ache o grupo de duas pretas perto do Dó central.",
+  "Toque a primeira preta com o dedo 2: é o Dó sustenido.",
+  "Toque a segunda com o dedo 3: é o Ré sustenido.",
+  "Volte ao Dó sustenido com o dedo 2.",
+]
+acerto = "Preta certa."
+erro = "As duas pretas ficam logo à direita do Dó central."
+
+[[exercicio]]
+id = "tres-pretas"
+titulo = "As três pretas"
+tipo = "sequencia"
+mao = "direita"
+objetivo = "Tocar o grupo de três pretas perto do meio."
+instrucoes = "Toque Fá sustenido, Sol sustenido e Lá sustenido. Use os dedos 2, 3 e 4."
+dedilhado = "2-3-4-3-2"
+passos = "F#4 G#4 A#4 G#4 F#4"
+roteiro = [
+  "Ache o grupo de três pretas perto do Dó central.",
+  "Use os dedos 2, 3 e 4 sobre as três pretas.",
+  "Toque Fá sustenido, Sol sustenido e Lá sustenido.",
+  "Volte pelo Sol sustenido até o Fá sustenido.",
+]
+acerto = "Preta certa."
+
+[[exercicio]]
+id = "dois-nomes"
+titulo = "Duas notas, uma tecla"
+tipo = "sequencia"
+mao = "direita"
+objetivo = "Entender que a mesma preta tem dois nomes."
+instrucoes = "A preta entre Dó e Ré é Dó sustenido ou Ré bemol. Toque a mesma tecla duas vezes, com cada nome."
+passos = "C#4 Db4 D#4 Eb4"
+roteiro = [
+  "Ache o grupo de duas pretas.",
+  "A primeira preta pode se chamar Dó sustenido ou Ré bemol.",
+  "Toque essa tecla duas vezes, uma com cada nome.",
+  "Faça igual com a segunda: Ré sustenido e Mi bemol.",
+]
+acerto = "Mesma tecla, dois nomes."
+erro = "As duas notas de cada par são a mesma tecla."
+
+[[exercicio]]
+id = "achar-pretas"
+titulo = "Achar as pretas"
+tipo = "localizar"
+mao = "direita"
+objetivo = "Achar sustenidos em qualquer oitava."
+instrucoes = "Toque Dó sustenido, Fá sustenido, Sol sustenido, Ré sustenido e Lá sustenido, em qualquer oitava."
+passos = "C# F# G# D# A#"
+roteiro = [
+  "Olhe para o teclado e ache cada preta pelo grupo.",
+  "No grupo de duas: Dó sustenido e Ré sustenido.",
+  "No grupo de três: Fá sustenido, Sol sustenido e Lá sustenido.",
+  "Toque as cinco, em qualquer oitava.",
+]
+acerto = "Preta certa."
+erro = "Procure uma preta, não uma branca."
+
+[[exercicio]]
+id = "semitons-subindo"
+titulo = "Semitons subindo"
+tipo = "sequencia"
+mao = "direita"
+objetivo = "Subir de meio em meio tom."
+instrucoes = "De uma tecla para a vizinha, branca ou preta, é um semitom. Toque de Dó a Sol, sem pular tecla."
+dedilhado = "1-3-1-3-1-2-3-1"
+passos = "C4 C#4 D4 D#4 E4 F4 F#4 G4"
+roteiro = [
+  "Ponha o polegar direito no Dó central.",
+  "Toque cada tecla vizinha para cima, branca ou preta.",
+  "Use o polegar nas brancas, o dedo 3 nas pretas e o dedo 2 no Fá.",
+  "Chegue ao Sol ao fim de oito notas.",
+]
+acerto = "Semitom certo."
+erro = "Toque a tecla vizinha, preta ou branca."
+
+[[exercicio]]
+id = "semitons-descendo"
+titulo = "Semitons descendo"
+tipo = "sequencia"
+mao = "direita"
+objetivo = "Descer de meio em meio tom."
+instrucoes = "Agora desça de Sol até Dó, tecla por tecla."
+dedilhado = "1-3-2-1-3-1-3-1"
+passos = "G4 F#4 F4 E4 D#4 D4 C#4 C4"
+roteiro = [
+  "Comece no Sol com o dedo 5.",
+  "Desça tocando cada tecla vizinha, preta ou branca.",
+  "Use o polegar nas brancas e o dedo 3 nas pretas, com o dedo 2 no Fá.",
+  "Termine no Dó.",
+]
+acerto = "Semitom certo."
+
+[[exercicio]]
+id = "preta-na-esquerda"
+titulo = "Preta na mão esquerda"
+tipo = "sequencia"
+mao = "esquerda"
+objetivo = "Tocar sustenidos com a mão esquerda."
+instrucoes = "Toque Fá sustenido, Sol sustenido e Lá sustenido, uma oitava abaixo. Use os dedos 3, 2 e 1."
+dedilhado = "3-2-1-2-3"
+passos = "F#3 G#3 A#3 G#3 F#3"
+roteiro = [
+  "A esquerda fica uma oitava abaixo do Dó central.",
+  "Ache o grupo de três pretas.",
+  "Toque Fá sustenido, Sol sustenido e Lá sustenido com os dedos 3, 2 e 1.",
+  "Volte até o Fá sustenido.",
+]
+acerto = "Preta certa."
+
+[[exercicio]]
+id = "bemois"
+titulo = "Bemóis"
+tipo = "localizar"
+mao = "direita"
+objetivo = "Achar bemóis em qualquer oitava."
+instrucoes = "Toque Si bemol, Mi bemol, Lá bemol e Ré bemol, em qualquer oitava."
+passos = "Bb Eb Ab Db"
+roteiro = [
+  "O bemol é a preta logo à esquerda de uma nota.",
+  "Si bemol fica à esquerda do Si.",
+  "Mi bemol fica à esquerda do Mi, Lá bemol à esquerda do Lá, Ré bemol à esquerda do Ré.",
+  "Toque cada bemol, em qualquer oitava.",
+]
+acerto = "Bemol certo."
+erro = "O bemol é a preta à esquerda da nota."
+conclusao = "Você conhece as cinco pretas."

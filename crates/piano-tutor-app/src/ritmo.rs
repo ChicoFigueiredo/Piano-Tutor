@@ -99,6 +99,9 @@ pub struct EstadoRitmo {
     pub mudo: [bool; INSTRUMENTOS.len()],
     /// Peças em solo: havendo alguma, só elas soam (o solo vence o mudo).
     pub solo: [bool; INSTRUMENTOS.len()],
+    /// Tolerância e compensação do exercício de pulso, lembradas para a próxima vez que ele é
+    /// ligado (vão para o perfil).
+    pub pulso_salvo: (u32, i32),
     agendador: Option<Agendador>,
     tap: TapTempo,
     buffer: Vec<(u64, EventoRitmo)>,
@@ -130,6 +133,7 @@ impl EstadoRitmo {
             mensagem: None,
             aviso_andamento: None,
             pasta,
+            pulso_salvo: (50, 0),
             mudo: [false; INSTRUMENTOS.len()],
             solo: [false; INSTRUMENTOS.len()],
             agendador: None,
@@ -253,6 +257,17 @@ impl EstadoRitmo {
         self.nome_arquivo = p.nome.clone();
         self.padrao = p;
         self.definir_bpm(bpm);
+    }
+
+    /// Instante (relógio comum) do primeiro tique do compasso `c`, contado desde o início.
+    pub fn instante_do_compasso(&self, c: u64) -> Option<u64> {
+        let a = self.agendador.as_ref()?;
+        Some(a.instante(c * a.formula().pulsos() * piano_tutor_core::ritmo::TIQUES_POR_PULSO))
+    }
+
+    /// Duração de um pulso no andamento atual (só tocando).
+    pub fn pulso_ns(&self) -> Option<u64> {
+        self.agendador.as_ref().map(Agendador::pulso_ns)
     }
 
     /// Posição atual (para o marcador de pulso e a coluna do sequenciador).

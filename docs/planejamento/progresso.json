@@ -29,8 +29,8 @@
   "titulo_fase": "Preparação, inventário e laboratório",
   "item": "Enumerar dispositivos MIDI sem travar com REVAS desligado",
   "estado": "evidencia_nuvem",
-  "pct": 70,
-  "nota": "piano-tutor-diag coleta com falha de backend tratada; diagnostico-nuvem.md mostra MIDI NÃO VERIFICADO sem travar; falta rodar no cerebro."
+  "pct": 80,
+  "nota": "Com o REVAS ligado, o cerebro enumera a porta \"USB AudioDevice MIDI 1\" (Medeli 0a67:2313) e o app conecta (2026-11-24); falta testar com o REVAS desligado."
  },
  {
   "id": "F00-4",
@@ -72,9 +72,9 @@
   "ordem_fase": 1,
   "titulo_fase": "Experimento MIDI físico e calibração REVAS",
   "item": "61 teclas físicas com um código MIDI cada e eventos de liberação",
-  "estado": "parcial",
-  "pct": 40,
-  "nota": "Calibração em calibracao.rs/tela_calibracao.rs com testes e docs/aceite/F01/calibracao-tela.md; sem medição no REVAS."
+  "estado": "evidencia_hardware",
+  "pct": 90,
+  "nota": "Calibração real no cerebro em 2026-11-24: 61/61 teclas (MIDI 36–96) com NoteOff, velocity 13–110, pedal CC64; docs/aceite/F01/calibracao-cerebro.md. Falta assinatura do titular."
  },
  {
   "id": "F01-2",

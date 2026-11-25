@@ -1,0 +1,149 @@
+[licao]
+id = "melodias-frere-jacques"
+trilha = "Melodias"
+ordem_trilha = 60
+ordem = 3
+titulo = "Frère Jacques"
+descricao = "Canção tradicional francesa em Dó, frase por frase, com o Sol grave no final."
+nivel = "iniciante"
+situacao = "proposta"
+fontes = ["Canção tradicional francesa, melodia do século XVIII: domínio público", "Wikipedia: Frère Jacques (https://en.wikipedia.org/wiki/Fr%C3%A8re_Jacques)", "Let's Play Music: Frère Jacques, first piano lessons (https://www.letsplaykidsmusic.com/frere-jacques-first-piano-lessons/)"]
+requer = ["melodias-ode-a-alegria"]
+
+[[exercicio]]
+id = "primeira-linha"
+titulo = "Primeira linha"
+tipo = "sequencia"
+mao = "direita"
+objetivo = "Tocar Dó, Ré, Mi, Dó."
+instrucoes = "Toque Dó, Ré, Mi e Dó. Os dedos são 1, 2, 3 e 1."
+dedilhado = "1-2-3-1"
+passos = "C4 D4 E4 C4"
+roteiro = [
+  "Ponha o polegar direito no Dó central.",
+  "Suba por passos: Dó, Ré e Mi.",
+  "Volte ao Dó com o polegar.",
+  "Ouça a pequena frase fechada.",
+]
+acerto = "Nota certa."
+
+[[exercicio]]
+id = "primeira-repetida"
+titulo = "Primeira linha, duas vezes"
+tipo = "sequencia"
+mao = "direita"
+objetivo = "Repetir a primeira linha."
+instrucoes = "Toque a primeira linha duas vezes seguidas, sem pausa."
+dedilhado = "1-2-3-1-1-2-3-1"
+passos = "C4 D4 E4 C4 C4 D4 E4 C4"
+roteiro = [
+  "Ponha o polegar direito no Dó central.",
+  "Toque Dó, Ré, Mi e Dó.",
+  "Repita sem parar: Dó, Ré, Mi e Dó.",
+  "Mantenha o pulso solto na repetição.",
+]
+acerto = "Nota certa."
+
+[[exercicio]]
+id = "segunda-linha"
+titulo = "Segunda linha"
+tipo = "sequencia"
+mao = "direita"
+objetivo = "Tocar Mi, Fá, Sol duas vezes."
+instrucoes = "Toque Mi, Fá e Sol, duas vezes. Os dedos são 3, 4 e 5."
+dedilhado = "3-4-5-3-4-5"
+passos = "E4 F4 G4 E4 F4 G4"
+roteiro = [
+  "Ponha a mão direita na posição de Dó.",
+  "Leve o dedo 3 sobre o Mi.",
+  "Toque Mi, Fá e Sol, com os dedos 3, 4 e 5.",
+  "Volte ao dedo 3 e repita.",
+]
+acerto = "Nota certa."
+
+[[exercicio]]
+id = "terceira-linha"
+titulo = "Terceira linha"
+tipo = "sequencia"
+mao = "direita"
+objetivo = "Tocar a volta em Dó."
+instrucoes = "Toque Sol, Lá, Sol, Fá, Mi e Dó. O dedo 5 toca o Sol e estica ao Lá."
+passos = "G4 A4 G4 F4 E4 C4"
+roteiro = [
+  "Ponha a mão direita na posição de Dó.",
+  "Toque o Sol com o dedo 5 e estique-o ao Lá.",
+  "Volte ao Sol e desça por Fá e Mi.",
+  "Termine no Dó com o polegar.",
+]
+acerto = "Nota certa."
+erro = "Sol, Lá, Sol, Fá, Mi, Dó."
+
+[[exercicio]]
+id = "final-grave"
+titulo = "Final com Sol grave"
+tipo = "sequencia"
+mao = "direita"
+objetivo = "Tocar Dó, Sol grave, Dó."
+instrucoes = "Toque Dó, desça ao Sol grave e volte ao Dó. Faça duas vezes. O polegar vai ao Sol, abaixo do Dó central."
+dedilhado = "4-1-4-4-1-4"
+passos = "C4 G3 C4 C4 G3 C4"
+roteiro = [
+  "Ponha o polegar direito no Sol abaixo do Dó central.",
+  "O Dó fica quatro teclas acima: toque com o dedo 4.",
+  "Volte ao Sol com o polegar e toque o Dó de novo.",
+  "Repita todo o trecho uma segunda vez.",
+]
+acerto = "Nota certa."
+erro = "O Sol fica abaixo do Dó central."
+
+[[exercicio]]
+id = "primeira-parte"
+titulo = "Primeira parte"
+tipo = "sequencia"
+mao = "direita"
+objetivo = "Juntar as duas primeiras linhas."
+instrucoes = "Toque as quatorze notas: as duas vezes Dó, Ré, Mi, Dó e as duas vezes Mi, Fá, Sol."
+passos = "C4 D4 E4 C4 C4 D4 E4 C4 E4 F4 G4 E4 F4 G4"
+roteiro = [
+  "Ponha o polegar direito no Dó central.",
+  "Toque a primeira linha duas vezes.",
+  "Passe para o dedo 3 no Mi e toque Mi, Fá e Sol.",
+  "Repita Mi, Fá e Sol.",
+]
+acerto = "Nota certa."
+erro = "Primeiro Dó, Ré, Mi, Dó duas vezes. Depois Mi, Fá, Sol duas vezes."
+
+[[exercicio]]
+id = "ouvir-primeira-parte"
+titulo = "Ouvir a primeira parte"
+tipo = "ouvir"
+mao = "direita"
+objetivo = "Ouvir e repetir a primeira parte."
+instrucoes = "Ouça a frase. Depois toque de memória."
+passos = "C4 D4 E4 C4 C4 D4 E4 C4 E4 F4 G4 E4 F4 G4"
+roteiro = [
+  "Ouça a frase uma vez, até o fim.",
+  "Ponha o polegar direito no Dó central.",
+  "Lembre: duas vezes Dó, Ré, Mi, Dó e duas vezes Mi, Fá, Sol.",
+  "Toque de memória, sem olhar a tela.",
+]
+acerto = "Frase repetida."
+erro = "Ouça de novo."
+
+[[exercicio]]
+id = "ouvir-final"
+titulo = "Ouvir o final"
+tipo = "ouvir"
+mao = "direita"
+objetivo = "Ouvir e repetir a segunda parte, sem o fim grave."
+instrucoes = "Ouça a frase: duas vezes Sol, Lá, Sol, Fá, Mi, Dó. Depois toque de memória."
+passos = "G4 A4 G4 F4 E4 C4 G4 A4 G4 F4 E4 C4"
+roteiro = [
+  "Ouça a frase uma vez, até o fim.",
+  "Ponha a mão direita na posição de Dó.",
+  "Lembre: Sol, Lá, Sol, Fá, Mi, Dó, duas vezes.",
+  "Toque de memória.",
+]
+acerto = "Frase repetida."
+erro = "Ouça de novo."
+conclusao = "Você conhece Frère Jacques."

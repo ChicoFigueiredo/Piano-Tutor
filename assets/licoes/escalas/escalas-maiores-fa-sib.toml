@@ -1,0 +1,123 @@
+[licao]
+id = "escalas-maiores-fa-sib"
+trilha = "Escalas"
+ordem_trilha = 20
+ordem = 3
+titulo = "Escalas maiores com bemóis: Fá e Sib"
+descricao = "Fá e Sib maior, uma oitava, com os dedilhados que fogem do padrão."
+nivel = "basico"
+situacao = "proposta"
+fontes = ["Fingering charts, piano scales (Univ. de Miami): https://www.cs.miami.edu/~burt/music/finger-charts.html", "Piano Major Scales (pianoscales.org): https://pianoscales.org/major.html", "Wikiversity, Piano: how to read piano music and play scales using proper technique: https://en.wikiversity.org/wiki/Piano/How_to_read_piano_music_and_play_scales_using_proper_technique", "Circle of fifths (Wikipedia): https://en.wikipedia.org/wiki/Circle_of_fifths"]
+requer = []
+
+[[exercicio]]
+id = "f-maior-md-sub"
+titulo = "Fá maior: subindo, mão direita"
+tipo = "escala"
+mao = "direita"
+objetivo = "Tocar a escala de Fá maior subindo, uma oitava, com a mão direita."
+instrucoes = "Use a mão direita. Toque Fá, Sol, Lá, Sib, Dó, Ré, Mi e Fá, de baixo para cima. O Si é bemol: use a tecla preta (Sib). Comece com o dedo 1. Depois do Lá, o dedo 4 toca o Sib e o polegar passa por baixo para o Dó."
+dedilhado = "1-2-3-4-1-2-3-4"
+passos = "F4 G4 A4 Bb4 C5 D5 E5 F5"
+roteiro = [
+  "Sente-se de frente para o teclado, com a mão direita solta e os dedos curvos, perto do Dó central.",
+  "Ponha o dedo 1 no Fá. Confira as teclas pretas da escala. O Si é bemol: use a tecla preta (Sib).",
+  "Depois do Sib, passe o polegar por baixo e toque o Dó com o dedo 1.",
+  "Termine no Fá com o dedo 4, tocando parelho e sem pressa.",
+]
+erro = "Confira as teclas: O Si é bemol: use a tecla preta (Sib)."
+conclusao = "Fá maior, subindo, mão direita, concluída."
+
+[[exercicio]]
+id = "f-maior-md-subdesc"
+titulo = "Fá maior: subindo e descendo, mão direita"
+tipo = "escala"
+mao = "direita"
+objetivo = "Tocar a escala de Fá maior subindo e descendo, uma oitava, com a mão direita."
+instrucoes = "Use a mão direita. Suba e volte sem parar na nota mais aguda: Fá, Sol, Lá, Sib, Dó, Ré, Mi, Fá, Mi, Ré, Dó, Sib, Lá, Sol e Fá. O Si é bemol: use a tecla preta (Sib). Comece com o dedo 1. Depois do Lá, o dedo 4 toca o Sib e o polegar passa por baixo para o Dó."
+dedilhado = "1-2-3-4-1-2-3-4-3-2-1-4-3-2-1"
+passos = "F4 G4 A4 Bb4 C5 D5 E5 F5 E5 D5 C5 Bb4 A4 G4 F4"
+roteiro = [
+  "Sente-se de frente para o teclado, com a mão direita solta e os dedos curvos, perto do Dó central.",
+  "Ponha o dedo 1 no Fá. Confira as teclas pretas da escala. O Si é bemol: use a tecla preta (Sib).",
+  "Depois do Sib, passe o polegar por baixo e toque o Dó com o dedo 1.",
+  "Chegue ao Fá sem parar e volte pelo mesmo caminho, com os dedos ao contrário.",
+]
+erro = "Confira as teclas: O Si é bemol: use a tecla preta (Sib)."
+conclusao = "Fá maior, subindo e descendo, mão direita, concluída."
+
+[[exercicio]]
+id = "f-maior-me-subdesc"
+titulo = "Fá maior: subindo e descendo, mão esquerda"
+tipo = "escala"
+mao = "esquerda"
+objetivo = "Tocar a escala de Fá maior subindo e descendo, uma oitava, com a mão esquerda."
+instrucoes = "Use a mão esquerda. Suba e volte sem parar na nota mais aguda: Fá, Sol, Lá, Sib, Dó, Ré, Mi, Fá, Mi, Ré, Dó, Sib, Lá, Sol e Fá. O Si é bemol: use a tecla preta (Sib). Comece com o dedo 5."
+dedilhado = "5-4-3-2-1-3-2-1-2-3-1-2-3-4-5"
+passos = "F3 G3 A3 Bb3 C4 D4 E4 F4 E4 D4 C4 Bb3 A3 G3 F3"
+roteiro = [
+  "Sente-se de frente para o teclado, com a mão esquerda solta e os dedos curvos, uma oitava abaixo do Dó central.",
+  "Ponha o dedo 5 no Fá. Confira as teclas pretas da escala. O Si é bemol: use a tecla preta (Sib).",
+  "Depois do Sib, passe o polegar por baixo e toque o Dó com o dedo 1.",
+  "Depois do Dó, passe o dedo 3 por cima do polegar até o Ré.",
+  "Chegue ao Fá sem parar e volte pelo mesmo caminho, com os dedos ao contrário.",
+]
+erro = "Confira as teclas: O Si é bemol: use a tecla preta (Sib)."
+conclusao = "Fá maior, subindo e descendo, mão esquerda, concluída."
+
+[[exercicio]]
+id = "bb-maior-md-sub"
+titulo = "Sib maior: subindo, mão direita"
+tipo = "escala"
+mao = "direita"
+objetivo = "Tocar a escala de Sib maior subindo, uma oitava, com a mão direita."
+instrucoes = "Use a mão direita. Toque Sib, Dó, Ré, Mib, Fá, Sol, Lá e Sib, de baixo para cima. Dois bemóis: Sib e Mib. Comece com o dedo 4. Comece com o dedo 4 no Sib; o polegar toca o Dó."
+dedilhado = "4-1-2-3-1-2-3-4"
+passos = "Bb4 C5 D5 Eb5 F5 G5 A5 Bb5"
+roteiro = [
+  "Sente-se de frente para o teclado, com a mão direita solta e os dedos curvos, perto do Dó central.",
+  "Ponha o dedo 4 no Sib. Confira as teclas pretas da escala. Dois bemóis: Sib e Mib.",
+  "Depois do Sib, passe o polegar por baixo e toque o Dó com o dedo 1.",
+  "Depois do Mib, passe o polegar por baixo e toque o Fá com o dedo 1.",
+  "Termine no Sib com o dedo 4, tocando parelho e sem pressa.",
+]
+erro = "Confira as teclas: Dois bemóis: Sib e Mib."
+conclusao = "Sib maior, subindo, mão direita, concluída."
+
+[[exercicio]]
+id = "bb-maior-md-subdesc"
+titulo = "Sib maior: subindo e descendo, mão direita"
+tipo = "escala"
+mao = "direita"
+objetivo = "Tocar a escala de Sib maior subindo e descendo, uma oitava, com a mão direita."
+instrucoes = "Use a mão direita. Suba e volte sem parar na nota mais aguda: Sib, Dó, Ré, Mib, Fá, Sol, Lá, Sib, Lá, Sol, Fá, Mib, Ré, Dó e Sib. Dois bemóis: Sib e Mib. Comece com o dedo 4. Comece com o dedo 4 no Sib; o polegar toca o Dó."
+dedilhado = "4-1-2-3-1-2-3-4-3-2-1-3-2-1-4"
+passos = "Bb4 C5 D5 Eb5 F5 G5 A5 Bb5 A5 G5 F5 Eb5 D5 C5 Bb4"
+roteiro = [
+  "Sente-se de frente para o teclado, com a mão direita solta e os dedos curvos, perto do Dó central.",
+  "Ponha o dedo 4 no Sib. Confira as teclas pretas da escala. Dois bemóis: Sib e Mib.",
+  "Depois do Sib, passe o polegar por baixo e toque o Dó com o dedo 1.",
+  "Depois do Mib, passe o polegar por baixo e toque o Fá com o dedo 1.",
+  "Chegue ao Sib sem parar e volte pelo mesmo caminho, com os dedos ao contrário.",
+]
+erro = "Confira as teclas: Dois bemóis: Sib e Mib."
+conclusao = "Sib maior, subindo e descendo, mão direita, concluída."
+
+[[exercicio]]
+id = "bb-maior-me-subdesc"
+titulo = "Sib maior: subindo e descendo, mão esquerda"
+tipo = "escala"
+mao = "esquerda"
+objetivo = "Tocar a escala de Sib maior subindo e descendo, uma oitava, com a mão esquerda."
+instrucoes = "Use a mão esquerda. Suba e volte sem parar na nota mais aguda: Sib, Dó, Ré, Mib, Fá, Sol, Lá, Sib, Lá, Sol, Fá, Mib, Ré, Dó e Sib. Dois bemóis: Sib e Mib. Comece com o dedo 3."
+dedilhado = "3-2-1-4-3-2-1-3-1-2-3-4-1-2-3"
+passos = "Bb3 C4 D4 Eb4 F4 G4 A4 Bb4 A4 G4 F4 Eb4 D4 C4 Bb3"
+roteiro = [
+  "Sente-se de frente para o teclado, com a mão esquerda solta e os dedos curvos, uma oitava abaixo do Dó central.",
+  "Ponha o dedo 3 no Sib. Confira as teclas pretas da escala. Dois bemóis: Sib e Mib.",
+  "Depois do Dó, passe o polegar por baixo e toque o Ré com o dedo 1.",
+  "Depois do Ré, passe o dedo 4 por cima do polegar até o Mib.",
+  "Chegue ao Sib sem parar e volte pelo mesmo caminho, com os dedos ao contrário.",
+]
+erro = "Confira as teclas: Dois bemóis: Sib e Mib."
+conclusao = "Sib maior, subindo e descendo, mão esquerda, concluída."

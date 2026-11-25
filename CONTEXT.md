@@ -22,6 +22,10 @@ _Evitar_: módulo, capítulo, disciplina
 Conteúdo pedagógico aprovado e versionado, criado à mão ou derivado de uma Aula, que agrupa Exercícios.
 _Evitar_: aula, módulo
 
+**Trilha**:
+Agrupamento temático e ordenado de Lições (Fundamentos, Escalas, Acordes...); é só um rótulo da Lição, sem arquivo próprio.
+_Evitar_: módulo, curso, categoria
+
 **Exercício**:
 Unidade praticável com um Gabarito, pertencente a uma Lição ou fornecida de fábrica.
 _Evitar_: lição, desafio, atividade

@@ -1,0 +1,133 @@
+[licao]
+id = "tecnica-cinco-dedos-legato"
+trilha = "Técnica"
+ordem_trilha = 40
+ordem = 2
+titulo = "Cinco dedos em legato"
+descricao = "Ligar as notas da posição de cinco dedos, sem buracos entre elas."
+nivel = "iniciante"
+situacao = "proposta"
+fontes = ["Wikipedia: Fingering (music) (https://en.wikipedia.org/wiki/Fingering_(music))", "Dummies: Piano for Dummies, posições de Dó e Sol (https://www.dummies.com/article/academics-the-arts/music/instruments/piano/how-to-play-the-piano-or-keyboard-in-c-and-g-position-153031/)", "Prática pedagógica comum: toque legato em cinco dedos"]
+requer = ["fundamentos-cinco-dedos-do"]
+
+[[exercicio]]
+id = "legato-subindo"
+titulo = "Legato subindo"
+tipo = "sequencia"
+mao = "direita"
+objetivo = "Ligar cinco notas subindo."
+instrucoes = "Toque Dó, Ré, Mi, Fá e Sol ligados. A tecla anterior só sobe quando a próxima desce."
+dedilhado = "1-2-3-4-5"
+passos = "C4 D4 E4 F4 G4"
+roteiro = [
+  "Ponha o polegar direito no Dó central.",
+  "Toque o Dó e mantenha a tecla até tocar o Ré.",
+  "Solte cada tecla só quando a seguinte soar.",
+  "O som deve ficar contínuo, sem buracos.",
+]
+acerto = "Nota ligada."
+erro = "Sem pausa entre as notas."
+
+[[exercicio]]
+id = "legato-descendo"
+titulo = "Legato descendo"
+tipo = "sequencia"
+mao = "direita"
+objetivo = "Ligar cinco notas descendo."
+instrucoes = "Toque Sol, Fá, Mi, Ré e Dó ligados, sem buracos entre as notas."
+dedilhado = "5-4-3-2-1"
+passos = "G4 F4 E4 D4 C4"
+roteiro = [
+  "Comece com o dedo 5 sobre o Sol.",
+  "Toque cada nota descendo, solta e sem pausa.",
+  "Solte a tecla só quando a seguinte soar.",
+  "Termine no Dó com o polegar.",
+]
+acerto = "Nota ligada."
+
+[[exercicio]]
+id = "legato-ida-e-volta"
+titulo = "Legato, ida e volta"
+tipo = "sequencia"
+mao = "direita"
+objetivo = "Ligar a subida e a descida."
+instrucoes = "Suba até o Sol e desça até o Dó, tudo ligado. O Sol soa uma vez só."
+dedilhado = "1-2-3-4-5-4-3-2-1"
+passos = "C4 D4 E4 F4 G4 F4 E4 D4 C4"
+roteiro = [
+  "Posicione o polegar direito no Dó.",
+  "Suba até o Sol ligando as notas.",
+  "No Sol, comece a descer sem parar.",
+  "Termine no Dó com o polegar e solte a tecla com calma.",
+]
+acerto = "Nota ligada."
+
+[[exercicio]]
+id = "legato-esquerda"
+titulo = "Legato na esquerda"
+tipo = "sequencia"
+mao = "esquerda"
+objetivo = "Ligar notas com a mão esquerda."
+instrucoes = "Com a esquerda, suba de Dó a Sol e desça, tudo ligado."
+dedilhado = "5-4-3-2-1-2-3-4-5"
+passos = "C3 D3 E3 F3 G3 F3 E3 D3 C3"
+roteiro = [
+  "Ponha a mão esquerda uma oitava abaixo.",
+  "O dedo 5 fica no Dó grave e o polegar no Sol.",
+  "Suba ligando as notas, depois desça.",
+  "Mantenha o pulso solto, sem tensão.",
+]
+acerto = "Nota ligada."
+
+[[exercicio]]
+id = "legato-em-tercas"
+titulo = "Legato com passos e saltos"
+tipo = "sequencia"
+mao = "direita"
+objetivo = "Ligar notas que alternam passo e salto."
+instrucoes = "Toque Dó, Mi, Ré, Fá, Mi, Sol, e depois desça por passos até o Dó. Tudo ligado."
+dedilhado = "1-3-2-4-3-5-4-3-2-1"
+passos = "C4 E4 D4 F4 E4 G4 F4 E4 D4 C4"
+roteiro = [
+  "Ponha a mão direita na posição de Dó.",
+  "Toque Dó e Mi (dedos 1 e 3), depois Ré e Fá (dedos 2 e 4).",
+  "Siga com Mi e Sol (dedos 3 e 5).",
+  "Desça ligando Fá, Mi, Ré e Dó.",
+]
+acerto = "Nota ligada."
+erro = "Cada dedo solta a tecla só quando o próximo toca."
+
+[[exercicio]]
+id = "legato-em-sol"
+titulo = "Legato em Sol"
+tipo = "sequencia"
+mao = "direita"
+objetivo = "Ligar notas na posição de Sol."
+instrucoes = "Leve a mão para o Sol. Suba até o Ré e desça até o Sol, tudo ligado."
+dedilhado = "1-2-3-4-5-4-3-2-1"
+passos = "G4 A4 B4 C5 D5 C5 B4 A4 G4"
+roteiro = [
+  "Ponha o polegar direito no Sol.",
+  "Suba ligando de Sol a Ré.",
+  "No Ré, desça sem parar.",
+  "Termine no Sol com o polegar.",
+]
+acerto = "Nota ligada."
+
+[[exercicio]]
+id = "duas-maos-em-oitavas"
+titulo = "Duas mãos em oitavas"
+tipo = "intervalos"
+mao = "ambas"
+objetivo = "Tocar as duas mãos juntas, ligadas."
+instrucoes = "Toque as duas mãos ao mesmo tempo, com a direita uma oitava acima: Dó, Ré, Mi, Fá e Sol."
+passos = "[C3 C4] [D3 D4] [E3 E4] [F3 F4] [G3 G4]"
+roteiro = [
+  "Ponha a esquerda no Dó grave e a direita no Dó central.",
+  "Os dedos 1 e 5 ficam sobre as mesmas notas, uma oitava acima.",
+  "Toque as duas notas juntas, com o mesmo som.",
+  "Suba até o Sol, ligando cada par.",
+]
+acerto = "Duas mãos juntas."
+erro = "Toque as duas notas juntas."
+conclusao = "Legato dominado nas duas mãos."

@@ -140,6 +140,9 @@ pub struct EstadoMonitor {
     pasta_sessoes: Option<PathBuf>,
     arquivo_log: Option<PathBuf>,
     mensagem_log: Option<String>,
+    /// Teclado calibrado a conectar sozinho: ao abrir o app e sempre que ele for plugado no USB
+    /// (a varredura de portas, a cada segundo, é quem detecta). Desconectar à mão desliga.
+    porta_automatica: Option<String>,
 }
 
 impl std::fmt::Debug for EstadoMonitor {
@@ -166,6 +169,33 @@ impl EstadoMonitor {
             pasta_sessoes,
             arquivo_log: None,
             mensagem_log: None,
+            porta_automatica: None,
+        }
+    }
+
+    /// Conecta sozinho a este dispositivo (nome da porta como gravado na calibração; o número
+    /// do cliente ALSA pode mudar). `None` desliga a conexão automática.
+    pub fn definir_porta_automatica(&mut self, porta: Option<String>) {
+        self.porta_automatica = porta.filter(|p| !p.trim().is_empty());
+    }
+
+    pub fn porta_automatica(&self) -> Option<&str> {
+        self.porta_automatica.as_deref()
+    }
+
+    /// Sem conexão escolhida e com o teclado calibrado presente na lista, conecta nele.
+    fn conectar_automatico(&mut self) {
+        let Some(alvo) = self.porta_automatica.as_deref() else {
+            return;
+        };
+        if self.gerenciador.porta_selecionada().is_some() {
+            return;
+        }
+        let achada = piano_tutor_midi::fonte::localizar_porta(self.gerenciador.portas(), alvo)
+            .map(str::to_owned);
+        if let Some(p) = achada {
+            self.selecao = Some(p.clone());
+            self.gerenciador.selecionar_porta(&p);
         }
     }
 
@@ -180,7 +210,11 @@ impl EstadoMonitor {
     /// Processa a entrada MIDI (chamar a cada quadro). Guarda os eventos na tabela e devolve as
     /// saídas para o app rotear (Espelho e som), na ordem.
     pub fn atualizar(&mut self) -> Vec<SaidaMidi> {
-        let saidas = self.gerenciador.atualizar();
+        let mut saidas = self.gerenciador.atualizar();
+        if self.porta_automatica.is_some() && self.gerenciador.porta_selecionada().is_none() {
+            self.conectar_automatico();
+            saidas.extend(self.gerenciador.atualizar());
+        }
         for s in &saidas {
             if let SaidaMidi::Evento(e) = s {
                 if self.eventos.len() == MAX_EVENTOS {
@@ -194,7 +228,7 @@ impl EstadoMonitor {
                 .gerenciador
                 .porta_selecionada()
                 .map(str::to_owned)
-                .or_else(|| self.gerenciador.portas().first().cloned());
+                .or_else(|| porta_sugerida(self.gerenciador.portas()).map(str::to_owned));
         }
         saidas
     }
@@ -217,7 +251,11 @@ impl EstadoMonitor {
                     self.gerenciador.selecionar_porta(&p);
                 }
             }
-            AcaoMonitor::Desconectar => self.gerenciador.desconectar(),
+            AcaoMonitor::Desconectar => {
+                // Quem desconecta à mão não quer que o app reconecte sozinho nesta sessão.
+                self.porta_automatica = None;
+                self.gerenciador.desconectar();
+            }
             AcaoMonitor::Reconectar => self.gerenciador.reconectar(),
             AcaoMonitor::IniciarLog => self.iniciar_log(),
             AcaoMonitor::PararLog => self.parar_log(),
@@ -417,8 +455,67 @@ fn texto_sem_glifos(s: &str) -> String {
     s.replace('♯', "#").replace('♭', "b")
 }
 
+/// Porta sugerida quando o usuário ainda não escolheu: a primeira que não seja a porta virtual
+/// "Midi Through" do ALSA (que nunca recebe nada do teclado); se só houver ela, usa a primeira.
+fn porta_sugerida(portas: &[String]) -> Option<&str> {
+    portas
+        .iter()
+        .find(|p| !p.contains("Midi Through"))
+        .or_else(|| portas.first())
+        .map(String::as_str)
+}
+
 #[cfg(test)]
 mod testes {
+    #[test]
+    fn teclado_calibrado_conecta_sozinho_ao_abrir_e_ao_ser_plugado() {
+        use piano_tutor_midi::{FonteFalsa, RelogioManual};
+        let relogio = RelogioManual::novo();
+        let fonte = FonteFalsa::nova(["Midi Through:Midi Through Port-0 14:0"]);
+        let mut m = EstadoMonitor::novo(Box::new(fonte.clone()), Arc::new(relogio.clone()), None);
+        // Gravado na calibração com outro número de cliente ALSA.
+        m.definir_porta_automatica(Some("USB AudioDevice:USB AudioDevice MIDI 1 24:0".into()));
+        m.atualizar();
+        assert_eq!(
+            fonte.conexao_aberta(),
+            None,
+            "ausente: não conecta em outra porta"
+        );
+        fonte.adicionar_porta("USB AudioDevice:USB AudioDevice MIDI 1 28:0");
+        relogio.avancar(Duration::from_secs(2));
+        m.atualizar();
+        assert_eq!(
+            fonte.conexao_aberta().as_deref(),
+            Some("USB AudioDevice:USB AudioDevice MIDI 1 28:0"),
+            "plugado: conecta sozinho"
+        );
+        m.executar(AcaoMonitor::Desconectar);
+        relogio.avancar(Duration::from_secs(2));
+        m.atualizar();
+        assert_eq!(
+            fonte.conexao_aberta(),
+            None,
+            "desconexão manual é respeitada"
+        );
+    }
+
+    #[test]
+    fn sugestao_pula_midi_through() {
+        let portas = vec![
+            "Midi Through:Midi Through Port-0 14:0".to_string(),
+            "USB AudioDevice:USB AudioDevice MIDI 1 24:0".to_string(),
+        ];
+        assert_eq!(
+            super::porta_sugerida(&portas),
+            Some("USB AudioDevice:USB AudioDevice MIDI 1 24:0")
+        );
+        assert_eq!(
+            super::porta_sugerida(&portas[..1]),
+            Some("Midi Through:Midi Through Port-0 14:0")
+        );
+        assert_eq!(super::porta_sugerida(&[]), None);
+    }
+
     use super::*;
     use piano_tutor_midi::{FonteFalsa, RelogioManual};
 

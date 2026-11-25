@@ -1,0 +1,155 @@
+[licao]
+id = "ouvido-frases-curtas"
+trilha = "Ouvido e intervalos"
+ordem_trilha = 50
+ordem = 6
+titulo = "Ouvir e repetir: frases de três notas"
+descricao = "Frases curtas de três notas, por graus e por saltos, subindo e descendo."
+nivel = "iniciante"
+situacao = "proposta"
+fontes = ["Intervalo (música), Wikipédia: https://pt.wikipedia.org/wiki/Intervalo_(música)", "Acorde, Wikipédia: https://pt.wikipedia.org/wiki/Acorde"]
+requer = []
+
+[[exercicio]]
+id = "tres-sobe-graus"
+titulo = "Três notas subindo por graus"
+tipo = "ouvir"
+mao = "direita"
+objetivo = "Ouvir e repetir três notas que sobem por graus."
+instrucoes = "O app toca uma frase de 3 notas. Ouça e repita no teclado, na mesma ordem. As notas são vizinhas. A primeira nota é o Dó."
+passos = "C4 D4 E4"
+roteiro = [
+  "Ouça a frase inteira sem tocar, com atenção ao desenho: sobe, desce ou salta.",
+  "Cantarole ou assobie a frase baixinho para fixá-la.",
+  "Ache no teclado a primeira nota, que é o Dó.",
+  "Toque as notas seguintes, comparando cada uma com o que você ouviu.",
+  "Se errar, peça para ouvir de novo ou use a dica para ver as teclas.",
+]
+erro = "Ouça de novo e tente outra vez. Peça a dica se precisar ver as teclas."
+conclusao = "Você repetiu a frase de ouvido."
+
+[[exercicio]]
+id = "tres-desce-graus"
+titulo = "Três notas descendo por graus"
+tipo = "ouvir"
+mao = "direita"
+objetivo = "Ouvir e repetir três notas que descem por graus."
+instrucoes = "O app toca uma frase de 3 notas. Ouça e repita no teclado, na mesma ordem. As notas são vizinhas. A primeira nota é o Mi."
+passos = "E4 D4 C4"
+roteiro = [
+  "Ouça a frase inteira sem tocar, com atenção ao desenho: sobe, desce ou salta.",
+  "Cantarole ou assobie a frase baixinho para fixá-la.",
+  "Ache no teclado a primeira nota, que é o Mi.",
+  "Toque as notas seguintes, comparando cada uma com o que você ouviu.",
+  "Se errar, peça para ouvir de novo ou use a dica para ver as teclas.",
+]
+erro = "Ouça de novo e tente outra vez. Peça a dica se precisar ver as teclas."
+conclusao = "Você repetiu a frase de ouvido."
+
+[[exercicio]]
+id = "tres-vai-e-volta"
+titulo = "Três notas: vai e volta"
+tipo = "ouvir"
+mao = "direita"
+objetivo = "Ouvir e repetir uma frase que sobe e volta."
+instrucoes = "O app toca uma frase de 3 notas. Ouça e repita no teclado, na mesma ordem. A frase sobe uma nota e volta. A primeira nota é o Ré."
+passos = "D4 E4 D4"
+roteiro = [
+  "Ouça a frase inteira sem tocar, com atenção ao desenho: sobe, desce ou salta.",
+  "Cantarole ou assobie a frase baixinho para fixá-la.",
+  "Ache no teclado a primeira nota, que é o Ré.",
+  "Toque as notas seguintes, comparando cada uma com o que você ouviu.",
+  "Se errar, peça para ouvir de novo ou use a dica para ver as teclas.",
+]
+erro = "Ouça de novo e tente outra vez. Peça a dica se precisar ver as teclas."
+conclusao = "Você repetiu a frase de ouvido."
+
+[[exercicio]]
+id = "tres-arpejo-sobe"
+titulo = "Três notas: arpejo subindo"
+tipo = "ouvir"
+mao = "direita"
+objetivo = "Ouvir e repetir um arpejo subindo."
+instrucoes = "O app toca uma frase de 3 notas. Ouça e repita no teclado, na mesma ordem. Há saltos de terça. A primeira nota é o Dó."
+passos = "C4 E4 G4"
+roteiro = [
+  "Ouça a frase inteira sem tocar, com atenção ao desenho: sobe, desce ou salta.",
+  "Cantarole ou assobie a frase baixinho para fixá-la.",
+  "Ache no teclado a primeira nota, que é o Dó.",
+  "Toque as notas seguintes, comparando cada uma com o que você ouviu.",
+  "Se errar, peça para ouvir de novo ou use a dica para ver as teclas.",
+]
+erro = "Ouça de novo e tente outra vez. Peça a dica se precisar ver as teclas."
+conclusao = "Você repetiu a frase de ouvido."
+
+[[exercicio]]
+id = "tres-arpejo-desce"
+titulo = "Três notas: arpejo descendo"
+tipo = "ouvir"
+mao = "direita"
+objetivo = "Ouvir e repetir um arpejo descendo."
+instrucoes = "O app toca uma frase de 3 notas. Ouça e repita no teclado, na mesma ordem. Há saltos de terça. A primeira nota é o Sol."
+passos = "G4 E4 C4"
+roteiro = [
+  "Ouça a frase inteira sem tocar, com atenção ao desenho: sobe, desce ou salta.",
+  "Cantarole ou assobie a frase baixinho para fixá-la.",
+  "Ache no teclado a primeira nota, que é o Sol.",
+  "Toque as notas seguintes, comparando cada uma com o que você ouviu.",
+  "Se errar, peça para ouvir de novo ou use a dica para ver as teclas.",
+]
+erro = "Ouça de novo e tente outra vez. Peça a dica se precisar ver as teclas."
+conclusao = "Você repetiu a frase de ouvido."
+
+[[exercicio]]
+id = "tres-nota-repetida"
+titulo = "Três notas com repetição"
+tipo = "ouvir"
+mao = "direita"
+objetivo = "Ouvir e repetir uma frase com nota repetida."
+instrucoes = "O app toca uma frase de 3 notas. Ouça e repita no teclado, na mesma ordem. A primeira nota se repete. A primeira nota é o Mi."
+passos = "E4 E4 G4"
+roteiro = [
+  "Ouça a frase inteira sem tocar, com atenção ao desenho: sobe, desce ou salta.",
+  "Cantarole ou assobie a frase baixinho para fixá-la.",
+  "Ache no teclado a primeira nota, que é o Mi.",
+  "Toque as notas seguintes, comparando cada uma com o que você ouviu.",
+  "Se errar, peça para ouvir de novo ou use a dica para ver as teclas.",
+]
+erro = "Ouça de novo e tente outra vez. Peça a dica se precisar ver as teclas."
+conclusao = "Você repetiu a frase de ouvido."
+
+[[exercicio]]
+id = "tres-sobe-quarta"
+titulo = "Três notas: graus e salto"
+tipo = "ouvir"
+mao = "direita"
+objetivo = "Ouvir e repetir uma frase com graus e um salto."
+instrucoes = "O app toca uma frase de 3 notas. Ouça e repita no teclado, na mesma ordem. Dois passos vizinhos e depois um salto. A primeira nota é o Fá."
+passos = "F4 G4 C5"
+roteiro = [
+  "Ouça a frase inteira sem tocar, com atenção ao desenho: sobe, desce ou salta.",
+  "Cantarole ou assobie a frase baixinho para fixá-la.",
+  "Ache no teclado a primeira nota, que é o Fá.",
+  "Toque as notas seguintes, comparando cada uma com o que você ouviu.",
+  "Se errar, peça para ouvir de novo ou use a dica para ver as teclas.",
+]
+erro = "Ouça de novo e tente outra vez. Peça a dica se precisar ver as teclas."
+conclusao = "Você repetiu a frase de ouvido."
+
+[[exercicio]]
+id = "tres-desce-salto"
+titulo = "Três notas: salto e grau"
+tipo = "ouvir"
+mao = "direita"
+objetivo = "Ouvir e repetir uma frase com salto e grau."
+instrucoes = "O app toca uma frase de 3 notas. Ouça e repita no teclado, na mesma ordem. Um salto para baixo e um passo. A primeira nota é o Lá."
+passos = "A4 E4 F4"
+roteiro = [
+  "Ouça a frase inteira sem tocar, com atenção ao desenho: sobe, desce ou salta.",
+  "Cantarole ou assobie a frase baixinho para fixá-la.",
+  "Ache no teclado a primeira nota, que é o Lá.",
+  "Toque as notas seguintes, comparando cada uma com o que você ouviu.",
+  "Se errar, peça para ouvir de novo ou use a dica para ver as teclas.",
+]
+erro = "Ouça de novo e tente outra vez. Peça a dica se precisar ver as teclas."
+conclusao = "Você repetiu a frase de ouvido."

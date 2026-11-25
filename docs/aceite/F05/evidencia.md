@@ -59,3 +59,10 @@ Código: `crates/piano-tutor-app/src/exercicios.rs` (exercícios, classificador,
 ## Status geral
 
 PASS automatizado, offline: 1, 2a, 2b, 3a, 3b, 4a, 4b, 5a, 5b (lógica), 6a, 6b (e 6c, extra). NÃO VERIFICADO ou pendente humano: tela e acessibilidade visual, botão e escuta do replay, teclado real, avaliação pedagógica, e a convenção de grade do compasso (sem andamento próprio do exercício). **A fase não está aceita:** falta a aprovação humana.
+
+## Biblioteca de Lições em arquivo (ADR-0009), 2026-11-23
+
+- Os 10 exercícios saíram do código para `assets/licoes/fundamentos/primeiros-passos.toml`; o progresso antigo (`exN.*`) migra para `primeiros-passos/N` (teste `progresso_v1_migra_para_ids_da_licao_e_v2_volta_igual`).
+- 39 Lições em 6 Trilhas (Fundamentos, Escalas, Acordes, Técnica, Ouvido e intervalos, Melodias), todas `situacao = "proposta"`: escritas por IA a partir de fontes públicas (ver `docs/referencias/fontes-licoes-*.md`), **sem revisão humana e sem teste com aluno ou com o REVAS**.
+- `licoes::testes::licoes_de_fabrica_sao_todas_validas_e_unicas` lê todas as Lições embutidas e falha se alguma tiver erro de formato, nota fora das 61 teclas ou pré-requisito inexistente. A teoria (notas de escalas e acordes) foi conferida por validadores Python dos agentes, fora da CI: NÃO VERIFICADO por humano.
+- Tela: seletores de grupo (Trilha e Lição) e de exercício lado a lado, ficha com roteiro e sequência, atalhos de teclado (testes `atalhos_*`). Captura só em Xvfb; avaliação visual no KDE pendente.

@@ -83,24 +83,44 @@ A shell reutilizável é [`ChicoFigueiredo/bancada`](https://github.com/ChicoFig
 
 ## Rodar no cerebro (Linux)
 
-Antes da primeira execução, instale o SoundFont General MIDI (licença MIT, pacote Debian):
+### 1. Pegar a versão mais recente
+
+O trabalho em andamento fica em branches `claude/project-thread-*` até virar PR. Para testar a versão mais nova, atualize e troque para a branch indicada na thread (hoje, `claude/project-thread-wel6ol`, que empilha Ribbon, dedilhado, exercícios TOML, treino de acordes e o progresso da homologação):
 
 ```bash
-sudo apt install fluid-soundfont-gm
+git fetch origin
+git switch claude/project-thread-wel6ol
+git pull --ff-only
 ```
 
-Compile e abra o aplicativo, a partir da raiz do repositório:
+### 2. Compilar e abrir
+
+A partir da raiz do repositório (a primeira compilação leva alguns minutos; as seguintes, segundos):
 
 ```bash
 cargo build --release
 ./target/release/piano-tutor-app
 ```
 
+Se ainda não tiver Rust, rode antes `./scripts/bootstrap-linux.sh` (só confere) ou `./scripts/bootstrap-linux.sh --sim` (instala via apt).
+
+**SoundFont:** não é preciso instalar nada. Se o app não achar um `FluidR3_GM.sf2` no sistema, ele baixa o FluidR3_GM (licença MIT) da release do repositório na primeira execução, confere o SHA-256 e guarda em `~/.local/share/piano-tutor/`. O progresso aparece na tela Sons e timbres. Para usar o pacote do Debian em vez do download: `sudo apt install fluid-soundfont-gm`.
+
 Para gerar o relatório de diagnóstico do equipamento, use o rótulo do PC:
 
 ```bash
 ./target/release/piano-tutor-diag --rotulo cerebro
 ```
+
+### 3. Ligar o REVAS KB-330
+
+1. Ligue o teclado e conecte o USB direto no PC (evite hub; use cabo de dados, não só de carga).
+2. Confira que o Linux o enxerga: `amidi -l` e `aconnect -l` devem listar o KB-330. Se nem `lsusb` mostrar o aparelho, o problema é cabo, porta ou energia, não o app.
+3. No app, abra **Monitor MIDI**, escolha a porta do REVAS e clique em conectar.
+
+**Porta ocupada ou conexão que falha:** feche instâncias antigas do Piano Tutor (`pgrep -af piano-tutor`, depois `pkill -f piano-tutor-app`) e outros programas MIDI (DAW, VMPK, navegador com Web MIDI) e conecte de novo.
+
+O roteiro completo do que testar com o teclado e onde registrar cada resultado está em [TESTES-COM-HARDWARE.md](docs/planejamento/TESTES-COM-HARDWARE.md).
 
 Guia rápido das telas (menu lateral e Ribbon):
 
@@ -110,6 +130,8 @@ Guia rápido das telas (menu lateral e Ribbon):
 - **Acordes e escalas**: nome do acorde ao vivo, dicionário com inversões, escalas, campo harmônico e desafio de acordes (inclui o modo de ouvido).
 - **Ritmos**: metrônomo de 40 a 220 bpm, compassos 2/4, 3/4, 4/4, 6/8 e 12/8, subdivisões, contagem inicial e tap tempo; bateria de 16 passos com 11 padrões prontos; 8 pads nas teclas 1 a 8; exercício "toque no pulso".
 - **Sons e timbres**: SoundFont, timbres favoritos, divisão e camada do teclado, transposição, reverb e chorus. As preferências são salvas automaticamente.
+- **Perfil** (Início > Perfil): as preferências ficam no banco `~/.local/share/piano-tutor/piano-tutor.sqlite`, por perfil. "De fábrica" devolve tudo ao padrão e nunca muda; mexer em algo com ele ativo cria "Meu perfil" ([ADR-0010](docs/decisoes/ADR-0010-preferencias-em-sqlite-com-perfis.md)).
+- **Conexão automática**: depois da calibração, o app conecta sozinho no teclado ao abrir e quando ele é plugado no USB.
 - **Pânico (Ctrl+.)**: corta todo o som na hora, de qualquer tela.
 
 Gravação e Exercícios estão em andamento.

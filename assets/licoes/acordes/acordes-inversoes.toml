@@ -1,0 +1,159 @@
+[licao]
+id = "acordes-inversoes"
+trilha = "Acordes"
+ordem_trilha = 30
+ordem = 3
+titulo = "Inversões das tríades"
+descricao = "Posição fundamental, 1ª e 2ª inversão de Dó, Fá, Sol maior e Lá menor."
+nivel = "basico"
+situacao = "proposta"
+fontes = ["Acorde, Wikipédia: https://pt.wikipedia.org/wiki/Acorde", "Intervalo (música), Wikipédia: https://pt.wikipedia.org/wiki/Intervalo_(música)", "Introduction to Chords, musictheory.net: https://musictheory.net/lessons/40", "Inversions of piano chords (pianochord.org): https://www.pianochord.org/inversions.html"]
+requer = []
+
+[[exercicio]]
+id = "do-posicao-fundamental"
+titulo = "Dó maior na posição fundamental"
+tipo = "acorde"
+mao = "direita"
+objetivo = "Tocar Dó maior com a fundamental embaixo."
+instrucoes = "Na posição fundamental, a fundamental é a nota mais grave. Toque as notas de cada acorde ao mesmo tempo: Dó maior (Dó, Mi e Sol)."
+passos = "{C4 E4 G4}:Dó_maior"
+roteiro = [
+  "Ponha a mão direita sobre as teclas, com os dedos curvos e o punho solto.",
+  "Primeiro acorde: Dó maior. Ache Dó, Mi e Sol antes de apertar.",
+  "Na posição fundamental, use os dedos 1, 3 e 5.",
+  "Aperte todas as notas ao mesmo tempo, com o mesmo peso, e solte.",
+  "Confira o desenho: maior: terça maior e quinta justa.",
+]
+erro = "Confira as teclas pretas de cada acorde."
+conclusao = "Acordes tocados com as notas certas."
+
+[[exercicio]]
+id = "do-primeira-inversao"
+titulo = "Dó maior na 1ª inversão"
+tipo = "acorde"
+mao = "direita"
+objetivo = "Tocar Dó maior com a terça embaixo."
+instrucoes = "Na 1ª inversão a fundamental sobe uma oitava e a terça (Mi) fica embaixo. Toque as notas de cada acorde ao mesmo tempo: Dó maior (Mi, Sol e Dó)."
+passos = "{E4 G4 C5}:Dó_maior_1ª_inversão"
+roteiro = [
+  "Ponha a mão direita sobre as teclas, com os dedos curvos e o punho solto.",
+  "Primeiro acorde: Dó maior. Ache Mi, Sol e Dó antes de apertar.",
+  "Nas inversões, use os dedos que deixarem a mão mais confortável.",
+  "Aperte todas as notas ao mesmo tempo, com o mesmo peso, e solte.",
+  "Confira o desenho: maior: terça maior e quinta justa.",
+]
+erro = "Confira as teclas pretas de cada acorde."
+conclusao = "Acordes tocados com as notas certas."
+
+[[exercicio]]
+id = "do-segunda-inversao"
+titulo = "Dó maior na 2ª inversão"
+tipo = "acorde"
+mao = "direita"
+objetivo = "Tocar Dó maior com a quinta embaixo."
+instrucoes = "Na 2ª inversão a quinta (Sol) fica embaixo e a fundamental e a terça ficam em cima. Toque as notas de cada acorde ao mesmo tempo: Dó maior (Sol, Dó e Mi)."
+passos = "{G4 C5 E5}:Dó_maior_2ª_inversão"
+roteiro = [
+  "Ponha a mão direita sobre as teclas, com os dedos curvos e o punho solto.",
+  "Primeiro acorde: Dó maior. Ache Sol, Dó e Mi antes de apertar.",
+  "Nas inversões, use os dedos que deixarem a mão mais confortável.",
+  "Aperte todas as notas ao mesmo tempo, com o mesmo peso, e solte.",
+  "Confira o desenho: maior: terça maior e quinta justa.",
+]
+erro = "Confira as teclas pretas de cada acorde."
+conclusao = "Acordes tocados com as notas certas."
+
+[[exercicio]]
+id = "do-tres-posicoes"
+titulo = "Dó maior: as três posições em sequência"
+tipo = "acorde"
+mao = "direita"
+objetivo = "Passar pelas três posições do acorde de Dó maior."
+instrucoes = "Toque a posição fundamental, depois a 1ª inversão e a 2ª, subindo pelo teclado. Toque as notas de cada acorde ao mesmo tempo: Dó maior (Dó, Mi e Sol); Dó maior (Mi, Sol e Dó); Dó maior (Sol, Dó e Mi)."
+passos = "{C4 E4 G4}:Dó_maior {E4 G4 C5}:Dó_maior_1ª_inversão {G4 C5 E5}:Dó_maior_2ª_inversão"
+roteiro = [
+  "Ponha a mão direita sobre as teclas, com os dedos curvos e o punho solto.",
+  "Primeiro acorde: Dó maior. Ache Dó, Mi e Sol antes de apertar.",
+  "Nas inversões, use os dedos que deixarem a mão mais confortável.",
+  "Aperte todas as notas ao mesmo tempo, com o mesmo peso, e solte.",
+  "Passe ao próximo acorde sem pressa, achando as teclas antes de apertar.",
+  "Confira o desenho: maior: terça maior e quinta justa.",
+]
+erro = "Confira as teclas pretas de cada acorde."
+conclusao = "Acordes tocados com as notas certas."
+
+[[exercicio]]
+id = "fa-tres-posicoes"
+titulo = "Fá maior: as três posições"
+tipo = "acorde"
+mao = "direita"
+objetivo = "Tocar as três posições de Fá maior."
+instrucoes = "Mesmo desenho do Dó maior, começando no Fá. Toque as notas de cada acorde ao mesmo tempo: Fá maior (Fá, Lá e Dó); Fá maior (Lá, Dó e Fá); Fá maior (Dó, Fá e Lá)."
+passos = "{F4 A4 C5}:Fá_maior {A4 C5 F5}:Fá_maior_1ª_inversão {C5 F5 A5}:Fá_maior_2ª_inversão"
+roteiro = [
+  "Ponha a mão direita sobre as teclas, com os dedos curvos e o punho solto.",
+  "Primeiro acorde: Fá maior. Ache Fá, Lá e Dó antes de apertar.",
+  "Nas inversões, use os dedos que deixarem a mão mais confortável.",
+  "Aperte todas as notas ao mesmo tempo, com o mesmo peso, e solte.",
+  "Passe ao próximo acorde sem pressa, achando as teclas antes de apertar.",
+  "Confira o desenho: maior: terça maior e quinta justa.",
+]
+erro = "Confira as teclas pretas de cada acorde."
+conclusao = "Acordes tocados com as notas certas."
+
+[[exercicio]]
+id = "sol-tres-posicoes"
+titulo = "Sol maior: as três posições"
+tipo = "acorde"
+mao = "direita"
+objetivo = "Tocar as três posições de Sol maior."
+instrucoes = "Cuidado com o Si e o Ré: a 1ª inversão leva o Si para baixo. Toque as notas de cada acorde ao mesmo tempo: Sol maior (Sol, Si e Ré); Sol maior (Si, Ré e Sol); Sol maior (Ré, Sol e Si)."
+passos = "{G3 B3 D4}:Sol_maior {B3 D4 G4}:Sol_maior_1ª_inversão {D4 G4 B4}:Sol_maior_2ª_inversão"
+roteiro = [
+  "Ponha a mão direita sobre as teclas, com os dedos curvos e o punho solto.",
+  "Primeiro acorde: Sol maior. Ache Sol, Si e Ré antes de apertar.",
+  "Nas inversões, use os dedos que deixarem a mão mais confortável.",
+  "Aperte todas as notas ao mesmo tempo, com o mesmo peso, e solte.",
+  "Passe ao próximo acorde sem pressa, achando as teclas antes de apertar.",
+  "Confira o desenho: maior: terça maior e quinta justa.",
+]
+erro = "Confira as teclas pretas de cada acorde."
+conclusao = "Acordes tocados com as notas certas."
+
+[[exercicio]]
+id = "la-menor-tres-posicoes"
+titulo = "Lá menor: as três posições"
+tipo = "acorde"
+mao = "direita"
+objetivo = "Tocar as três posições de Lá menor."
+instrucoes = "A terça menor (Dó) fica embaixo na 1ª inversão e a quinta (Mi) na 2ª. Toque as notas de cada acorde ao mesmo tempo: Lá menor (Lá, Dó e Mi); Lá menor (Dó, Mi e Lá); Lá menor (Mi, Lá e Dó)."
+passos = "{A3 C4 E4}:Lá_menor {C4 E4 A4}:Lá_menor_1ª_inversão {E4 A4 C5}:Lá_menor_2ª_inversão"
+roteiro = [
+  "Ponha a mão direita sobre as teclas, com os dedos curvos e o punho solto.",
+  "Primeiro acorde: Lá menor. Ache Lá, Dó e Mi antes de apertar.",
+  "Nas inversões, use os dedos que deixarem a mão mais confortável.",
+  "Aperte todas as notas ao mesmo tempo, com o mesmo peso, e solte.",
+  "Passe ao próximo acorde sem pressa, achando as teclas antes de apertar.",
+  "Confira o desenho: menor: terça menor e quinta justa.",
+]
+erro = "Confira as teclas pretas de cada acorde."
+conclusao = "Acordes tocados com as notas certas."
+
+[[exercicio]]
+id = "do-inversoes-em-arpejo"
+titulo = "Dó maior: inversões em arpejo"
+tipo = "arpejo"
+mao = "direita"
+objetivo = "Confirmar cada inversão tocando as notas uma a uma, na ordem exata."
+instrucoes = "Toque Dó, Mi, Sol (fundamental), depois Mi, Sol, Dó (1ª inversão), depois Sol, Dó, Mi (2ª inversão), uma nota de cada vez."
+passos = "C4 E4 G4 E4 G4 C5 G4 C5 E5"
+roteiro = [
+  "Ponha a mão direita sobre as teclas, perto do Dó central.",
+  "Toque Dó, Mi e Sol, uma nota de cada vez, para ouvir a posição fundamental.",
+  "Toque Mi, Sol e Dó agudo, a 1ª inversão: a fundamental sobe uma oitava.",
+  "Toque Sol, Dó e Mi agudos, a 2ª inversão.",
+  "Ouça que as notas são as mesmas e só a ordem muda.",
+]
+erro = "Cada grupo de três notas começa numa nota diferente do acorde."
+conclusao = "As três inversões, nota a nota."

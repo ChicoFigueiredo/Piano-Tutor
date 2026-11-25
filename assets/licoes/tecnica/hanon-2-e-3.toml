@@ -1,0 +1,134 @@
+[licao]
+id = "tecnica-hanon-2-e-3"
+trilha = "Técnica"
+ordem_trilha = 40
+ordem = 4
+titulo = "Hanon 2 e 3, versão curta"
+descricao = "Os exercícios 2 e 3 de Hanon reduzidos a um e dois grupos, com o dedo 5 mais ativo."
+nivel = "basico"
+situacao = "proposta"
+fontes = ["Hanon, C.-L., Le Pianiste virtuose en 60 exercices (Boulogne, 1873), exercícios 1 a 3, domínio público (IMSLP: https://imslp.org/wiki/The_Virtuoso_Pianist_(Hanon,_Charles-Louis))", "Mutopia Project: The Virtuoso Pianist, Part I (https://www.mutopiaproject.org/cgibin/piece-info.cgi?id=2037), usada só para conferir notas e dedos", "Wikipedia: The Virtuoso Pianist in 60 Exercises (https://en.wikipedia.org/wiki/The_Virtuoso_Pianist_in_60_Exercises)"]
+requer = ["tecnica-hanon-1"]
+
+[[exercicio]]
+id = "hanon-2-direita"
+titulo = "Hanon 2, direita"
+tipo = "sequencia"
+mao = "direita"
+objetivo = "Tocar o grupo do Hanon 2 com a direita."
+instrucoes = "Toque Dó, Mi, Lá, Sol, Fá, Sol, Fá e Mi. Os dedos são 1, 2, 5, 4, 3, 4, 3 e 2."
+dedilhado = "1-2-5-4-3-4-3-2"
+passos = "C4 E4 A4 G4 F4 G4 F4 E4"
+roteiro = [
+  "Ponha o polegar direito no Dó central.",
+  "Toque o Dó (1) e o Mi (2), e abra a mão até o Lá (5).",
+  "Volte tocando Sol (4), Fá (3), Sol (4) e Fá (3).",
+  "Termine com o dedo 2 no Mi.",
+]
+acerto = "Nota certa."
+erro = "O quinto dedo toca o Lá, depois Sol, Fá, Sol, Fá e Mi."
+
+[[exercicio]]
+id = "hanon-2-esquerda"
+titulo = "Hanon 2, esquerda"
+tipo = "sequencia"
+mao = "esquerda"
+objetivo = "Tocar o grupo do Hanon 2 com a esquerda."
+instrucoes = "Com a esquerda, uma oitava abaixo, toque Dó, Mi, Lá, Sol, Fá, Sol, Fá e Mi."
+dedilhado = "5-3-1-2-3-2-3-4"
+passos = "C3 E3 A3 G3 F3 G3 F3 E3"
+roteiro = [
+  "Ponha a mão esquerda no Dó grave, com o dedo 5 nele.",
+  "Toque o Dó (5), pule para o Mi (3) e abra até o Lá (1).",
+  "Volte com Sol (2), Fá (3), Sol (2) e Fá (3).",
+  "Termine com o dedo 4 no Mi.",
+]
+acerto = "Nota certa."
+
+[[exercicio]]
+id = "hanon-2-dois-grupos"
+titulo = "Hanon 2, dois grupos"
+tipo = "sequencia"
+mao = "direita"
+objetivo = "Subir um passo e repetir o desenho do Hanon 2."
+instrucoes = "Toque o primeiro grupo e depois o mesmo desenho começando no Ré: Ré, Fá, Si, Lá, Sol, Lá, Sol, Fá."
+dedilhado = "1-2-5-4-3-4-3-2"
+passos = "C4 E4 A4 G4 F4 G4 F4 E4 D4 F4 B4 A4 G4 A4 G4 F4"
+roteiro = [
+  "Ponha o polegar direito no Dó central.",
+  "Toque o grupo do Hanon 2 até voltar ao Mi.",
+  "Suba o polegar para o Ré, uma tecla acima.",
+  "Toque o mesmo desenho: Ré, Fá, Si, Lá, Sol, Lá, Sol, Fá.",
+]
+acerto = "Nota certa."
+
+[[exercicio]]
+id = "hanon-3-direita"
+titulo = "Hanon 3, direita"
+tipo = "sequencia"
+mao = "direita"
+objetivo = "Tocar o grupo do Hanon 3 com a direita."
+instrucoes = "Toque Dó, Mi, Lá, Sol, Fá, Mi, Fá e Sol. Os dedos são 1, 2, 5, 4, 3, 2, 3 e 4."
+dedilhado = "1-2-5-4-3-2-3-4"
+passos = "C4 E4 A4 G4 F4 E4 F4 G4"
+roteiro = [
+  "Ponha o polegar direito no Dó central.",
+  "Toque Dó (1), Mi (2) e Lá (5), como no Hanon 2.",
+  "Desça tocando Sol (4), Fá (3) e Mi (2).",
+  "Suba de novo com Fá (3) e Sol (4).",
+]
+acerto = "Nota certa."
+erro = "Depois do Lá, desça até o Mi e volte ao Sol."
+
+[[exercicio]]
+id = "hanon-3-esquerda"
+titulo = "Hanon 3, esquerda"
+tipo = "sequencia"
+mao = "esquerda"
+objetivo = "Tocar o grupo do Hanon 3 com a esquerda."
+instrucoes = "Com a esquerda, uma oitava abaixo, toque Dó, Mi, Lá, Sol, Fá, Mi, Fá e Sol."
+dedilhado = "5-3-1-2-3-4-3-2"
+passos = "C3 E3 A3 G3 F3 E3 F3 G3"
+roteiro = [
+  "Ponha a mão esquerda no Dó grave, com o dedo 5 nele.",
+  "Toque Dó (5), Mi (3) e Lá (1).",
+  "Desça com Sol (2), Fá (3) e Mi (4).",
+  "Suba com Fá (3) e Sol (2).",
+]
+acerto = "Nota certa."
+
+[[exercicio]]
+id = "hanon-3-dois-grupos"
+titulo = "Hanon 3, dois grupos"
+tipo = "sequencia"
+mao = "direita"
+objetivo = "Subir um passo e repetir o desenho do Hanon 3."
+instrucoes = "Toque o primeiro grupo e depois o mesmo desenho começando no Ré: Ré, Fá, Si, Lá, Sol, Fá, Sol e Lá."
+dedilhado = "1-2-5-4-3-2-3-4"
+passos = "C4 E4 A4 G4 F4 E4 F4 G4 D4 F4 B4 A4 G4 F4 G4 A4"
+roteiro = [
+  "Ponha o polegar direito no Dó central.",
+  "Toque o grupo do Hanon 3 até o Sol.",
+  "Suba o polegar para o Ré, uma tecla acima.",
+  "Toque o mesmo desenho: Ré, Fá, Si, Lá, Sol, Fá, Sol e Lá.",
+]
+acerto = "Nota certa."
+
+[[exercicio]]
+id = "ouvir-hanon-2"
+titulo = "Ouvir e repetir o Hanon 2"
+tipo = "ouvir"
+mao = "direita"
+objetivo = "Ouvir o grupo do Hanon 2 e repeti-lo."
+instrucoes = "Ouça o grupo uma vez. Depois toque de memória."
+dedilhado = "1-2-5-4-3-4-3-2"
+passos = "C4 E4 A4 G4 F4 G4 F4 E4"
+roteiro = [
+  "Ouça o grupo com atenção, até o fim.",
+  "Ponha o polegar direito no Dó central.",
+  "Lembre do desenho: Dó, Mi, e o salto até o Lá.",
+  "Toque de memória, com calma e dedos curvos.",
+]
+acerto = "Grupo repetido."
+erro = "Ouça de novo."
+conclusao = "Hanon 2 e 3 curtos completos."
