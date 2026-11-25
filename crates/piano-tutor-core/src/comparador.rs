@@ -595,8 +595,9 @@ mod testes {
         let mut pr = Pratica::nova(
             &e,
             ConfigPratica {
-                modo: ModoPratica::Espera,
+                modo: ModoPratica::NotaANota,
                 tolerancia_ms: 0.0,
+                ..ConfigPratica::default()
             },
         );
         assert_eq!(pr.nota_tocada(60, 0.0), Veredito::Acerto);

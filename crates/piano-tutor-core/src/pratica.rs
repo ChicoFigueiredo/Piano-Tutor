@@ -1,7 +1,7 @@
-//! Lógica pura do modo "Praticar" da partitura (F07): confere as notas que o aluno toca contra
-//! os eventos esperados, em dois modos.
+//! Lógica pura do modo "Praticar" da partitura (F07) e do Player de Aula: confere as notas que o
+//! aluno toca contra os eventos esperados, em três modos.
 //!
-//! - [`ModoPratica::Espera`]: o cursor fica parado num passo (um instante com uma ou mais notas)
+//! - [`ModoPratica::NotaANota`] (antes "Espera"): o cursor fica parado num passo (um instante com uma ou mais notas)
 //!   até o aluno tocar todas as notas dele, em qualquer ordem. Nota errada marca as pendentes do
 //!   passo de vermelho e conta como extra; o passo só avança quando as certas são tocadas. O
 //!   tempo não importa.
@@ -9,6 +9,12 @@
 //!   janela de tolerância (ms) em torno do seu instante, e o pareamento é o do módulo
 //!   [`crate::comparador`] (ótimo por altura). Esperada sem par depois do fim da janela vira
 //!   falta (vermelha); tocada sem par é extra.
+//! - [`ModoPratica::EsperaTocar`]: o relógio anda no andamento e cada passo tem a mesma janela
+//!   de tolerância; se a janela de um passo vence sem todas as notas dele, a prática **para**
+//!   ([`Pratica::parada`]) e quem chama congela o relógio. Nota errada é extra, mas não para.
+//!   Ao completar o passo parado, a prática pede a retomada ([`Pratica::tomar_retomada`]) num
+//!   instante anterior conforme [`Retomada`]; os passos voltados são conferidos de novo. Cada
+//!   parada conta como falta (ver [`Resumo::paradas`]).
 //!
 //! Sem relógio, sem UI, sem hardware: os instantes entram como segundos desde o início da
 //! prática (podem ser negativos, para a contagem de entrada). Nada aqui foi ligado a um teclado
@@ -21,20 +27,104 @@ use crate::comparador::{
 /// Como a prática avança.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum ModoPratica {
-    Espera,
+    /// Para em cada nota até a certa, sem andamento (nome antigo: "Espera").
+    NotaANota,
+    /// Anda no andamento e só para quando a janela de uma nota vence sem ela.
+    EsperaTocar,
+    /// Segue o andamento sem parar.
     Tempo,
 }
 
 impl ModoPratica {
-    pub const TODOS: [Self; 2] = [Self::Espera, Self::Tempo];
+    pub const TODOS: [Self; 3] = [Self::NotaANota, Self::EsperaTocar, Self::Tempo];
 
     pub fn rotulo(self) -> &'static str {
         match self {
-            Self::Espera => "Esperar a nota certa",
+            Self::NotaANota => "Nota a nota",
+            Self::EsperaTocar => "Espera tocar",
             Self::Tempo => "Seguir o andamento",
         }
     }
+
+    /// Chave estável para gravar (a antiga "Espera" é lida como Nota a nota).
+    pub fn chave(self) -> &'static str {
+        match self {
+            Self::NotaANota => "nota_a_nota",
+            Self::EsperaTocar => "espera_tocar",
+            Self::Tempo => "tempo",
+        }
+    }
+
+    /// Lê a chave (ou o nome do `Debug`); aceita o nome antigo "Espera"/"espera".
+    pub fn de_chave(t: &str) -> Option<Self> {
+        match t.trim() {
+            "nota_a_nota" | "NotaANota" | "Espera" | "espera" => Some(Self::NotaANota),
+            "espera_tocar" | "EsperaTocar" => Some(Self::EsperaTocar),
+            "tempo" | "Tempo" => Some(Self::Tempo),
+            _ => None,
+        }
+    }
+
+    /// O relógio anda no andamento (Tempo e Espera tocar).
+    pub fn tem_andamento(self) -> bool {
+        self != Self::NotaANota
+    }
 }
+
+/// No Espera tocar: quanto voltar ao retomar depois de uma parada.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub enum Retomada {
+    /// Continua da nota em que parou.
+    #[default]
+    Zero,
+    Uma,
+    Duas,
+    Quatro,
+    /// Volta ao início da lição.
+    Inicio,
+}
+
+impl Retomada {
+    pub const TODAS: [Self; 5] = [Self::Zero, Self::Uma, Self::Duas, Self::Quatro, Self::Inicio];
+
+    /// Quantas notas (passos) voltar; `None` = do início.
+    pub fn notas(self) -> Option<usize> {
+        match self {
+            Self::Zero => Some(0),
+            Self::Uma => Some(1),
+            Self::Duas => Some(2),
+            Self::Quatro => Some(4),
+            Self::Inicio => None,
+        }
+    }
+
+    pub fn rotulo(self) -> &'static str {
+        match self {
+            Self::Zero => "Da nota em que parou",
+            Self::Uma => "Voltar 1 nota",
+            Self::Duas => "Voltar 2 notas",
+            Self::Quatro => "Voltar 4 notas",
+            Self::Inicio => "Do início da lição",
+        }
+    }
+
+    pub fn chave(self) -> &'static str {
+        match self {
+            Self::Zero => "0",
+            Self::Uma => "1",
+            Self::Duas => "2",
+            Self::Quatro => "4",
+            Self::Inicio => "inicio",
+        }
+    }
+
+    pub fn de_chave(t: &str) -> Option<Self> {
+        Self::TODAS.into_iter().find(|r| r.chave() == t.trim())
+    }
+}
+
+/// Batidas de contagem antes de retomar depois de uma parada no Espera tocar.
+pub const BATIDAS_RETOMADA: f64 = 2.0;
 
 /// Configuração da prática.
 #[derive(Clone, Copy, Debug, PartialEq)]
@@ -42,13 +132,16 @@ pub struct ConfigPratica {
     pub modo: ModoPratica,
     /// Janela de acerto no modo Tempo, em ms (limitada a `0..=TOLERANCIA_MAXIMA_MS`).
     pub tolerancia_ms: f64,
+    /// No Espera tocar: quanto voltar ao retomar.
+    pub retomada: Retomada,
 }
 
 impl Default for ConfigPratica {
     fn default() -> Self {
         Self {
-            modo: ModoPratica::Espera,
+            modo: ModoPratica::NotaANota,
             tolerancia_ms: 150.0,
+            retomada: Retomada::Zero,
         }
     }
 }
@@ -87,17 +180,31 @@ pub struct Resumo {
     pub desvio_medio_ms: Option<f64>,
     /// Desvio absoluto médio dos acertos, em ms. Só no modo Tempo.
     pub desvio_absoluto_ms: Option<f64>,
+    /// Vezes que o Espera tocar parou (já somadas em `faltas`); zero nos outros modos.
+    pub paradas: usize,
 }
 
 impl Resumo {
-    /// Percentual de esperadas acertadas (100 se não havia nada esperado).
+    /// Percentual de acertos sobre as esperadas mais as paradas (cada parada é uma falta a
+    /// mais); 100 se não havia nada esperado.
     pub fn precisao_pct(&self) -> f64 {
-        if self.esperadas == 0 {
+        let base = self.esperadas + self.paradas;
+        if base == 0 {
             100.0
         } else {
-            100.0 * self.acertos as f64 / self.esperadas as f64
+            100.0 * self.acertos as f64 / base as f64
         }
     }
+}
+
+/// No Espera tocar: onde está o fluxo.
+#[derive(Clone, Copy, Debug, PartialEq)]
+enum Fluxo {
+    Andando,
+    /// Parou no passo `passo`, com o relógio congelado em `t_s`.
+    Parada { passo: usize, t_s: f64 },
+    /// O passo parado foi completado: retomar em `t_s` (instante da partitura).
+    Retomar { t_s: f64 },
 }
 
 /// Sessão de prática sobre uma lista de notas esperadas.
@@ -118,6 +225,12 @@ pub struct Pratica {
     proximo_prazo_s: f64,
     extras: Vec<usize>,
     desvios_ms: Vec<f64>,
+    // Espera tocar
+    fluxo: Fluxo,
+    paradas: usize,
+    extras_et: usize,
+    /// Desvio (ms) do acerto de cada nota esperada, se houver.
+    desvio_et: Vec<Option<f64>>,
 }
 
 impl Pratica {
@@ -173,6 +286,10 @@ impl Pratica {
             proximo_prazo_s: f64::INFINITY,
             extras: Vec::new(),
             desvios_ms: Vec::new(),
+            fluxo: Fluxo::Andando,
+            paradas: 0,
+            extras_et: 0,
+            desvio_et: vec![None; n],
         };
         s.recalcular_prazo();
         s
@@ -210,7 +327,11 @@ impl Pratica {
             return true;
         }
         match self.config.modo {
-            ModoPratica::Espera => self.passo_atual >= self.passos.len(),
+            ModoPratica::NotaANota => self.passo_atual >= self.passos.len(),
+            ModoPratica::EsperaTocar => {
+                self.fluxo == Fluxo::Andando
+                    && self.estados.iter().all(|e| *e == EstadoEvento::Acertou)
+            }
             ModoPratica::Tempo => self.estados.iter().all(|e| *e != EstadoEvento::Pendente),
         }
     }
@@ -222,12 +343,13 @@ impl Pratica {
         }
         self.encerrada = true;
         match self.config.modo {
-            ModoPratica::Espera => {
+            ModoPratica::NotaANota | ModoPratica::EsperaTocar => {
                 for e in &mut self.estados {
                     if *e != EstadoEvento::Acertou {
                         *e = EstadoEvento::Errou;
                     }
                 }
+                self.fluxo = Fluxo::Andando;
             }
             ModoPratica::Tempo => self.recalcular(),
         }
@@ -239,15 +361,22 @@ impl Pratica {
             return Veredito::Ignorada;
         }
         match self.config.modo {
-            ModoPratica::Espera => self.tocada_espera(midi),
+            ModoPratica::NotaANota => self.tocada_espera(midi),
+            ModoPratica::EsperaTocar => self.tocada_espera_tocar(midi, t_s),
             ModoPratica::Tempo => self.tocada_tempo(midi, t_s),
         }
     }
 
-    /// Faz o tempo andar até `agora_s` (modo Tempo). Devolve `true` se algum estado mudou.
+    /// Faz o tempo andar até `agora_s` (modos Tempo e Espera tocar). Devolve `true` se algum
+    /// estado mudou (no Espera tocar, inclusive quando a prática para).
     pub fn avancar_tempo(&mut self, agora_s: f64) -> bool {
-        if self.config.modo != ModoPratica::Tempo || self.encerrada || !agora_s.is_finite() {
+        if self.encerrada || !agora_s.is_finite() {
             return false;
+        }
+        match self.config.modo {
+            ModoPratica::NotaANota => return false,
+            ModoPratica::EsperaTocar => return self.avancar_espera_tocar(agora_s),
+            ModoPratica::Tempo => {}
         }
         if agora_s > self.agora_s {
             self.agora_s = agora_s;
@@ -274,19 +403,24 @@ impl Pratica {
                 .iter()
                 .filter(|e| **e == EstadoEvento::Errou)
                 .count(),
-            (ModoPratica::Espera, false) => 0,
-        };
+            (ModoPratica::NotaANota | ModoPratica::EsperaTocar, false) => 0,
+        } + self.paradas;
         let extras = match self.config.modo {
-            ModoPratica::Espera => self.extras_espera,
+            ModoPratica::NotaANota => self.extras_espera,
+            ModoPratica::EsperaTocar => self.extras_et,
             ModoPratica::Tempo => self.extras.len(),
         };
-        let (desvio_medio_ms, desvio_absoluto_ms) = if self.desvios_ms.is_empty() {
+        let desvios: Vec<f64> = match self.config.modo {
+            ModoPratica::EsperaTocar => self.desvio_et.iter().flatten().copied().collect(),
+            _ => self.desvios_ms.clone(),
+        };
+        let (desvio_medio_ms, desvio_absoluto_ms) = if desvios.is_empty() {
             (None, None)
         } else {
-            let n = self.desvios_ms.len() as f64;
+            let n = desvios.len() as f64;
             (
-                Some(self.desvios_ms.iter().sum::<f64>() / n),
-                Some(self.desvios_ms.iter().map(|d| d.abs()).sum::<f64>() / n),
+                Some(desvios.iter().sum::<f64>() / n),
+                Some(desvios.iter().map(|d| d.abs()).sum::<f64>() / n),
             )
         };
         Resumo {
@@ -296,7 +430,152 @@ impl Pratica {
             extras,
             desvio_medio_ms,
             desvio_absoluto_ms,
+            paradas: self.paradas,
         }
+    }
+
+    /// Espera tocar: o instante (da partitura) em que a prática está parada, se estiver. Quem
+    /// chama congela o relógio (vídeo, acompanhamento, metrônomo) enquanto isto for `Some`.
+    pub fn parada(&self) -> Option<f64> {
+        match self.fluxo {
+            Fluxo::Parada { t_s, .. } => Some(t_s),
+            _ => None,
+        }
+    }
+
+    /// Espera tocar: índices (em `esperados`) do passo parado que ainda faltam tocar.
+    pub fn notas_da_parada(&self) -> Vec<usize> {
+        match self.fluxo {
+            Fluxo::Parada { passo, .. } => self.passos[passo]
+                .iter()
+                .copied()
+                .filter(|&i| self.estados[i] != EstadoEvento::Acertou)
+                .collect(),
+            _ => Vec::new(),
+        }
+    }
+
+    /// Espera tocar: há retomada pedida (o aluno completou o passo parado)?
+    pub fn retomada_pendente(&self) -> Option<f64> {
+        match self.fluxo {
+            Fluxo::Retomar { t_s } => Some(t_s),
+            _ => None,
+        }
+    }
+
+    /// Espera tocar: consome a retomada pedida e devolve o instante da partitura de onde tocar
+    /// de novo. Quem chama conta [`BATIDAS_RETOMADA`] tempos e põe o relógio nesse instante
+    /// (ou um pouco antes); o tempo da prática pode então andar de novo a partir dali.
+    pub fn tomar_retomada(&mut self) -> Option<f64> {
+        let t = self.retomada_pendente()?;
+        self.fluxo = Fluxo::Andando;
+        self.agora_s = f64::NEG_INFINITY;
+        Some(t)
+    }
+
+    // --- Espera tocar ----------------------------------------------------------------------
+
+    fn passo_completo(&self, p: usize) -> bool {
+        self.passos[p]
+            .iter()
+            .all(|&i| self.estados[i] == EstadoEvento::Acertou)
+    }
+
+    fn avancar_espera_tocar(&mut self, agora_s: f64) -> bool {
+        if self.fluxo != Fluxo::Andando {
+            return false;
+        }
+        if agora_s > self.agora_s {
+            self.agora_s = agora_s;
+        }
+        let tol_s = self.config.tolerancia_ms / 1000.0;
+        // O primeiro passo incompleto cujo prazo já venceu.
+        let vencido = (0..self.passos.len()).find(|&p| {
+            !self.passo_completo(p)
+                && self.esperados[self.passos[p][0]].inicio_s + tol_s < self.agora_s
+        });
+        let Some(p) = vencido else {
+            return false;
+        };
+        let t_s = self.esperados[self.passos[p][0]].inicio_s + tol_s;
+        self.agora_s = t_s;
+        self.paradas += 1;
+        self.fluxo = Fluxo::Parada { passo: p, t_s };
+        true
+    }
+
+    fn tocada_espera_tocar(&mut self, midi: u8, t_s: f64) -> Veredito {
+        match self.fluxo {
+            Fluxo::Parada { passo, .. } => {
+                let achado = self.passos[passo].iter().copied().find(|&i| {
+                    self.esperados[i].midi == midi && self.estados[i] != EstadoEvento::Acertou
+                });
+                let Some(i) = achado else {
+                    self.extras_et += 1;
+                    return Veredito::Erro;
+                };
+                self.estados[i] = EstadoEvento::Acertou;
+                self.desvio_et[i] = None;
+                if self.passo_completo(passo) {
+                    self.preparar_retomada(passo);
+                }
+                Veredito::Acerto
+            }
+            Fluxo::Andando | Fluxo::Retomar { .. } => {
+                if t_s > self.agora_s && matches!(self.fluxo, Fluxo::Andando) {
+                    self.agora_s = t_s;
+                }
+                let tol_s = self.config.tolerancia_ms / 1000.0;
+                // A nota pendente mais próxima no tempo, dentro da janela, com essa altura.
+                let achado = (0..self.esperados.len())
+                    .filter(|&i| {
+                        self.esperados[i].midi == midi
+                            && self.estados[i] != EstadoEvento::Acertou
+                            && (self.esperados[i].inicio_s - t_s).abs() <= tol_s + 1e-9
+                    })
+                    .min_by(|&a, &b| {
+                        (self.esperados[a].inicio_s - t_s)
+                            .abs()
+                            .total_cmp(&(self.esperados[b].inicio_s - t_s).abs())
+                    });
+                match achado {
+                    Some(i) => {
+                        self.estados[i] = EstadoEvento::Acertou;
+                        self.desvio_et[i] = Some((t_s - self.esperados[i].inicio_s) * 1000.0);
+                        Veredito::Acerto
+                    }
+                    None => {
+                        self.extras_et += 1;
+                        Veredito::Erro
+                    }
+                }
+            }
+        }
+    }
+
+    /// O passo parado `passo` foi completado: decide de onde retomar e reabre os voltados.
+    fn preparar_retomada(&mut self, passo: usize) {
+        let desde = match self.config.retomada.notas() {
+            Some(n) => passo.saturating_sub(n),
+            None => 0,
+        };
+        // Com 0 o passo parado fica cumprido; voltando, ele e os anteriores são conferidos de
+        // novo.
+        if self.config.retomada != Retomada::Zero {
+            for p in desde..=passo {
+                for &i in &self.passos[p] {
+                    self.estados[i] = EstadoEvento::Pendente;
+                    self.desvio_et[i] = None;
+                }
+            }
+        }
+        if self.estados.iter().all(|e| *e == EstadoEvento::Acertou) {
+            // Era o último passo: nada a retomar.
+            self.fluxo = Fluxo::Andando;
+            return;
+        }
+        let t_s = self.esperados[self.passos[desde][0]].inicio_s;
+        self.fluxo = Fluxo::Retomar { t_s };
     }
 
     // --- Espera ----------------------------------------------------------------------------
@@ -404,13 +683,190 @@ mod testes {
         ConfigPratica {
             modo,
             tolerancia_ms: ms,
+            retomada: Retomada::Zero,
         }
+    }
+
+    fn et(ms: f64, retomada: Retomada) -> ConfigPratica {
+        ConfigPratica {
+            modo: ModoPratica::EsperaTocar,
+            tolerancia_ms: ms,
+            retomada,
+        }
+    }
+
+    /// Dó Ré Mi Fá Sol, uma por segundo.
+    fn escala() -> Vec<EventoEsperado> {
+        (0..5).map(|k| esp([60, 62, 64, 65, 67][k], k as f64)).collect()
+    }
+
+    #[test]
+    fn espera_tocar_para_ao_fim_da_janela() {
+        let e = escala();
+        let mut p = Pratica::nova(&e, et(150.0, Retomada::Zero));
+        assert_eq!(p.nota_tocada(60, 0.05), Veredito::Acerto);
+        assert!(!p.avancar_tempo(1.1), "ainda dentro da janela do Ré");
+        assert_eq!(p.parada(), None);
+        assert!(p.avancar_tempo(1.2), "a janela do Ré venceu");
+        let t = p.parada().expect("parou");
+        assert!((t - 1.15).abs() < 1e-9, "congela no fim da janela: {t}");
+        assert_eq!(p.notas_da_parada(), vec![1]);
+        // Parada, o tempo não anda e não para de novo.
+        assert!(!p.avancar_tempo(5.0));
+        assert_eq!(p.resumo().paradas, 1);
+        assert_eq!(p.resumo().faltas, 1);
+        assert!(!p.concluida());
+    }
+
+    #[test]
+    fn espera_tocar_nota_errada_nao_para() {
+        let e = escala();
+        let mut p = Pratica::nova(&e, et(150.0, Retomada::Zero));
+        assert_eq!(p.nota_tocada(61, 0.0), Veredito::Erro);
+        assert_eq!(p.parada(), None, "errar não para");
+        assert_eq!(p.nota_tocada(60, 0.1), Veredito::Acerto, "ainda dá tempo");
+        assert!(!p.avancar_tempo(0.9));
+        assert_eq!(p.parada(), None);
+        let r = p.resumo();
+        assert_eq!((r.acertos, r.extras, r.paradas), (1, 1, 0));
+        // Parado, nota errada é extra e não libera.
+        assert!(p.avancar_tempo(1.2));
+        assert_eq!(p.nota_tocada(64, 9.0), Veredito::Erro);
+        assert!(p.parada().is_some());
+        assert_eq!(p.resumo().extras, 2);
+    }
+
+    #[test]
+    fn espera_tocar_acorde_incompleto_para() {
+        let e = [esp(60, 0.0), esp(64, 0.0), esp(67, 0.0), esp(72, 1.0)];
+        let mut p = Pratica::nova(&e, et(100.0, Retomada::Zero));
+        assert_eq!(p.nota_tocada(60, 0.0), Veredito::Acerto);
+        assert_eq!(p.nota_tocada(67, 0.02), Veredito::Acerto);
+        assert!(p.avancar_tempo(0.2), "faltou o Mi do acorde");
+        assert_eq!(p.notas_da_parada(), vec![1]);
+        assert_eq!(p.nota_tocada(60, 0.3), Veredito::Erro, "já tocada");
+        assert_eq!(p.retomada_pendente(), None);
+        assert_eq!(p.nota_tocada(64, 0.3), Veredito::Acerto);
+        assert_eq!(p.parada(), None);
+        assert_eq!(p.tomar_retomada(), Some(0.0), "0 notas: do próprio acorde");
+        assert_eq!(p.tomar_retomada(), None, "consumida");
+        // O acorde fica cumprido; segue para o Dó agudo.
+        assert_eq!(p.nota_tocada(72, 1.0), Veredito::Acerto);
+        assert!(p.concluida());
+        let r = p.resumo();
+        assert_eq!((r.acertos, r.paradas, r.faltas, r.extras), (4, 1, 1, 1));
+        assert!((r.precisao_pct() - 80.0).abs() < 1e-9, "4 de 4 + 1 parada");
+    }
+
+    /// Para no Sol (passo 4) e completa; devolve o instante de retomada e os estados.
+    fn parar_no_sol(retomada: Retomada) -> (Pratica, f64) {
+        let e = escala();
+        let mut p = Pratica::nova(&e, et(150.0, retomada));
+        for (k, m) in [60, 62, 64, 65].into_iter().enumerate() {
+            assert_eq!(p.nota_tocada(m, k as f64), Veredito::Acerto);
+        }
+        assert!(p.avancar_tempo(4.5));
+        assert_eq!(p.notas_da_parada(), vec![4]);
+        assert_eq!(p.nota_tocada(67, 6.0), Veredito::Acerto);
+        let t = p.tomar_retomada().unwrap_or(f64::NAN);
+        (p, t)
+    }
+
+    #[test]
+    fn espera_tocar_retomada_volta_0_1_2_4_ou_do_inicio() {
+        // O Sol é o último: com 0 não há o que retomar e a prática termina.
+        let (p, t) = parar_no_sol(Retomada::Zero);
+        assert!(t.is_nan());
+        assert!(p.concluida());
+        for (r, t_esperado, reabertas) in [
+            (Retomada::Uma, 3.0, 3..5),
+            (Retomada::Duas, 2.0, 2..5),
+            (Retomada::Quatro, 0.0, 0..5),
+            (Retomada::Inicio, 0.0, 0..5),
+        ] {
+            let (mut p, t) = parar_no_sol(r);
+            assert_eq!(t, t_esperado, "{r:?}");
+            for i in 0..5 {
+                let pendente = p.estados()[i] == EstadoEvento::Pendente;
+                assert_eq!(pendente, reabertas.contains(&i), "{r:?} nota {i}");
+            }
+            assert!(!p.concluida());
+            // As voltadas são conferidas de novo: tocá-las certas conclui (relógio recomeça
+            // antes, na contagem).
+            assert!(!p.avancar_tempo(t - 2.0));
+            for i in reabertas.clone() {
+                assert_eq!(p.nota_tocada(e_midi(i), i as f64 + 0.01), Veredito::Acerto);
+            }
+            assert!(p.concluida(), "{r:?}");
+            assert_eq!(p.resumo().paradas, 1);
+        }
+        // Do meio, 4 notas que passam do início ficam no início.
+        let e = escala();
+        let mut p = Pratica::nova(&e, et(150.0, Retomada::Quatro));
+        assert_eq!(p.nota_tocada(60, 0.0), Veredito::Acerto);
+        assert!(p.avancar_tempo(1.5));
+        assert_eq!(p.nota_tocada(62, 2.0), Veredito::Acerto);
+        assert_eq!(p.tomar_retomada(), Some(0.0));
+        // Voltadas e não tocadas param de novo.
+        assert!(p.avancar_tempo(0.5));
+        assert_eq!(p.notas_da_parada(), vec![0]);
+        assert_eq!(p.resumo().paradas, 2);
+    }
+
+    fn e_midi(i: usize) -> u8 {
+        [60, 62, 64, 65, 67][i]
+    }
+
+    #[test]
+    fn espera_tocar_paradas_contam_na_precisao_e_encerrar_fecha() {
+        let e = escala();
+        let mut p = Pratica::nova(&e, et(150.0, Retomada::Zero));
+        assert!(p.avancar_tempo(0.5), "não tocou o Dó");
+        assert_eq!(p.nota_tocada(60, 3.0), Veredito::Acerto);
+        assert_eq!(p.tomar_retomada(), Some(0.0));
+        assert_eq!(p.nota_tocada(62, 1.0), Veredito::Acerto);
+        assert!(p.avancar_tempo(2.5), "não tocou o Mi");
+        assert_eq!(p.nota_tocada(64, 9.0), Veredito::Acerto);
+        assert!(p.tomar_retomada().is_some());
+        let r = p.resumo();
+        assert_eq!((r.acertos, r.paradas, r.faltas), (3, 2, 2));
+        assert!((r.precisao_pct() - 300.0 / 7.0).abs() < 1e-9);
+        p.encerrar();
+        let r = p.resumo();
+        assert_eq!((r.acertos, r.paradas, r.faltas), (3, 2, 4), "2 não tocadas + 2 paradas");
+        assert_eq!(p.parada(), None);
+        assert!(p.concluida());
+    }
+
+    #[test]
+    fn espera_tocar_mede_desvio_dos_acertos() {
+        let e = escala();
+        let mut p = Pratica::nova(&e, et(150.0, Retomada::Zero));
+        assert_eq!(p.nota_tocada(60, 0.1), Veredito::Acerto);
+        assert_eq!(p.nota_tocada(62, 0.9), Veredito::Acerto);
+        let r = p.resumo();
+        assert!(r.desvio_medio_ms.is_some_and(|d| d.abs() < 1e-6));
+        assert!(r.desvio_absoluto_ms.is_some_and(|d| (d - 100.0).abs() < 1e-6));
+    }
+
+    #[test]
+    fn chaves_de_modo_e_retomada_ida_e_volta_e_nome_antigo() {
+        for m in ModoPratica::TODOS {
+            assert_eq!(ModoPratica::de_chave(m.chave()), Some(m));
+            assert_eq!(ModoPratica::de_chave(&format!("{m:?}")), Some(m));
+        }
+        assert_eq!(ModoPratica::de_chave("Espera"), Some(ModoPratica::NotaANota));
+        assert_eq!(ModoPratica::de_chave("lixo"), None);
+        for r in Retomada::TODAS {
+            assert_eq!(Retomada::de_chave(r.chave()), Some(r));
+        }
+        assert_eq!(Retomada::de_chave("3"), None);
     }
 
     #[test]
     fn espera_avanca_so_com_a_nota_certa_e_conta_extras() {
         let e = [esp(60, 0.0), esp(62, 0.5), esp(64, 1.0)];
-        let mut p = Pratica::nova(&e, cfg(ModoPratica::Espera, 0.0));
+        let mut p = Pratica::nova(&e, cfg(ModoPratica::NotaANota, 0.0));
         assert_eq!(p.evento_do_passo_atual(), Some(0));
         assert_eq!(p.nota_nota(61), Veredito::Erro);
         assert_eq!(p.estados()[0], EstadoEvento::Errou);
@@ -442,7 +898,7 @@ mod testes {
     #[test]
     fn espera_acorde_aceita_qualquer_ordem_e_repeticao_e_extra() {
         let e = [esp(64, 0.0), esp(48, 0.0), esp(67, 0.0), esp(60, 1.0)];
-        let mut p = Pratica::nova(&e, cfg(ModoPratica::Espera, 0.0));
+        let mut p = Pratica::nova(&e, cfg(ModoPratica::NotaANota, 0.0));
         assert_eq!(p.nota_nota(67), Veredito::Acerto);
         assert_eq!(p.nota_nota(67), Veredito::Erro, "repetida");
         assert_eq!(p.nota_nota(48), Veredito::Acerto);
@@ -457,7 +913,7 @@ mod testes {
     #[test]
     fn espera_encerrar_conta_o_que_faltou() {
         let e = [esp(60, 0.0), esp(62, 0.5), esp(64, 1.0)];
-        let mut p = Pratica::nova(&e, cfg(ModoPratica::Espera, 0.0));
+        let mut p = Pratica::nova(&e, cfg(ModoPratica::NotaANota, 0.0));
         assert_eq!(p.nota_nota(60), Veredito::Acerto);
         assert_eq!(p.resumo().faltas, 0, "ainda não alcançadas");
         p.encerrar();
@@ -550,7 +1006,7 @@ mod testes {
     #[test]
     fn entrada_fora_de_ordem_mantem_indices_originais() {
         let e = [esp(64, 1.0), esp(60, 0.0)];
-        let mut p = Pratica::nova(&e, cfg(ModoPratica::Espera, 0.0));
+        let mut p = Pratica::nova(&e, cfg(ModoPratica::NotaANota, 0.0));
         assert_eq!(p.evento_do_passo_atual(), Some(1));
         assert_eq!(p.nota_nota(60), Veredito::Acerto);
         assert_eq!(p.estados(), [EstadoEvento::Pendente, EstadoEvento::Acertou]);

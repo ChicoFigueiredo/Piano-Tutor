@@ -980,6 +980,8 @@ pub struct EstadoCursos {
     pub usar_nao_revisado: bool,
     /// Player de Aula aberto (ADR-0011): vídeo embutido, trechos e Modo de acompanhamento.
     pub player: Option<crate::tela_player_aula::EstadoPlayer>,
+    /// Escolhas do Player de Aula guardadas no perfil (aplicadas a cada Aula aberta).
+    pub opcoes_player: crate::tela_player_aula::OpcoesPlayer,
     /// Notas que o aluno ligou desde o último quadro (o player as consome).
     pub notas_do_aluno: Vec<u8>,
 }
@@ -1011,6 +1013,7 @@ impl EstadoCursos {
             verificacao: None,
             aviso_video: None,
             player: None,
+            opcoes_player: crate::tela_player_aula::OpcoesPlayer::default(),
             notas_do_aluno: Vec::new(),
             cursor_audio: None,
             observador: ObservadorPratica::default(),

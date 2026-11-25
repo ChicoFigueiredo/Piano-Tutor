@@ -20,7 +20,7 @@ use piano_tutor_core::partitura::{
     ErroPartitura, EventoReproducao, MapaAndamento, Partitura, SinalClave, TAMANHO_MAXIMO_BYTES,
 };
 use piano_tutor_core::pratica::{
-    ConfigPratica, EstadoEvento, ModoPratica, Pratica, Resumo, Veredito,
+    ConfigPratica, EstadoEvento, ModoPratica, Pratica, Resumo, Retomada, Veredito,
 };
 use std::path::{Path, PathBuf};
 use std::time::Duration;
@@ -279,6 +279,8 @@ pub struct EstadoPartitura {
     pub modo_pratica: ModoPratica,
     /// Janela de acerto do modo Tempo, em ms.
     pub tolerancia_pratica_ms: f32,
+    /// Espera tocar: quanto voltar ao retomar depois de uma parada.
+    pub retomada_pratica: Retomada,
     pratica: Option<SessaoPratica>,
 }
 
@@ -387,8 +389,9 @@ impl EstadoPartitura {
             reproducao: None,
             campo_exportar: String::new(),
             sobrescrever: false,
-            modo_pratica: ModoPratica::Espera,
+            modo_pratica: ModoPratica::NotaANota,
             tolerancia_pratica_ms: TOLERANCIA_PRATICA_PADRAO_MS,
+            retomada_pratica: Retomada::Zero,
             pratica: None,
         };
         e.escolher(0);
@@ -608,14 +611,14 @@ impl EstadoPartitura {
                 return None;
             }
             return match s.logica.config().modo {
-                ModoPratica::Espera => {
+                ModoPratica::NotaANota => {
                     let pos = s.posicoes.get(s.logica.evento_do_passo_atual()?)?;
                     Some(Destaque {
                         compasso: pos.compasso,
                         tempo: pos.tempo,
                     })
                 }
-                ModoPratica::Tempo => {
+                ModoPratica::Tempo | ModoPratica::EsperaTocar => {
                     let q = q_em_ns(self.musica.as_ref()?, &s.relogio, agora_ns);
                     let (compasso, tempo) = self.musica.as_ref()?.compasso_em(q)?;
                     Some(Destaque { compasso, tempo })
@@ -682,10 +685,11 @@ impl EstadoPartitura {
         let config = ConfigPratica {
             modo: self.modo_pratica,
             tolerancia_ms: f64::from(self.tolerancia_pratica_ms),
+            retomada: self.retomada_pratica,
         };
         let entrada_s = match config.modo {
-            ModoPratica::Tempo => BATIDAS_DE_ENTRADA * 60.0 / bpm,
-            ModoPratica::Espera => 0.0,
+            ModoPratica::Tempo | ModoPratica::EsperaTocar => BATIDAS_DE_ENTRADA * 60.0 / bpm,
+            ModoPratica::NotaANota => 0.0,
         };
         let t0_ns = agora_ns.saturating_add(para_ns(entrada_s));
         let mut s = SessaoPratica {
@@ -805,8 +809,8 @@ impl EstadoPartitura {
             return None;
         }
         let local = match s.logica.config().modo {
-            ModoPratica::Espera => s.logica.evento_do_passo_atual()?,
-            ModoPratica::Tempo => s
+            ModoPratica::NotaANota => s.logica.evento_do_passo_atual()?,
+            ModoPratica::Tempo | ModoPratica::EsperaTocar => s
                 .logica
                 .estados()
                 .iter()
@@ -1628,7 +1632,7 @@ mod testes {
     #[test]
     fn praticar_na_espera_cursor_para_ate_a_nota_certa_e_marca_verde_e_vermelho() {
         let mut e = ode();
-        e.modo_pratica = ModoPratica::Espera;
+        e.modo_pratica = ModoPratica::NotaANota;
         assert!(!e.praticando());
         e.nota_tocada(true, nota(60), 0); // sem prática: ignorada
         e.iniciar_pratica(1_000);

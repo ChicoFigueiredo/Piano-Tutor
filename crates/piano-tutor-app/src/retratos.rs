@@ -238,12 +238,14 @@ pub fn aplicar_gravacao(g: &mut EstadoGravacao, t: &str) {
 }
 
 pub fn retrato_partitura(e: &EstadoPartitura) -> String {
-    Kv::novo().por_enum("modo_pratica", e.modo_pratica).texto()
+    Kv::novo().por("modo_pratica", e.modo_pratica.chave()).texto()
 }
 
 pub fn aplicar_partitura(e: &mut EstadoPartitura, t: &str) {
     let kv = Kv::de_texto(t);
+    // Lê também o nome antigo ("Espera" = Nota a nota).
     e.modo_pratica = kv
-        .ler_enum("modo_pratica", &ModoPratica::TODOS)
-        .unwrap_or(ModoPratica::Espera);
+        .ler::<String>("modo_pratica")
+        .and_then(|v| ModoPratica::de_chave(&v))
+        .unwrap_or(ModoPratica::NotaANota);
 }

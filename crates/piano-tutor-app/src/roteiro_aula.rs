@@ -18,7 +18,7 @@
 //! Tabela global `aula` (somente leitura; funções só enfileiram pedidos):
 //!
 //! - `aula.versao_api` (constante, 1);
-//! - `aula.modo("espera" | "segue" | "chamada")`, `aula.ir(id_do_trecho)`, `aula.repetir()`,
+//! - `aula.modo("nota_a_nota" | "espera_tocar" | "segue" | "chamada")` ("espera" = nota a nota), `aula.ir(id_do_trecho)`, `aula.repetir()`,
 //!   `aula.pausar()`, `aula.continuar()`, `aula.velocidade(x)` (de 0.25 a 2), `aula.mensagem(texto)`,
 //!   `aula.dizer(texto)` (fala do professor por voz sintética);
 //! - `aula.contar(chave)` soma 1 ao contador `chave` e devolve o novo valor; `aula.contador(chave)`
@@ -1299,7 +1299,7 @@ mod testes {
         assert_eq!(r.ao_abrir(), Ok(vec![]));
         let entrada = r.ao_entrar_trecho(&t).expect("entra");
         assert!(
-            entrada.contains(&Pedido::Modo(ModoAcompanhamento::Espera)),
+            entrada.contains(&Pedido::Modo(ModoAcompanhamento::NotaANota)),
             "{entrada:?}"
         );
 

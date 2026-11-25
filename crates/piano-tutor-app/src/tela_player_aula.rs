@@ -31,6 +31,35 @@ use std::path::PathBuf;
 const QUADRO_MAX: (u32, u32) = (1280, 720);
 const VELOCIDADES: [f64; 7] = [0.5, 0.6, 0.75, 0.9, 1.0, 1.25, 1.5];
 
+/// As escolhas do Player de Aula que valem entre aberturas (guardadas no perfil pelo app; o
+/// player é recriado a cada Aula, então elas moram em `EstadoCursos::opcoes_player`).
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub struct OpcoesPlayer {
+    pub modo: ModoAcompanhamento,
+    /// Janela de acerto do Espera tocar, em ms.
+    pub tolerancia_ms: f32,
+    /// Espera tocar: quanto voltar ao retomar.
+    pub retomada: piano_tutor_core::pratica::Retomada,
+    pub fracao_video: f32,
+    pub altura_topo: f32,
+    pub video_a_direita: bool,
+    pub velocidade: f64,
+}
+
+impl Default for OpcoesPlayer {
+    fn default() -> Self {
+        Self {
+            modo: ModoAcompanhamento::default(),
+            tolerancia_ms: 150.0,
+            retomada: piano_tutor_core::pratica::Retomada::Zero,
+            fracao_video: 0.45,
+            altura_topo: 0.0,
+            video_a_direita: false,
+            velocidade: 1.0,
+        }
+    }
+}
+
 /// Estado do Player de Aula aberto.
 pub struct EstadoPlayer {
     pub licao_id: String,
@@ -74,6 +103,10 @@ pub struct EstadoPlayer {
     nota_do_menu: Option<u32>,
     pedido_transporte: Option<Transporte>,
     correcao: Option<Correcao>,
+    /// Janela de acerto do Espera tocar, em ms.
+    pub tolerancia_ms: f32,
+    /// Espera tocar: quanto voltar ao retomar.
+    pub retomada: piano_tutor_core::pratica::Retomada,
 }
 
 /// Botões de transporte, como num tocador de música.
@@ -263,6 +296,35 @@ impl std::fmt::Debug for EstadoPlayer {
 
 impl EstadoPlayer {
     /// Abre o player no vídeo `arquivo`, no instante `inicio_s`.
+    /// As escolhas que valem entre aberturas.
+    pub fn opcoes(&self) -> OpcoesPlayer {
+        OpcoesPlayer {
+            modo: self.acompanhamento.modo,
+            tolerancia_ms: self.tolerancia_ms,
+            retomada: self.retomada,
+            fracao_video: self.fracao_video,
+            altura_topo: self.altura_topo,
+            video_a_direita: self.video_a_direita,
+            velocidade: self.velocidade,
+        }
+    }
+
+    /// Aplica escolhas guardadas (ao abrir uma Aula).
+    pub fn aplicar_opcoes(&mut self, o: OpcoesPlayer) {
+        if o.modo != self.acompanhamento.modo {
+            self.trocar_modo(o.modo);
+        }
+        self.tolerancia_ms = o.tolerancia_ms;
+        self.retomada = o.retomada;
+        self.fracao_video = o.fracao_video;
+        self.altura_topo = o.altura_topo;
+        self.video_a_direita = o.video_a_direita;
+        self.velocidade = o.velocidade;
+        if let Some(v) = self.video.as_mut() {
+            v.definir_velocidade(o.velocidade);
+        }
+    }
+
     pub fn abrir(licao_id: &str, arquivo: PathBuf, inicio_s: f64, trechos: Vec<Trecho>) -> Self {
         let (video, erro_video) = match VideoEmbutido::carregar() {
             Ok(mut v) => match v.abrir(&arquivo, inicio_s) {
@@ -300,6 +362,8 @@ impl EstadoPlayer {
             nota_do_menu: None,
             pedido_transporte: None,
             correcao: None,
+            tolerancia_ms: 150.0,
+            retomada: piano_tutor_core::pratica::Retomada::Zero,
         }
     }
 
@@ -442,6 +506,8 @@ pub fn abrir_player(e: &mut EstadoCursos, licao_id: &str, exercicio_id: Option<&
         .and_then(|id| trechos.iter().find(|t| t.exercicio_id == id))
         .map_or(0.0, |t| t.inicio_s);
     let mut p = EstadoPlayer::abrir(licao_id, arquivo, inicio, trechos);
+    // As escolhas guardadas no perfil; o Roteiro de Aula ainda pode sugerir outro modo.
+    p.aplicar_opcoes(e.opcoes_player);
     for pasta in e.pastas_de_roteiros() {
         match ler_roteiro_da_pasta(&pasta, licao_id) {
             Some(Ok(r)) => {

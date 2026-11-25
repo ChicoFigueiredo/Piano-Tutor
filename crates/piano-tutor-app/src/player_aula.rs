@@ -19,9 +19,11 @@ pub const DUPLO_VOLTAR_S: f64 = 0.6;
 /// Como o player reage enquanto o aluno toca junto (glossário: Modo de acompanhamento).
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
 pub enum ModoAcompanhamento {
-    /// Para em cada nota até o aluno tocar a certa.
+    /// Para em cada nota até o aluno tocar a certa, sem andamento (nome antigo: "Espera").
     #[default]
-    Espera,
+    NotaANota,
+    /// Anda no tempo do vídeo e só para quando a janela de uma nota passa sem ela.
+    EsperaTocar,
     /// Não para; pontua acerto e erro no tempo.
     SegueNoTempo,
     /// O professor toca o trecho, o vídeo para no fim, o aluno repete; só avança se acertar.
@@ -29,11 +31,17 @@ pub enum ModoAcompanhamento {
 }
 
 impl ModoAcompanhamento {
-    pub const TODOS: [Self; 3] = [Self::Espera, Self::SegueNoTempo, Self::ChamadaEResposta];
+    pub const TODOS: [Self; 4] = [
+        Self::NotaANota,
+        Self::EsperaTocar,
+        Self::SegueNoTempo,
+        Self::ChamadaEResposta,
+    ];
 
     pub fn rotulo(self) -> &'static str {
         match self {
-            Self::Espera => "Espera",
+            Self::NotaANota => "Nota a nota",
+            Self::EsperaTocar => "Espera tocar",
             Self::SegueNoTempo => "Segue no tempo",
             Self::ChamadaEResposta => "Chamada e resposta",
         }
@@ -41,7 +49,10 @@ impl ModoAcompanhamento {
 
     pub fn explicacao(self) -> &'static str {
         match self {
-            Self::Espera => "O vídeo para em cada nota até você tocar a certa",
+            Self::NotaANota => "O vídeo para em cada nota até você tocar a certa",
+            Self::EsperaTocar => {
+                "O vídeo anda no tempo e só para se a nota passar sem você tocá-la"
+            }
             Self::SegueNoTempo => "O vídeo não para; cada nota sua conta como acerto ou erro",
             Self::ChamadaEResposta => {
                 "O professor toca o trecho, o vídeo para e você repete; só avança se acertar"
@@ -51,22 +62,28 @@ impl ModoAcompanhamento {
 
     pub fn proximo(self) -> Self {
         match self {
-            Self::Espera => Self::SegueNoTempo,
+            Self::NotaANota => Self::EsperaTocar,
+            Self::EsperaTocar => Self::SegueNoTempo,
             Self::SegueNoTempo => Self::ChamadaEResposta,
-            Self::ChamadaEResposta => Self::Espera,
+            Self::ChamadaEResposta => Self::NotaANota,
         }
     }
 
     pub fn como_texto(self) -> &'static str {
         match self {
-            Self::Espera => "espera",
+            Self::NotaANota => "nota_a_nota",
+            Self::EsperaTocar => "espera_tocar",
             Self::SegueNoTempo => "segue",
             Self::ChamadaEResposta => "chamada",
         }
     }
 
+    /// Lê o texto; aceita o nome antigo "espera" (= Nota a nota).
     pub fn de_texto(t: &str) -> Option<Self> {
-        Self::TODOS.into_iter().find(|m| m.como_texto() == t.trim())
+        match t.trim() {
+            "espera" => Some(Self::NotaANota),
+            t => Self::TODOS.into_iter().find(|m| m.como_texto() == t),
+        }
     }
 }
 
@@ -304,7 +321,7 @@ impl Acompanhamento {
     ) -> Option<Comando> {
         let t_audio = t_video - al.offset_aula_s;
         match self.modo {
-            ModoAcompanhamento::Espera => {
+            ModoAcompanhamento::NotaANota => {
                 if self.esperando.is_some() {
                     return (!pausado).then_some(Comando::Pausar);
                 }
@@ -321,7 +338,8 @@ impl Acompanhamento {
                 self.esperando = Some(alcancada.indice);
                 Some(Comando::Pausar)
             }
-            ModoAcompanhamento::SegueNoTempo => None,
+            // TODO(espera tocar): ligar ao core.
+            ModoAcompanhamento::SegueNoTempo | ModoAcompanhamento::EsperaTocar => None,
             ModoAcompanhamento::ChamadaEResposta => {
                 if self.aguardando_resposta {
                     return (!pausado).then_some(Comando::Pausar);
@@ -347,7 +365,7 @@ impl Acompanhamento {
     ) -> Option<Comando> {
         let t_audio = t_video - al.offset_aula_s;
         match self.modo {
-            ModoAcompanhamento::Espera => {
+            ModoAcompanhamento::NotaANota => {
                 let i = self.esperando?;
                 let alvo = al.notas.iter().find(|n| n.indice == i)?;
                 // Num acorde, qualquer nota do mesmo ataque serve; o acorde inteiro libera.
@@ -375,7 +393,7 @@ impl Acompanhamento {
                     }
                 }
             }
-            ModoAcompanhamento::SegueNoTempo => {
+            ModoAcompanhamento::SegueNoTempo | ModoAcompanhamento::EsperaTocar => {
                 let perto = al
                     .notas
                     .iter()
@@ -491,12 +509,12 @@ mod testes {
 
     #[test]
     fn modo_gira_e_volta_do_texto() {
-        let mut m = ModoAcompanhamento::Espera;
+        let mut m = ModoAcompanhamento::NotaANota;
         for _ in 0..3 {
             m = m.proximo();
             assert_eq!(ModoAcompanhamento::de_texto(m.como_texto()), Some(m));
         }
-        assert_eq!(m, ModoAcompanhamento::Espera);
+        assert_eq!(m, ModoAcompanhamento::NotaANota);
     }
 
     #[test]
