@@ -29,14 +29,21 @@ sha2 = "=0.11.1"   # MIT OR Apache-2.0
 dirs = "=7.0.0"    # MIT OR Apache-2.0
 # IPC JSON do mpv (posição do áudio do professor): MIT OR Apache-2.0.
 serde_json = "=1.0.154"
+# Roteiro do professor (roteiro.toml, M4 etapa 6): leitura de TOML tipada.
+toml = { version = "=1.2.0", default-features = false, features = ["parse", "serde"] }  # MIT OR Apache-2.0
+serde = { version = "=1.0.229", features = ["derive"] }  # MIT OR Apache-2.0
+# Revisão do conteúdo do tutor (M4, etapa 5): edita estado.toml e roteiro.toml sem perder campos,
+# ordem nem comentários; lê as páginas PNG do PDF. Rust puro.
+toml_edit = { version = "=0.25.20", default-features = false, features = ["parse", "display"] }  # MIT OR Apache-2.0
+png = { version = "=0.18.1", default-features = false }  # MIT OR Apache-2.0
 bancada-casca = { git = "https://github.com/ChicoFigueiredo/bancada", rev = "94818fd95dc74b5a42a7757b1d258ed17822ed06" }
+
+[dev-dependencies]
+# Pastas temporárias nos testes de revisão: MIT OR Apache-2.0.
+tempfile = "=3.27.0"
 
 [lints]
 workspace = true
-
-[dev-dependencies]
-# Pastas temporárias nos testes das telas de Curso: MIT OR Apache-2.0.
-tempfile = "=3.27.0"
 
 # Empacotamento .deb mínimo (F03, ticket #40). Gerado por scripts/empacotar-deb.sh.
 # O SoundFont FluidR3_GM (MIT, Debian main) NÃO é embutido: vem como dependência do sistema.

@@ -671,6 +671,8 @@ pub fn voz_do_sistema(dados: &Path) -> Box<dyn Voz> {
 // Os tipos do Roteiro (`roteiro.toml`) são os de `piano-tutor-curso`: o app e o Pacote de Curso
 // falam o mesmo formato (docs/specs/FORMATO-PACOTE-DE-CURSO.md).
 
+/// Nome antigo do estado de uma fala (a tela de revisão ainda o usa).
+pub use piano_tutor_curso::EstadoConteudo as EstadoFala;
 pub use piano_tutor_curso::{EstadoConteudo, Fala, Momento, OrigemFala, Roteiro};
 
 /// Versão do `roteiro.toml` que este código lê.

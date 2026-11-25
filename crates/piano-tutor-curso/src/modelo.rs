@@ -86,6 +86,13 @@ pub struct AssinaturaInfo {
     pub chave_publica: String,
 }
 
+impl AssinaturaInfo {
+    /// Sem chave, a seção `[assinatura]` não vai para o manifesto da pasta-origem.
+    fn vazia(&self) -> bool {
+        self.chave_publica.is_empty()
+    }
+}
+
 /// Arquivo do pacote com SHA-256 e tamanho (`[[arquivos]]`).
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct Arquivo {
@@ -180,7 +187,7 @@ pub struct Manifesto {
     pub convencao_oitava: String,
     pub autor: Autor,
     pub licenciado: Licenciado,
-    #[serde(default)]
+    #[serde(default, skip_serializing_if = "AssinaturaInfo::vazia")]
     pub assinatura: AssinaturaInfo,
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub secoes: Vec<Secao>,

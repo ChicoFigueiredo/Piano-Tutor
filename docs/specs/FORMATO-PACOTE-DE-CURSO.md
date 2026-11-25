@@ -150,6 +150,7 @@ piano-tutor-curso empacotar <pasta-origem> --chave <arquivo> -o <saida.ptcurso>
 piano-tutor-curso verificar <arquivo.ptcurso> [--confiaveis <pasta>] [--dados <pasta>]
 piano-tutor-curso instalar <arquivo.ptcurso> [--dados <pasta>]
 piano-tutor-curso listar [--dados <pasta>]
+piano-tutor-curso importar --plano <plano.toml> --oficina <pasta> -o <pasta-origem> [--somente-aprovadas]
 ```
 
 - `chave-gerar` grava `curso.chave` (privada, hexadecimal, permissão 0600 no Unix, nunca sobrescreve) e `curso.pub` (pública). Guarde a privada fora do repositório (no cerebro: `~/.config/piano-tutor/chaves/`).
@@ -159,3 +160,71 @@ piano-tutor-curso listar [--dados <pasta>]
 - `listar` mostra os cursos instalados, com a chave e se ela é confiável.
 - `--dados` padrão: `<pasta de dados do usuário>/piano-tutor` (no Linux, `~/.local/share/piano-tutor`).
 - Códigos de saída: 0 sucesso, 1 falha (pacote inválido, arquivo ilegível), 2 uso incorreto.
+
+## Plano de importação
+
+Entrada de `piano-tutor-curso importar`. É um TOML escrito à mão, fora do pacote e fora do git; descreve a estrutura do Curso. O importador gera uma **pasta-origem** para `empacotar` a partir dele e da oficina.
+
+```toml
+formato_versao = 1
+id = "luciano-alves.piano-1"
+titulo = "Curso de Piano 1"
+versao = "0.1.0"
+idioma = "pt-BR"
+convencao_oitava = "do3-central"
+
+[autor]
+nome = "Luciano Alves"
+
+[licenciado]
+nome = "Chico"
+licenca = "Uso pessoal. Redistribuição só com licença escrita do autor."
+
+[[secoes]]
+id = "s03"
+numero = 3
+titulo = "Mão direita"
+
+  [[secoes.licoes]]
+  id = "s03-a14"
+  numero = 14
+  titulo = "Música (Cinco notas no piano)"
+  tipo = "exercicio"                    # "assistir" | "exercicio"
+
+    [secoes.licoes.aula]
+    nome_arquivo = "14 - Música (Cinco notas no piano).mp4"
+    duracao_s = 248.427
+    sha256 = "<hex>"                    # opcional
+
+    [[secoes.licoes.exercicios]]
+    id = "cinco-notas"
+    titulo = "Cinco notas no piano"
+    modo = "praticar"                   # "praticar" | "chamada_e_resposta"
+    mao = "direita"                     # "direita" | "esquerda" | "ambas"
+    bpm = 80                            # opcional; sem ele, vale o bpm_sugerido do estado.toml
+```
+
+Da **oficina** vêm, por Exercício `<id>`:
+
+| Arquivo | Obrigatório | Uso |
+|---|---|---|
+| `partituras/<id>.musicxml` | sim (exceto Exercício omitido por `--somente-aprovadas`) | vai para `partituras/<id>.musicxml` |
+| `partituras/<id>.estado.toml` | não | `estado` (`hipotese` \| `em_revisao` \| `aprovada` \| `rejeitada`; ausente = `hipotese`), `trecho_aula = { inicio_s, fim_s }`, `bpm_sugerido`; os demais campos (proveniência, confiança, notas) são ignorados |
+| `audio/<id>.opus` | não | vai para `audio/<id>.opus` e vira `audio` do Exercício |
+| `alinhamentos/<id>.json` | não | vai para `alinhamentos/<id>.json` e vira `alinhamento` do Exercício |
+
+Na raiz da oficina, `roteiro.toml` é opcional e vai para a raiz da pasta-origem.
+
+Regras do importador:
+
+- O estado do Exercício é **sempre** o do `estado.toml`; o importador nunca promove conteúdo. Sem `estado.toml`, entra como `hipotese` e isso vai para os avisos.
+- Arquivo opcional ausente só deixa de entrar, com aviso. Exercício sem partitura é erro, com o caminho esperado.
+- A pasta-origem tem `manifesto.toml` sem `[assinatura]` nem `[[arquivos]]`, o que `empacotar` preenche.
+- `gerado_em` é o instante da importação (UTC). `bpm` do plano tem precedência sobre `bpm_sugerido`.
+- `roteiro.toml` é conferido com as mesmas regras do leitor (Lições e Exercícios citados precisam existir) antes de gravar.
+- `--somente-aprovadas`: omite Exercícios que não são `aprovada`, falas que não são `aprovada` e falas ligadas a um Exercício omitido (sem isso o Roteiro não valida).
+- O destino (`-o`) não pode existir com conteúdo. Tudo é lido e conferido antes da primeira gravação; uma falha não deixa pasta-origem pela metade.
+- Identificadores são validados antes de montar qualquer caminho da oficina.
+- O áudio de aula inteira (`audio-aula/*.wav` da oficina) não entra: o importador só copia `audio/<id>.opus`, por Exercício.
+
+Uso: `piano-tutor-curso importar --plano <plano.toml> --oficina <pasta> -o <pasta-origem> [--somente-aprovadas]`. Ao final imprime Lições, Exercícios por estado, arquivos copiados e avisos.

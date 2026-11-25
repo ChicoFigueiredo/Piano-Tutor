@@ -34,6 +34,7 @@ pub mod partitura_visual;
 pub mod preferencias;
 pub mod professor;
 pub mod professor_falante;
+pub mod revisao;
 pub mod ritmo;
 pub mod roda_bend;
 pub mod seletor_instrumento;
@@ -47,6 +48,7 @@ pub mod tela_gravacao;
 pub mod tela_inicio;
 pub mod tela_monitor;
 pub mod tela_partitura;
+pub mod tela_revisao;
 pub mod tela_ritmos;
 pub mod tela_timbres;
 

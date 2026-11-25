@@ -109,3 +109,27 @@ Versões fixadas com `=` em `crates/piano-tutor-curso/Cargo.toml`; licenças con
 
 O crate não faz rede e as fixtures dos testes são sintéticas (nenhum conteúdo de curso real no repositório). Transitivas não listadas não foram auditadas uma a uma: **NÃO VERIFICADO** (usar `cargo deny` na CI). Chaves privadas de autor nunca entram no repositório.
 
+## Dependências do `piano-tutor-alinhamento` (M4, etapa 4)
+
+Versões fixadas com `=` em `crates/piano-tutor-alinhamento/Cargo.toml`; licenças conferidas em `cargo info` (2026-11-24).
+
+| Crate | Versão | Licença | Uso |
+| --- | --- | --- | --- |
+| `hound` | 3.5.1 | Apache-2.0 | leitura de WAV PCM/float (sem dependências) |
+| `serde_json` | 1.0.154 | MIT OR Apache-2.0 | saída `alinhamentos/<id>.json` (mesma versão do `piano-tutor-midi`) |
+
+A FFT (radix-2) é código próprio, conferido contra a DFT direta, para não trazer `rustfft` e suas transitivas (`num-complex`, `primal-check`, `strength_reduce`, `transpose` etc.). Transitivas de `serde_json` (`itoa`, `memchr`, `zmij`, `serde_core`, `indexmap` etc.) não auditadas uma a uma: **NÃO VERIFICADO**.
+
+Os testes usam apenas áudio **sintético** gerado em memória (senoides, harmônicos e ruído); nenhum áudio de curso é lido ou versionado. O áudio real da Aula só existe no cerebro, fora do repositório.
+
+## Dependências novas do `piano-tutor-app` (M4, tela de revisão do tutor)
+
+Versões fixadas com `=` em `crates/piano-tutor-app/Cargo.toml`; licenças conferidas nos `Cargo.toml` dos crates no registro local (2026-11-24). Todas já estavam no `Cargo.lock` (transitivas de outras dependências); passam a ser diretas do app.
+
+| Crate | Versão | Licença | Uso |
+| --- | --- | --- | --- |
+| `png` | 0.18.1 | MIT OR Apache-2.0 | decodifica a página do PDF (`paginas/<id>.png`) da oficina do tutor; Rust puro (traz `fdeflate`, `flate2`/`miniz_oxide` com `simd`, `crc32fast`, `bitflags`, todos já no lock) |
+| `toml_edit` | 0.25.20 | MIT OR Apache-2.0 | edita `estado.toml`, `roteiro.toml` e `roteiro-fabrica-revisao.toml` preservando campos, ordem e comentários (só `parse` e `display`; traz `toml_writer`, já no lock) |
+| `tempfile` | 3.27.0 | MIT OR Apache-2.0 | **somente dev-dependency**: pastas temporárias nos testes (mesma versão do `piano-tutor-curso`) |
+
+A oficina do tutor (`<dados>/fontes/<tutor>/oficina/`: MusicXML, páginas PNG, estados, divergências e Roteiro de Hipóteses) fica **fora do git**; os testes usam só fixtures sintéticas. As páginas do PDF e o conteúdo derivado do curso nunca são copiados para o repositório. `cargo deny`/`cargo license` não foram executados: **NÃO VERIFICADO**.
