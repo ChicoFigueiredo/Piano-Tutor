@@ -35,6 +35,9 @@ pub fn acoes(estado: &EstadoApp) -> Vec<Acao> {
         Acao::nova(ids::EXERCICIOS, "Exercícios")
             .icone("exercicios")
             .dica("Dez exercícios progressivos com correção na hora e progresso salvo"),
+        Acao::nova(ids::CURSOS, "Cursos")
+            .icone("exercicios")
+            .dica("Curso de fábrica e Cursos de tutor instalados: Aulas, exercícios, professor falante e chamada e resposta"),
         Acao::nova(ids::GRAVACAO, "Gravar e ouvir")
             .icone("gravar")
             .dica("Grava o que você toca, toca de volta em outro timbre e salva .mid"),
@@ -84,7 +87,7 @@ pub fn abas() -> Vec<Aba> {
             .grupo(Grupo::novo(
                 "praticar",
                 "Praticar",
-                &[ids::EXERCICIOS, ids::ACORDES, ids::RITMOS],
+                &[ids::CURSOS, ids::EXERCICIOS, ids::ACORDES, ids::RITMOS],
             ))
             .grupo(Grupo::novo(
                 "musica",
@@ -137,6 +140,7 @@ mod testes {
             ids::RITMOS,
             ids::ACORDES,
             ids::EXERCICIOS,
+            ids::CURSOS,
             ids::GRAVACAO,
             ids::PARTITURA,
             ids::SOBRE,
@@ -149,7 +153,7 @@ mod testes {
         ] {
             assert!(l.get(id).is_some(), "falta a ação {id}");
         }
-        assert_eq!(l.len(), 17);
+        assert_eq!(l.len(), 18);
         let ids: HashSet<&str> = l.iter().map(|a| a.id.as_str()).collect();
         assert_eq!(ids.len(), l.len());
         assert!(ids.iter().all(|i| i.starts_with("piano.")));

@@ -62,6 +62,9 @@ pub const ROTA_EXERCICIOS: &str = "exercicios";
 /// Rota de Acordes e escalas (F04).
 pub const ROTA_ACORDES: &str = "acordes";
 
+/// Rota dos Cursos (M4): Curso de fábrica e Cursos de tutor instalados.
+pub const ROTA_CURSOS: &str = "cursos";
+
 /// O que o app pede à casca depois de executar uma ação.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Efeito {
@@ -86,6 +89,7 @@ pub mod ids {
     pub const EXERCICIOS: &str = "piano.exercicios";
     pub const GRAVACAO: &str = "piano.gravacao";
     pub const PARTITURA: &str = "piano.partitura";
+    pub const CURSOS: &str = "piano.cursos";
 
     /// Id da ação que escolhe um tema específico.
     pub fn tema(id_do_tema: &str) -> String {
@@ -177,6 +181,9 @@ impl EstadoApp {
         }
         if id == ids::EXERCICIOS {
             return Some(Efeito::AbrirRota(ROTA_EXERCICIOS));
+        }
+        if id == ids::CURSOS {
+            return Some(Efeito::AbrirRota(ROTA_CURSOS));
         }
         if id == ids::ACORDES {
             return Some(Efeito::AbrirRota(ROTA_ACORDES));

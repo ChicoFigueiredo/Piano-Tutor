@@ -716,7 +716,7 @@ pub fn aplicar_sobreposicao(roteiro: &mut Roteiro, texto: &str) -> Result<usize,
 /// ajustados) de `<dados>/roteiro-fabrica-revisao.toml` por cima do roteiro embutido. Sem esse
 /// arquivo, é o embutido (tudo em Hipótese). É a função que as telas de Curso usam.
 pub fn roteiro_de_fabrica_revisado(dados: &Path) -> Result<Roteiro, ErroRoteiro> {
-    let mut r = Roteiro::de_toml(ROTEIRO_DE_FABRICA_TOML)?;
+    let mut r = crate::professor_falante::ler_roteiro(ROTEIRO_DE_FABRICA_TOML)?;
     let caminho = arquivo_de_revisao_da_fabrica(dados);
     match fs::read_to_string(&caminho) {
         Ok(t) => {

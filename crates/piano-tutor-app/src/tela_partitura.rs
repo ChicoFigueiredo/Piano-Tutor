@@ -752,6 +752,102 @@ impl EstadoPartitura {
         }
     }
 
+    /// Abre um MusicXML que já está na memória (Exercício de Curso). Para a reprodução e a
+    /// prática; em caso de erro a partitura anterior continua e o texto vai para `erro`.
+    pub fn abrir_xml(&mut self, nome: &str, xml: String) -> Result<(), String> {
+        self.parar_sem_som();
+        let r = if xml.len() > TAMANHO_MAXIMO_BYTES {
+            Err(format!(
+                "partitura grande demais ({} bytes; máximo {TAMANHO_MAXIMO_BYTES})",
+                xml.len()
+            ))
+        } else {
+            self.carregar_texto(nome.to_owned(), xml)
+                .map_err(|e| e.to_string())
+        };
+        match r {
+            Ok(()) => {
+                self.erro = None;
+                Ok(())
+            }
+            Err(e) => {
+                let m = format!("{nome}: {e}");
+                self.erro = Some(m.clone());
+                Err(m)
+            }
+        }
+    }
+
+    /// Quantas notas a partitura tem (a ordem é a de `esperados_da_partitura`, a mesma do
+    /// `indice` do Alinhamento do Pacote de Curso).
+    pub fn total_de_notas(&self) -> usize {
+        self.musica.as_ref().map_or(0, |m| m.eventos.len())
+    }
+
+    /// Índice da nota que a prática espera agora (na ordem do Alinhamento), se houver prática
+    /// em andamento. No modo Esperar é a nota do passo atual; no modo Tempo, a primeira
+    /// ainda pendente.
+    pub fn indice_da_pratica(&self) -> Option<usize> {
+        let s = self.pratica.as_ref()?;
+        if s.resumo_final.is_some() {
+            return None;
+        }
+        let local = match s.logica.config().modo {
+            ModoPratica::Espera => s.logica.evento_do_passo_atual()?,
+            ModoPratica::Tempo => s
+                .logica
+                .estados()
+                .iter()
+                .position(|e| *e == EstadoEvento::Pendente)?,
+        };
+        // A prática pode começar num compasso escolhido: as notas anteriores ficam de fora.
+        let fora = self.total_de_notas().saturating_sub(s.posicoes.len());
+        Some(fora + local)
+    }
+
+    /// Resumo da prática que terminou (não o parcial de uma em andamento).
+    pub fn resumo_final_da_pratica(&self) -> Option<Resumo> {
+        self.pratica.as_ref()?.resumo_final
+    }
+
+    /// Onde o cursor fica quando a nota `indice` soa (compasso e tempo dentro dele).
+    pub fn destaque_da_nota(&self, indice: usize) -> Option<Destaque> {
+        let m = self.musica.as_ref()?;
+        let e = m.eventos.get(indice)?;
+        let (compasso, tempo) = m.compasso_em(e.inicio.como_f64())?;
+        Some(Destaque { compasso, tempo })
+    }
+
+    /// Notas esperadas no andamento atual, para o modo Chamada e resposta. `mao` filtra pela
+    /// clave (fá = esquerda); `None` leva as duas mãos.
+    pub fn esperados_para_chamada(&self, mao: Option<Mao>) -> Vec<EventoEsperado> {
+        let (Some(m), Some(p)) = (self.musica.as_ref(), self.partitura.as_ref()) else {
+            return Vec::new();
+        };
+        let bpm = f64::from(self.bpm);
+        m.eventos
+            .iter()
+            .filter_map(|e| {
+                let qi = e.inicio.como_f64();
+                let (compasso, tempo) = m.compasso_em(qi)?;
+                if let Some(quer) = mao
+                    && mao_pela_clave(p, e.parte, e.pauta, compasso, tempo) != quer
+                {
+                    return None;
+                }
+                let si = m.segundos(qi, bpm);
+                Some(EventoEsperado {
+                    midi: e.midi,
+                    inicio_s: si,
+                    duracao_s: m.segundos(qi + e.duracao.como_f64(), bpm) - si,
+                    parte: e.parte,
+                    pauta: e.pauta,
+                    compasso: e.compasso,
+                })
+            })
+            .collect()
+    }
+
     /// Grava o MusicXML carregado, sem alterar nada, e confere relendo o arquivo.
     pub fn exportar(&mut self, caminho: &str) -> Result<PathBuf, String> {
         let t = caminho.trim();
@@ -835,14 +931,51 @@ fn q_em_ns(m: &Musica, r: &Reproducao, t_ns: u64) -> f64 {
 
 // --- Tela ----------------------------------------------------------------------------------
 
+/// O que o corpo da tela mostra. A tela Partitura usa [`OpcoesTela::COMPLETA`]; o Exercício de
+/// Curso esconde a escolha de arquivo e a exportação e pode mandar o cursor de fora (o áudio
+/// do professor).
+#[derive(Clone, Copy, Debug)]
+pub struct OpcoesTela {
+    pub com_titulo: bool,
+    pub com_origem: bool,
+    pub com_exportacao: bool,
+    /// Se houver, manda no cursor (por exemplo, o do áudio do professor).
+    pub cursor_externo: Option<Destaque>,
+}
+
+impl OpcoesTela {
+    pub const COMPLETA: Self = Self {
+        com_titulo: true,
+        com_origem: true,
+        com_exportacao: true,
+        cursor_externo: None,
+    };
+}
+
 /// Desenha a tela inteira.
 pub fn desenhar_tela(ui: &mut Ui, e: &mut EstadoPartitura, som: &mut ServicoSom) {
-    ui.heading("Partitura");
-    desenhar_origem(ui, e);
+    desenhar_corpo(ui, e, som, OpcoesTela::COMPLETA);
+}
+
+/// Desenha transporte, prática e partitura, com as partes que `opcoes` pedir.
+pub fn desenhar_corpo(
+    ui: &mut Ui,
+    e: &mut EstadoPartitura,
+    som: &mut ServicoSom,
+    opcoes: OpcoesTela,
+) {
+    if opcoes.com_titulo {
+        ui.heading("Partitura");
+    }
+    if opcoes.com_origem {
+        desenhar_origem(ui, e);
+    }
     e.atualizar_pratica(som.agora_ns());
     desenhar_transporte(ui, e, som);
     desenhar_pratica(ui, e, som);
-    desenhar_exportacao(ui, e);
+    if opcoes.com_exportacao {
+        desenhar_exportacao(ui, e);
+    }
     if let Some(msg) = &e.erro {
         ui.label(RichText::new(msg).color(egui::Color32::from_rgb(232, 112, 106)));
     }
@@ -869,7 +1002,7 @@ pub fn desenhar_tela(ui: &mut Ui, e: &mut EstadoPartitura, som: &mut ServicoSom)
     }
     ui.add_space(4.0);
     let agora = som.agora_ns();
-    let destaque = e.destaque(agora);
+    let destaque = opcoes.cursor_externo.or_else(|| e.destaque(agora));
     let Some(p) = e.partitura.take() else {
         ui.label("Nenhuma partitura carregada.");
         return;
@@ -898,7 +1031,7 @@ pub fn desenhar_tela(ui: &mut Ui, e: &mut EstadoPartitura, som: &mut ServicoSom)
             Some(c)
         };
     }
-    if e.tocando() || e.praticando() {
+    if e.tocando() || e.praticando() || opcoes.cursor_externo.is_some() {
         ui.ctx().request_repaint();
     }
 }

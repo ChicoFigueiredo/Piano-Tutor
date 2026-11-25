@@ -20,11 +20,15 @@ piano-tutor-core = { path = "../piano-tutor-core" }
 # Entrada MIDI (F01) e motor de áudio (F03) do próprio workspace.
 piano-tutor-midi = { path = "../piano-tutor-midi" }
 piano-tutor-audio = { path = "../piano-tutor-audio" }
+# Pacote de Curso (ADR-0009): leitor, instalador, Roteiro e Alinhamento (só dados, assinado).
+piano-tutor-curso = { path = "../piano-tutor-curso" }
 # Shell compartilhada (ADR-0002/0004), repositório público MIT OR Apache-2.0, fixada por SHA.
 # Download do SoundFont na primeira execução (sem sudo, nas três plataformas).
 ureq = { version = "=3.5.2", default-features = false, features = ["rustls"] }  # MIT OR Apache-2.0
 sha2 = "=0.11.1"   # MIT OR Apache-2.0
 dirs = "=7.0.0"    # MIT OR Apache-2.0
+# IPC JSON do mpv (posição do áudio do professor): MIT OR Apache-2.0.
+serde_json = "=1.0.154"
 # Roteiro do professor (roteiro.toml, M4 etapa 6): leitura de TOML tipada.
 toml = { version = "=1.2.0", default-features = false, features = ["parse", "serde"] }  # MIT OR Apache-2.0
 serde = { version = "=1.0.229", features = ["derive"] }  # MIT OR Apache-2.0

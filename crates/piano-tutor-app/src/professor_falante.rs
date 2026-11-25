@@ -9,13 +9,12 @@
 //!   Tudo em thread própria: `falar` volta na hora e a interface não trava;
 //! - [`VozMuda`]: sem voz instalada, só o texto na tela, com a mensagem de como instalar;
 //! - [`VozFalsa`]: registra o que foi pedido (testes e telas em desenvolvimento);
-//! - [`Roteiro`] e [`falas_para_dizer`]: espelho do `roteiro.toml` do formato do Pacote de Curso;
+//! - [`Roteiro`] (o de `piano-tutor-curso`) e [`falas_para_dizer`]: o `roteiro.toml` do Pacote de Curso;
 //!   só falas com estado `aprovada` viram voz.
 //!
 //! Nada aqui foi ouvido numa saída de áudio real nos testes automáticos: a síntese e a
 //! reprodução só são exercidas por teste manual (**NÃO VERIFICADO** em CI).
 
-use serde::Deserialize;
 use sha2::{Digest, Sha256};
 use std::fmt;
 use std::fs;
@@ -667,67 +666,17 @@ pub fn voz_do_sistema(dados: &Path) -> Box<dyn Voz> {
     }
 }
 
-// --- Roteiro --------------------------------------------------------------------------------
+// --- Roteiro ---------------------------------------------------------------------------------
 //
-// TODO(M4, integração): trocar estes tipos pelos de `piano-tutor-curso` quando o crate for
-// integrado. Aqui eles só espelham `roteiro.toml` de docs/specs/FORMATO-PACOTE-DE-CURSO.md.
+// Os tipos do Roteiro (`roteiro.toml`) são os de `piano-tutor-curso`: o app e o Pacote de Curso
+// falam o mesmo formato (docs/specs/FORMATO-PACOTE-DE-CURSO.md).
 
-/// Em que ponto da lição a fala é dita.
-#[derive(Clone, Copy, Debug, Deserialize, Eq, PartialEq)]
-#[serde(rename_all = "lowercase")]
-pub enum Momento {
-    Antes,
-    Passo,
-    Acerto,
-    Erro,
-    Depois,
-}
-
-/// Estado do conteúdo (CONTEXT.md): só `Aprovada` é dita pelo professor.
-#[derive(Clone, Copy, Debug, Deserialize, Eq, PartialEq)]
-#[serde(rename_all = "snake_case")]
-pub enum EstadoFala {
-    Hipotese,
-    EmRevisao,
-    Aprovada,
-    Rejeitada,
-}
-
-/// De onde, na fala da Aula, a frase veio (só Cursos de tutor).
-#[derive(Clone, Copy, Debug, Deserialize, PartialEq)]
-pub struct OrigemDaFala {
-    pub aula: u32,
-    pub inicio_s: f64,
-    pub fim_s: f64,
-}
-
-/// Uma fala do Roteiro.
-#[derive(Clone, Debug, Deserialize, PartialEq)]
-pub struct Fala {
-    pub id: String,
-    pub licao: String,
-    #[serde(default)]
-    pub exercicio: Option<String>,
-    pub momento: Momento,
-    /// Só com `momento = "passo"`.
-    #[serde(default)]
-    pub passo: Option<usize>,
-    pub texto: String,
-    pub estado: EstadoFala,
-    #[serde(default)]
-    pub origem: Option<OrigemDaFala>,
-}
-
-/// `roteiro.toml`.
-#[derive(Clone, Debug, Deserialize, PartialEq)]
-pub struct Roteiro {
-    pub formato_versao: u32,
-    #[serde(default)]
-    pub falas: Vec<Fala>,
-}
+/// Nome antigo do estado de uma fala (a tela de revisão ainda o usa).
+pub use piano_tutor_curso::EstadoConteudo as EstadoFala;
+pub use piano_tutor_curso::{EstadoConteudo, Fala, Momento, OrigemFala, Roteiro};
 
 /// Versão do `roteiro.toml` que este código lê.
-pub const VERSAO_DO_ROTEIRO: u32 = 1;
+pub const VERSAO_DO_ROTEIRO: u32 = piano_tutor_curso::FORMATO_VERSAO;
 
 /// Roteiro ilegível.
 #[derive(Clone, Debug, Eq, PartialEq)]
@@ -752,14 +701,13 @@ impl fmt::Display for ErroRoteiro {
 
 impl std::error::Error for ErroRoteiro {}
 
-impl Roteiro {
-    pub fn de_toml(texto: &str) -> Result<Self, ErroRoteiro> {
-        let r: Roteiro = toml::from_str(texto).map_err(|e| ErroRoteiro::Toml(e.to_string()))?;
-        if r.formato_versao > VERSAO_DO_ROTEIRO {
-            return Err(ErroRoteiro::VersaoNovaDemais(r.formato_versao));
-        }
-        Ok(r)
+/// Lê um `roteiro.toml`: recusa TOML inválido, estado desconhecido e formato mais novo.
+pub fn ler_roteiro(texto: &str) -> Result<Roteiro, ErroRoteiro> {
+    let r = Roteiro::de_toml(texto).map_err(|e| ErroRoteiro::Toml(e.to_string()))?;
+    if r.formato_versao > VERSAO_DO_ROTEIRO {
+        return Err(ErroRoteiro::VersaoNovaDemais(r.formato_versao));
     }
+    Ok(r)
 }
 
 /// Roteiro do Curso de fábrica, embutido no app.
@@ -774,7 +722,7 @@ pub fn id_de_exercicio_de_fabrica(n: u8) -> String {
 }
 
 pub fn roteiro_de_fabrica() -> Result<Roteiro, ErroRoteiro> {
-    Roteiro::de_toml(ROTEIRO_DE_FABRICA_TOML)
+    ler_roteiro(ROTEIRO_DE_FABRICA_TOML)
 }
 
 /// Falas que o professor pode **dizer** agora: as do `momento` (e `passo`, se o momento for
@@ -791,11 +739,12 @@ pub fn falas_para_dizer<'a>(
         .falas
         .iter()
         .filter(|f| {
-            f.estado == EstadoFala::Aprovada
+            f.estado == EstadoConteudo::Aprovada
                 && f.licao == licao
                 && f.momento == momento
                 && f.exercicio.as_deref().is_none_or(|e| Some(e) == exercicio)
-                && (momento != Momento::Passo || (passo.is_some() && f.passo == passo))
+                && (momento != Momento::Passo
+                    || passo.is_some_and(|p| f.passo.map(|x| x as usize) == Some(p)))
         })
         .collect()
 }
@@ -1139,7 +1088,7 @@ estado = "aprovada"
 
     #[test]
     fn so_falas_aprovadas_viram_voz() {
-        let r = Roteiro::de_toml(ROTEIRO_DE_TESTE).expect("parseia");
+        let r = ler_roteiro(ROTEIRO_DE_TESTE).expect("parseia");
         assert_eq!(r.falas.len(), 6);
         let antes = falas_para_dizer(&r, "s03-a14", Some("cinco-notas"), Momento::Antes, None);
         assert_eq!(ids(&antes), ["a"]); // "b" é hipótese
@@ -1171,21 +1120,21 @@ estado = "aprovada"
     #[test]
     fn roteiro_invalido_ou_de_versao_nova_e_recusado() {
         assert!(matches!(
-            Roteiro::de_toml("isto não é toml ="),
+            ler_roteiro("isto não é toml ="),
             Err(ErroRoteiro::Toml(_))
         ));
         assert!(matches!(
-            Roteiro::de_toml("formato_versao = 1\n[[falas]]\nid = \"x\"\n"),
+            ler_roteiro("formato_versao = 1\n[[falas]]\nid = \"x\"\n"),
             Err(ErroRoteiro::Toml(_))
         ));
         assert_eq!(
-            Roteiro::de_toml("formato_versao = 2"),
+            ler_roteiro("formato_versao = 2"),
             Err(ErroRoteiro::VersaoNovaDemais(2))
         );
         // Estado desconhecido não passa (não vira aprovada por engano).
         let ruim = ROTEIRO_DE_TESTE.replace("\"rejeitada\"", "\"talvez\"");
-        assert!(Roteiro::de_toml(&ruim).is_err());
-        let sem_falas = Roteiro::de_toml("formato_versao = 1").expect("válido");
+        assert!(ler_roteiro(&ruim).is_err());
+        let sem_falas = ler_roteiro("formato_versao = 1").expect("válido");
         assert!(sem_falas.falas.is_empty());
     }
 
@@ -1246,7 +1195,7 @@ estado = "aprovada"
     fn falas_de_fabrica_so_falam_depois_de_aprovadas() {
         let r = roteiro_de_fabrica().expect("parseia");
         // Hoje todas são hipótese: o professor fica calado até o Chico aprovar.
-        assert!(r.falas.iter().all(|f| f.estado == EstadoFala::Hipotese));
+        assert!(r.falas.iter().all(|f| f.estado == EstadoConteudo::Hipotese));
         for m in [
             Momento::Antes,
             Momento::Acerto,
@@ -1260,7 +1209,7 @@ estado = "aprovada"
         }
         // Aprovada uma, ela passa a ser dita.
         let mut r = r;
-        r.falas[0].estado = EstadoFala::Aprovada;
+        r.falas[0].estado = EstadoConteudo::Aprovada;
         let id = r.falas[0].id.clone();
         let ditas = falas_para_dizer(&r, LICAO_DE_FABRICA, Some("ex01"), Momento::Antes, None);
         assert_eq!(ditas.len(), 1);
