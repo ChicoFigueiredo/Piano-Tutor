@@ -20,6 +20,7 @@ pub mod acordes;
 pub mod app;
 pub mod baixar_sf2;
 pub mod calibracao;
+pub mod cursos;
 pub mod dados_usuario;
 pub mod espelho;
 pub mod estado;

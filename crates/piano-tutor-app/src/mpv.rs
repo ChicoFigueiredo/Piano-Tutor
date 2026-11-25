@@ -430,6 +430,19 @@ impl Midia {
         self.audio = None;
     }
 
+    /// Faz de conta que o IPC informou `t` segundos (testes: o socket é testado à parte).
+    #[cfg(test)]
+    pub(crate) fn forcar_posicao_de_teste(&mut self, t: f64) {
+        if let Some(a) = self.audio.as_mut() {
+            a.ipc.decodificador.alimentar(
+                format!(
+                    "{{\"event\":\"property-change\",\"id\":1,\"name\":\"time-pos\",\"data\":{t}}}\n"
+                )
+                .as_bytes(),
+            );
+        }
+    }
+
     pub fn parar_video(&mut self) {
         if let Some(mut v) = self.video.take() {
             v.encerrar();
