@@ -96,7 +96,7 @@ fn preparar(raiz: &Path, completa: bool) -> (PathBuf, PathBuf) {
     escrever(
         "partituras/tres-notas.estado.toml",
         b"id = \"tres-notas\"\naula = 1\nestado = \"aprovada\"\nconfianca = 0.95\n\
-          trecho_aula = { inicio_s = 5.0, fim_s = 15.5 }\nbpm_sugerido = 80\n",
+          trecho_aula = { inicio_s = 5.0, fim_s = 15.5 }\nbpm_sugerido = 79.6\n",
     );
     escrever(
         "partituras/tres-notas-volta.estado.toml",
@@ -170,7 +170,7 @@ fn importa_empacota_e_le_com_os_estados_do_estado_toml() {
     };
     let aprovado = estado_de("tres-notas");
     assert_eq!(aprovado.estado, EstadoConteudo::Aprovada);
-    assert_eq!(aprovado.bpm, Some(80), "bpm_sugerido do estado.toml");
+    assert_eq!(aprovado.bpm, Some(80), "bpm_sugerido do estado.toml (decimal arredondado)");
     assert_eq!(
         aprovado.trecho_aula,
         Some(TrechoAula {

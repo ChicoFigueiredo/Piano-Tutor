@@ -73,8 +73,9 @@ struct EstadoOficina {
     estado: Option<EstadoConteudo>,
     #[serde(default)]
     trecho_aula: Option<TrechoAula>,
+    /// Aceita inteiro ou decimal (o alinhador mede, por ex., 97.8); arredonda.
     #[serde(default)]
-    bpm_sugerido: Option<u32>,
+    bpm_sugerido: Option<f64>,
 }
 
 /// Arquivo da oficina a copiar para a pasta-origem.
@@ -236,7 +237,11 @@ fn montar(plano: &Plano, oficina: &Path, somente: bool) -> Result<Montado, ErroP
                     partitura,
                     audio,
                     alinhamento,
-                    bpm: ex.bpm.or(estado.as_ref().and_then(|e| e.bpm_sugerido)),
+                    bpm: ex.bpm.or(estado
+                        .as_ref()
+                        .and_then(|e| e.bpm_sugerido)
+                        .filter(|b| b.is_finite() && *b >= 1.0 && *b <= 1000.0)
+                        .map(|b| b.round() as u32)),
                     trecho_aula: estado.as_ref().and_then(|e| e.trecho_aula),
                 });
             }
