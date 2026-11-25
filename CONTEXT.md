@@ -66,6 +66,10 @@ _Evitar_: desafio, plugin, Roteiro (que são as falas do professor)
 Como o Player de Aula reage enquanto o aluno toca junto um trecho: **Espera** (para em cada nota até a certa), **Segue no tempo** (não para, pontua acerto e erro) ou **Chamada e resposta**. O aluno escolhe e troca durante a Aula; o Roteiro de Aula pode sugerir um.
 _Evitar_: modo de prática (é da tela de Partitura)
 
+**Espera tocar**:
+Modo da prática, na tela de Partitura e no Player de Aula, que anda no andamento da Lição e só para quando a janela de uma nota passa sem a nota certa; ao acertar, retoma voltando 0, 1, 2 ou 4 notas, ou do início, conforme a escolha do aluno.
+_Evitar_: Espera (que para em toda nota), modo lento
+
 **Calibração de vídeo**:
 Mapa, por Aula, de onde fica cada tecla no quadro da câmera de cima, proposto automaticamente pela fábrica e conferido pelo revisor; é dele que sai a Hipótese de dedilhado da Aula.
 _Evitar_: calibração do teclado (é a do instrumento MIDI)
