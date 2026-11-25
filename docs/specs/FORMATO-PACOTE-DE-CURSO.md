@@ -101,7 +101,7 @@ Regras do leitor:
 }
 ```
 
-`t_audio_s` é relativo ao início de `audio`; o instante no vídeo é `offset_aula_s + t_audio_s`. `indice` segue a ordem de `piano_tutor_core::comparador::esperados_da_partitura`.
+`t_audio_s` é relativo ao início de `audio`; o instante no vídeo é `offset_aula_s + t_audio_s`. `indice` segue a ordem de `piano_tutor_core::comparador::esperados_da_partitura`. **Uníssonos são fundidos antes da numeração:** quando as duas mãos tocam a mesma altura MIDI no mesmo instante (tolerância de 1 ms), há um só evento esperado (com a maior duração; ficam `parte`/`pauta` do de cima), porque o aluno só tem uma tecla. O `indice` conta essa lista já fundida; acordes de notas diferentes mantêm todas as notas. Pacotes gerados antes dessa regra, de partituras com uníssono entre pautas, devem ser refeitos (`indice` deslocado).
 
 ## `roteiro.toml`
 

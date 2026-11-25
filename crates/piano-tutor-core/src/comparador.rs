@@ -11,6 +11,11 @@
 //! Esse varrimento guloso é ótimo (máximo de acertos) porque a janela tem a mesma largura para
 //! todos os esperados. Cada nota esperada e cada nota tocada participa de no máximo um acerto.
 //!
+//! **Uníssonos.** Quando as duas mãos tocam a mesma altura MIDI no mesmo instante (uma nota em
+//! cada pauta), o aluno só tem uma tecla: [`esperados_da_partitura`] funde esses eventos num só
+//! (ver [`fundir_unissonos`]) antes de numerar os esperados. O `indice` dos Alinhamentos do
+//! Pacote de Curso conta a lista já fundida.
+//!
 //! Não mede latência de MIDI/áudio nem verifica velocity, duração ou pedal: **NÃO VERIFICADO**
 //! com teclado real; só o cálculo é testado.
 
@@ -135,12 +140,46 @@ impl Comparacao {
     }
 }
 
+/// Janela, em segundos, dentro da qual duas notas de mesma altura contam como o mesmo instante.
+pub const JANELA_UNISSONO_S: f64 = 0.001;
+
+/// Funde esperados de **mesma altura MIDI** cujos inícios diferem no máximo 1 ms (uníssono
+/// entre pautas: o aluno tem uma tecla só). O resultado mantém a ordem da entrada e a posição
+/// do primeiro evento de cada grupo, com a **maior duração** do grupo; `parte`, `pauta` e
+/// `compasso` são os do primeiro. Notas diferentes no mesmo instante (acordes) não se fundem,
+/// nem a mesma altura em instantes distintos (repetição). Instantes não finitos nunca fundem.
+pub fn fundir_unissonos(eventos: &[EventoEsperado]) -> Vec<EventoEsperado> {
+    let mut fundidos: Vec<EventoEsperado> = Vec::with_capacity(eventos.len());
+    // Altura -> posições em `fundidos`, para não varrer a lista toda a cada evento.
+    let mut por_altura: BTreeMap<u8, Vec<usize>> = BTreeMap::new();
+    for e in eventos {
+        let alvo = por_altura.get(&e.midi).and_then(|v| {
+            v.iter()
+                .copied()
+                .find(|&k| (fundidos[k].inicio_s - e.inicio_s).abs() <= JANELA_UNISSONO_S)
+        });
+        match alvo {
+            Some(k) => fundidos[k].duracao_s = fundidos[k].duracao_s.max(e.duracao_s),
+            None => {
+                por_altura.entry(e.midi).or_default().push(fundidos.len());
+                fundidos.push(*e);
+            }
+        }
+    }
+    fundidos
+}
+
 /// Converte os eventos de reprodução da partitura em esperados em segundos, com o mapa de
 /// andamento do arquivo. `bpm_padrao` vale onde o arquivo não declara andamento; `escala`
 /// multiplica o andamento (1,0 = como escrito).
+///
+/// Uníssonos entre pautas (mesma altura, mesmo instante) viram **um** esperado, com a maior
+/// duração ([`Partitura::eventos_sem_unissono`] e [`fundir_unissonos`]). O `indice` dos
+/// Alinhamentos segue a ordem desta lista, já fundida.
 pub fn esperados_da_partitura(p: &Partitura, bpm_padrao: f64, escala: f64) -> Vec<EventoEsperado> {
     let mapa = p.mapa_de_andamento();
-    p.eventos_de_reproducao()
+    let brutos: Vec<EventoEsperado> = p
+        .eventos_sem_unissono()
         .iter()
         .map(|e| {
             let q0 = e.inicio.como_f64();
@@ -155,7 +194,8 @@ pub fn esperados_da_partitura(p: &Partitura, bpm_padrao: f64, escala: f64) -> Ve
                 compasso: e.compasso,
             }
         })
-        .collect()
+        .collect();
+    fundir_unissonos(&brutos)
 }
 
 /// Compara as notas tocadas com as esperadas. Entradas em qualquer ordem.
@@ -463,5 +503,106 @@ mod testes {
         assert!((r.desvio_medio_ms().unwrap_or(0.0) - 120.0).abs() < 1e-6);
         let r = comparar(&e, &atrasadas, cfg(100.0)).expect("válida");
         assert!(r.acertos.is_empty());
+    }
+
+    fn esp_p(midi: u8, ini: f64, dur: f64, pauta: u8) -> EventoEsperado {
+        EventoEsperado {
+            midi,
+            inicio_s: ini,
+            duracao_s: dur,
+            parte: 0,
+            pauta,
+            compasso: 0,
+        }
+    }
+
+    #[test]
+    fn fundir_unissonos_junta_mesma_altura_no_mesmo_instante_com_a_maior_duracao() {
+        let e = [
+            esp_p(60, 0.0, 0.5, 1),
+            esp_p(60, 0.0005, 2.0, 2), // dentro de 1 ms
+            esp_p(64, 0.0, 0.5, 1),    // acorde: outra altura, fica
+            esp_p(60, 1.0, 0.5, 1),    // repetição em outro instante, fica
+            esp_p(60, 0.0021, 0.5, 2), // fora de 1 ms de 0,0, fica
+        ];
+        let f = fundir_unissonos(&e);
+        assert_eq!(f.len(), 4);
+        assert_eq!((f[0].midi, f[0].pauta), (60, 1));
+        assert!((f[0].duracao_s - 2.0).abs() < 1e-12);
+        assert_eq!(f[1].midi, 64);
+        assert!((f[2].inicio_s - 1.0).abs() < 1e-12);
+        assert!((f[3].inicio_s - 0.0021).abs() < 1e-12);
+        assert!(fundir_unissonos(&[]).is_empty());
+        let nan = [esp_p(60, f64::NAN, 1.0, 1), esp_p(60, f64::NAN, 1.0, 2)];
+        assert_eq!(fundir_unissonos(&nan).len(), 2);
+    }
+
+    const DUAS_MAOS: &str = r#"<?xml version="1.0" encoding="UTF-8"?>
+<score-partwise version="3.1">
+  <part-list><score-part id="P1"><part-name>Piano</part-name></score-part></part-list>
+  <part id="P1">
+    <measure number="1">
+      <attributes>
+        <divisions>1</divisions>
+        <key><fifths>0</fifths></key>
+        <time><beats>4</beats><beat-type>4</beat-type></time>
+        <staves>2</staves>
+        <clef number="1"><sign>G</sign><line>2</line></clef>
+        <clef number="2"><sign>F</sign><line>4</line></clef>
+      </attributes>
+      <note><pitch><step>C</step><octave>4</octave></pitch><duration>2</duration><type>half</type><staff>1</staff></note>
+      <note><pitch><step>E</step><octave>4</octave></pitch><duration>2</duration><type>half</type><staff>1</staff></note>
+      <backup><duration>4</duration></backup>
+      <note><pitch><step>C</step><octave>4</octave></pitch><duration>4</duration><type>whole</type><staff>2</staff></note>
+    </measure>
+  </part>
+</score-partwise>"#;
+
+    #[test]
+    fn unissono_entre_pautas_gera_um_esperado_so() {
+        let p = Partitura::de_musicxml(DUAS_MAOS).expect("válida");
+        assert_eq!(p.eventos_de_reproducao().len(), 3, "bruto: três notas");
+        let e = esperados_da_partitura(&p, 60.0, 1.0);
+        // C4 (as duas mãos, fundido) e E4.
+        assert_eq!(e.len(), 2);
+        let do4: Vec<_> = e.iter().filter(|x| x.midi == 60).collect();
+        assert_eq!(do4.len(), 1);
+        assert!(
+            (do4[0].duracao_s - 4.0).abs() < 1e-9,
+            "fica a maior duração (a semibreve da mão esquerda)"
+        );
+        assert_eq!(do4[0].pauta, 1, "fica a pauta de cima");
+        assert_eq!(e.iter().filter(|x| x.midi == 64).count(), 1);
+    }
+
+    #[test]
+    fn acordes_de_notas_diferentes_mantem_todas() {
+        let xml = DUAS_MAOS.replace(
+            "<step>C</step><octave>4</octave></pitch><duration>4</duration><type>whole</type><staff>2</staff>",
+            "<step>C</step><octave>3</octave></pitch><duration>4</duration><type>whole</type><staff>2</staff>",
+        );
+        assert_ne!(xml, DUAS_MAOS);
+        let p = Partitura::de_musicxml(&xml).expect("válida");
+        let e = esperados_da_partitura(&p, 60.0, 1.0);
+        assert_eq!(e.len(), 3);
+    }
+
+    #[test]
+    fn praticar_aceita_uma_tecla_no_unissono() {
+        use crate::pratica::{ConfigPratica, ModoPratica, Pratica, Veredito};
+        let p = Partitura::de_musicxml(DUAS_MAOS).expect("válida");
+        let e = esperados_da_partitura(&p, 60.0, 1.0);
+        let mut pr = Pratica::nova(
+            &e,
+            ConfigPratica {
+                modo: ModoPratica::Espera,
+                tolerancia_ms: 0.0,
+            },
+        );
+        assert_eq!(pr.nota_tocada(60, 0.0), Veredito::Acerto);
+        assert_eq!(pr.nota_tocada(64, 0.0), Veredito::Acerto);
+        assert!(pr.concluida());
+        let r = pr.resumo();
+        assert_eq!((r.extras, r.faltas), (0, 0));
     }
 }

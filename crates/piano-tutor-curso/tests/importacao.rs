@@ -170,7 +170,11 @@ fn importa_empacota_e_le_com_os_estados_do_estado_toml() {
     };
     let aprovado = estado_de("tres-notas");
     assert_eq!(aprovado.estado, EstadoConteudo::Aprovada);
-    assert_eq!(aprovado.bpm, Some(80), "bpm_sugerido do estado.toml (decimal arredondado)");
+    assert_eq!(
+        aprovado.bpm,
+        Some(80),
+        "bpm_sugerido do estado.toml (decimal arredondado)"
+    );
     assert_eq!(
         aprovado.trecho_aula,
         Some(TrechoAula {

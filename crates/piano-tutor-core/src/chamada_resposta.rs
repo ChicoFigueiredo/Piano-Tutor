@@ -185,7 +185,8 @@ impl Chamada {
     }
 }
 
-/// Desloca a lista para que a primeira nota comece em zero (ordenada pelo início).
+/// Desloca a lista para que a primeira nota comece em zero (ordenada pelo início), fundindo
+/// uníssonos (mesma altura, mesmo instante).
 fn normalizar(eventos: &[EventoEsperado]) -> Vec<EventoEsperado> {
     let zero = eventos
         .iter()
@@ -199,7 +200,8 @@ fn normalizar(eventos: &[EventoEsperado]) -> Vec<EventoEsperado> {
         })
         .collect();
     v.sort_by(|a, b| a.inicio_s.total_cmp(&b.inicio_s).then(a.midi.cmp(&b.midi)));
-    v
+    // Uníssono entre mãos: uma tecla só, então um evento só.
+    crate::comparador::fundir_unissonos(&v)
 }
 
 /// Instante em que o último som do trecho acaba (após normalizar).
@@ -1349,6 +1351,21 @@ mod testes {
 
     fn evento_em(midi: u8, t: f64, compasso: usize) -> EventoEsperado {
         evento(midi, t, 0.4, compasso)
+    }
+
+    #[test]
+    fn frases_fundem_unissono_entre_maos_e_resposta_pede_uma_tecla() {
+        // Dó4 nas duas mãos no mesmo instante, mais um Mi4.
+        let e = [
+            evento_em(60, 0.0, 0),
+            evento(60, 0.0, 2.0, 0),
+            evento_em(64, 1.0, 0),
+        ];
+        let c = chamadas_de_frases(&e, 1, false);
+        assert_eq!(c.len(), 1);
+        assert_eq!(c[0].trecho.len(), 2);
+        assert!((c[0].trecho[0].duracao_s - 2.0).abs() < 1e-12);
+        assert_eq!(normalizar(&e).len(), 2);
     }
 
     #[test]

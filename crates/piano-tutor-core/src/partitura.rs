@@ -1516,6 +1516,30 @@ impl Partitura {
         eventos
     }
 
+    /// Eventos de reprodução **sem uníssonos**: onde duas ou mais notas de mesma altura MIDI
+    /// começam no mesmo instante (típico das duas mãos tocando a mesma tecla, uma em cada
+    /// pauta), fica um só evento, com a maior duração. Do grupo fundido sobrevivem `parte`,
+    /// `pauta` e `compasso` do evento de menor (parte, pauta), isto é, a pauta de cima.
+    /// Notas diferentes no mesmo instante (acordes) são mantidas. A ordem é a de
+    /// [`Self::eventos_de_reproducao`]; é esta lista que dá o `indice` dos Alinhamentos.
+    pub fn eventos_sem_unissono(&self) -> Vec<EventoReproducao> {
+        let mut fundidos: Vec<EventoReproducao> = Vec::new();
+        for e in self.eventos_de_reproducao() {
+            // A lista vem ordenada por (início, altura): o candidato a uníssono é o último.
+            match fundidos.last_mut() {
+                Some(u) if u.inicio == e.inicio && u.midi == e.midi => {
+                    let duracao = u.duracao.max(e.duracao);
+                    if (e.parte, e.pauta) < (u.parte, u.pauta) {
+                        *u = e;
+                    }
+                    u.duracao = duracao;
+                }
+                _ => fundidos.push(e),
+            }
+        }
+        fundidos
+    }
+
     /// Andamento inicial declarado, em semínimas por minuto.
     pub fn andamento_inicial(&self) -> Option<f64> {
         self.andamentos.first().map(|a| a.bpm)

@@ -76,7 +76,8 @@ pub struct Musica {
 impl Musica {
     pub fn de(p: &Partitura) -> Self {
         Self {
-            eventos: p.eventos_de_reproducao(),
+            // Sem uníssonos: a mesma lista (e a mesma numeração) de `esperados_da_partitura`.
+            eventos: p.eventos_sem_unissono(),
             mapa: p.mapa_de_andamento(),
             execucao: p
                 .compassos_na_execucao()
