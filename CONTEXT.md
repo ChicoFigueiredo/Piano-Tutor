@@ -67,7 +67,7 @@ Como o Player de Aula reage enquanto o aluno toca junto um trecho: **Nota a nota
 _Evitar_: modo de prática (é da tela de Partitura)
 
 **Espera tocar**:
-Modo da prática, na tela de Partitura e no Player de Aula, que anda no andamento da Lição e só para quando a janela de uma nota passa sem a nota certa; no Player de Aula, vídeo e som param junto. Ao acertar, conta dois tempos e retoma voltando 0, 1, 2 ou 4 notas, ou do início, conforme a escolha do aluno; as notas voltadas são tocadas e conferidas de novo.
+Modo da prática, na tela de Partitura e no Player de Aula, que anda no andamento da Lição e só para quando a janela de uma nota passa sem a nota certa (nota errada é marcada mas não para; num acorde, faltar qualquer nota para). Cada parada conta como falta e é somada nas Paradas do resumo; no Player de Aula, vídeo e som param junto. Ao acertar, conta dois tempos e retoma voltando 0, 1, 2 ou 4 notas, ou do início, conforme a escolha do aluno; as notas voltadas são tocadas e conferidas de novo.
 _Evitar_: Espera, Nota a nota (que para em toda nota), modo lento
 
 **Nota a nota**:
