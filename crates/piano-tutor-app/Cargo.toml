@@ -41,6 +41,9 @@ png = { version = "=0.18.1", default-features = false }  # MIT OR Apache-2.0
 rusqlite = { version = "=0.43.0", features = ["bundled"] }  # MIT; SQLite é domínio público
 # Vídeo embutido (ADR-0011): dlopen da libmpv.so.2 em tempo de execução, sem ligar nem exigir headers.
 libloading = "=0.8.9"  # ISC
+# Roteiro de Aula (ADR-0012): scripts Luau em sandbox. O Luau (luau0-src) é compilado e embutido
+# pelo build do mlua-sys, sem lib do sistema (precisa só de um compilador C++).
+mlua = { version = "=0.12.3", features = ["luau"] }  # MIT; Luau é MIT
 bancada-casca = { git = "https://github.com/ChicoFigueiredo/bancada", rev = "94818fd95dc74b5a42a7757b1d258ed17822ed06" }
 
 [dev-dependencies]

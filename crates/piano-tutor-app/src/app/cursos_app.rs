@@ -234,6 +234,9 @@ impl AppPianoTutor {
                 AcaoCursos::IniciarChamadaFabrica => self.iniciar_chamada_de_fabrica(),
                 AcaoCursos::PararChamada => self.parar_chamada(),
                 AcaoCursos::ProfessorFala(ligado) => self.professor.definir_ligado(ligado),
+                AcaoCursos::Dizer(texto) => {
+                    self.professor.anunciar(&texto);
+                }
                 AcaoCursos::UsarNaoRevisado(usar) => {
                     self.professor.definir_usar_nao_revisado(usar);
                     self.cursos.usar_nao_revisado = usar;

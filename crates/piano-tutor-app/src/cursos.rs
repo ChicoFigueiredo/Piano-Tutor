@@ -1294,6 +1294,25 @@ impl EstadoCursos {
             })
     }
 
+    /// Pastas onde procurar `roteiros-aula/<lição>.luau`: as oficinas dos tutores (o que está
+    /// sendo escrito) e, depois, o pacote instalado do Curso.
+    pub fn pastas_de_roteiros(&self) -> Vec<PathBuf> {
+        let mut v: Vec<PathBuf> = self
+            .dados
+            .as_deref()
+            .map(|d| {
+                crate::revisao::descobrir_oficinas(d, None)
+                    .into_iter()
+                    .map(|o| o.raiz)
+                    .collect()
+            })
+            .unwrap_or_default();
+        if let Some(p) = &self.curso_selecionado().pasta {
+            v.push(p.clone());
+        }
+        v
+    }
+
     /// Se o editor de sincronia já gravou um Alinhamento deste Exercício (ainda não
     /// empacotado), usa-o no Exercício aberto. Devolve se trocou.
     pub fn usar_alinhamento_editado(&mut self) -> bool {

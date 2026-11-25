@@ -35,6 +35,8 @@ pub enum AcaoCursos {
     ProfessorFala(bool),
     /// Preferência "Usar conteúdo não revisado" mudou (o app grava e fecha o que ficou sem uso).
     UsarNaoRevisado(bool),
+    /// O Roteiro de Aula pediu que o professor diga este texto.
+    Dizer(String),
     /// Abrir o exercício de fábrica de índice `i` na tela Exercícios.
     IrParaFabrica(usize),
 }
@@ -79,6 +81,9 @@ pub fn desenhar_tela(
             if e.player.is_some() {
                 desenhar_cabecalho_do_player(ui, e, ctx, &mut acoes);
                 crate::tela_player_aula::desenhar_player(ui, e, espelho);
+                if let Some(p) = &mut e.player {
+                    acoes.extend(p.falas.drain(..).map(AcaoCursos::Dizer));
+                }
                 return;
             }
             ui.heading("Cursos");

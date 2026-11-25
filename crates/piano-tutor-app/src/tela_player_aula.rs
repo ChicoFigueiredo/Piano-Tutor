@@ -12,6 +12,7 @@ use crate::player_aula::{
     Acompanhamento, Comando, Dedilhado, ModoAcompanhamento, Trecho, guias_no_instante,
     notas_do_trecho, trecho_no_instante,
 };
+use crate::roteiro_aula::{Pedido, RoteiroAula, TrechoInfo, ler_roteiro_da_pasta};
 use crate::sincronia::{self, EdicaoSincronia, PASSO_ACELERAR, PASSO_TEMPO_S};
 use crate::tela_espelho::desenhar_teclado_embutido;
 use crate::tela_partitura::desenhar_vista_com_cursor;
@@ -58,6 +59,16 @@ pub struct EstadoPlayer {
     /// Vídeo à direita da partitura em vez de à esquerda.
     pub video_a_direita: bool,
     pub velocidade: f64,
+    /// Roteiro de Aula (Luau, ADR-0012), se a Aula tiver um.
+    roteiro: Option<RoteiroAula>,
+    /// De onde veio o Roteiro de Aula, ou por que não carregou.
+    pub roteiro_info: Option<String>,
+    /// Última mensagem que o Roteiro de Aula mostrou.
+    pub mensagem_roteiro: Option<String>,
+    /// Falas que o Roteiro de Aula pediu ao professor (o app as diz).
+    pub falas: Vec<String>,
+    trecho_do_roteiro: Option<usize>,
+    t_anterior: f64,
 }
 
 impl std::fmt::Debug for EstadoPlayer {
@@ -99,6 +110,12 @@ impl EstadoPlayer {
             altura_topo: 0.0,
             video_a_direita: false,
             velocidade: 1.0,
+            roteiro: None,
+            roteiro_info: None,
+            mensagem_roteiro: None,
+            falas: Vec::new(),
+            trecho_do_roteiro: None,
+            t_anterior: inicio_s,
         }
     }
 
@@ -115,6 +132,51 @@ impl EstadoPlayer {
 
     fn pausado(&self) -> bool {
         self.video.as_ref().is_none_or(VideoEmbutido::pausado)
+    }
+
+    /// Executa o que o Roteiro de Aula pediu.
+    fn aplicar(&mut self, r: Result<Vec<Pedido>, String>) {
+        let pedidos = match r {
+            Ok(v) => v,
+            Err(e) => {
+                self.roteiro_info = Some(format!("Erro no Roteiro de Aula: {e}"));
+                return;
+            }
+        };
+        for pd in pedidos {
+            match pd {
+                Pedido::Modo(m) => self.acompanhamento.trocar_modo(m),
+                Pedido::Ir(id) => {
+                    if let Some(t) = self.trechos.iter().find(|t| t.exercicio_id == id) {
+                        let s = t.inicio_s;
+                        self.acompanhamento.recomecar();
+                        self.executar(Comando::Buscar(s));
+                    } else {
+                        self.roteiro_info =
+                            Some(format!("Roteiro pediu um trecho que não existe: {id}"));
+                    }
+                }
+                Pedido::Repetir => {
+                    let t = self.posicao() - 0.5;
+                    if let Some(i) = trecho_no_instante(&self.trechos, t) {
+                        let s = self.trechos[i].inicio_s;
+                        self.acompanhamento.recomecar();
+                        self.trecho_do_roteiro = None;
+                        self.executar(Comando::Buscar(s));
+                    }
+                }
+                Pedido::Pausar => self.executar(Comando::Pausar),
+                Pedido::Continuar => self.executar(Comando::Continuar),
+                Pedido::Velocidade(x) => self.definir_velocidade(x),
+                Pedido::Mensagem(m) => self.mensagem_roteiro = Some(m),
+                Pedido::Dizer(t) => self.falas.push(t),
+            }
+        }
+        if let Some(r) = self.roteiro.as_mut() {
+            for linha in r.tirar_log() {
+                self.roteiro_info = Some(format!("Roteiro: {linha}"));
+            }
+        }
     }
 
     fn executar(&mut self, c: Comando) {
@@ -195,7 +257,30 @@ pub fn abrir_player(e: &mut EstadoCursos, licao_id: &str, exercicio_id: Option<&
     let inicio = exercicio_id
         .and_then(|id| trechos.iter().find(|t| t.exercicio_id == id))
         .map_or(0.0, |t| t.inicio_s);
-    let p = EstadoPlayer::abrir(licao_id, arquivo, inicio, trechos);
+    let mut p = EstadoPlayer::abrir(licao_id, arquivo, inicio, trechos);
+    for pasta in e.pastas_de_roteiros() {
+        match ler_roteiro_da_pasta(&pasta, licao_id) {
+            Some(Ok(r)) => {
+                p.roteiro = Some(r);
+                let origem = if pasta.ends_with("oficina") {
+                    "da oficina do tutor"
+                } else {
+                    "do pacote do Curso"
+                };
+                p.roteiro_info = Some(format!("Roteiro de Aula {licao_id}.luau, {origem}"));
+                let r = p.roteiro.as_mut().map(RoteiroAula::ao_abrir);
+                if let Some(r) = r {
+                    p.aplicar(r);
+                }
+                break;
+            }
+            Some(Err(m)) => {
+                p.roteiro_info = Some(format!("Roteiro de Aula não carregou: {m}"));
+                break;
+            }
+            None => {}
+        }
+    }
     if let Some(erro) = &p.erro_video {
         // Sem libmpv: o vídeo vai para a janela do mpv, e o resto do player segue.
         e.ver_video(licao_id, exercicio_id);
@@ -279,15 +364,51 @@ pub fn desenhar_player(ui: &mut Ui, e: &mut EstadoCursos, espelho: &mut EstadoEs
         None => e.aberto.as_ref().and_then(|a| a.alinhamento.clone()),
     };
     let notas: Vec<u8> = std::mem::take(&mut e.notas_do_aluno);
+    // Roteiro de Aula: entrou num trecho, ou o vídeo passou do fim dele.
+    if let Some(i) = idx
+        && p.roteiro.is_some()
+    {
+        let info = TrechoInfo::de_trecho(&p.trechos[i], i);
+        if p.trecho_do_roteiro != Some(i) {
+            p.trecho_do_roteiro = Some(i);
+            let r = p.roteiro.as_mut().map(|r| r.ao_entrar_trecho(&info));
+            if let Some(r) = r {
+                p.aplicar(r);
+            }
+        }
+        let agora_t = p.posicao();
+        let fim = p.trechos[i].fim_s;
+        if !p.pausado()
+            && p.t_anterior < fim
+            && agora_t >= fim
+            && agora_t - p.t_anterior < 1.0
+            && p.acompanhamento.modo != ModoAcompanhamento::ChamadaEResposta
+        {
+            let (a, er) = (p.acompanhamento.acertos, p.acompanhamento.erros);
+            let r = p.roteiro.as_mut().map(|r| r.ao_fim_trecho(&info, a, er));
+            if let Some(r) = r {
+                p.aplicar(r);
+            }
+        }
+    }
+    p.t_anterior = p.posicao();
     if let (Some(al), Some(i)) = (&alinhamento, idx) {
         let trecho = p.trechos[i].clone();
         let proximo = p.trechos.get(i + 1).cloned();
         for m in notas {
+            let acertos_antes = p.acompanhamento.acertos;
             if let Some(c) =
                 p.acompanhamento
                     .nota_tocada(al, &trecho, proximo.as_ref(), p.posicao(), m)
             {
                 p.executar(c);
+            }
+            if p.roteiro.is_some() {
+                let certa = p.acompanhamento.acertos > acertos_antes;
+                let r = p.roteiro.as_mut().map(|r| r.ao_nota(m, certa));
+                if let Some(r) = r {
+                    p.aplicar(r);
+                }
             }
         }
         let pausado = p.pausado();
@@ -298,6 +419,16 @@ pub fn desenhar_player(ui: &mut Ui, e: &mut EstadoCursos, espelho: &mut EstadoEs
 
     // --- barra de cima ---
     desenhar_barra(ui, &mut p);
+    if let Some(m) = &p.mensagem_roteiro {
+        ui.label(
+            RichText::new(m)
+                .strong()
+                .color(Color32::from_rgb(120, 190, 240)),
+        );
+    }
+    if let Some(m) = &p.roteiro_info {
+        ui.label(RichText::new(m).small().weak());
+    }
     if let Some(i) = idx {
         desenhar_editor(ui, e, &mut p, i);
     }
