@@ -50,6 +50,37 @@ Ordem sugerida: do mais rápido ao mais longo.
 | 4.3 | F03-8, F14-1 | Instalar o `.deb` no cerebro (`scripts/empacotar-deb.sh`), abrir pelo menu e tocar |
 | 4.4 | F14-5 | Abrir o app duas vezes e conferir `~/.local/share/piano-tutor/versao-dados.txt` e `backups/` |
 
+## 5. Piloto M4 — Curso do Luciano, Seção 3 (60–90 min, com teclado e fone)
+
+Especificação: `docs/planejamento/PILOTO-CURSO-LUCIANO.md`. Tudo do Luciano fica fora do git, em
+`~/.local/share/piano-tutor/fontes/luciano-alves/` (oficina) e `~/.local/share/piano-tutor/cursos/` (pacote instalado).
+Até aqui só há testes automáticos com fixtures sintéticas; **nada abaixo foi feito com o REVAS, som ou voz reais**.
+
+**Revisão do tutor (sem teclado)**
+
+| # | O que fazer | Esperado |
+|---|---|---|
+| 5.1 | Abrir **Tutor › Revisão do tutor**, aba Partituras | 6 partituras em `[?] Hipótese`, página do PDF à esquerda e partitura renderizada à direita |
+| 5.2 | Em cada uma: **Ouvir**, comparar com o PDF e ler `Divergências` | Notas, figuras, dedos e solfejo iguais ao PDF |
+| 5.3 | **Abrir no MuseScore**, corrigir se preciso, salvar o `.musicxml`, **Recarregar** | A tela avisa a mudança e mostra a versão nova |
+| 5.4 | **Em revisão** → **Aprovar** (ou **Rejeitar** com nota) | `partituras/<id>.estado.toml` ganha `[[historico]]` com data e revisor |
+| 5.5 | Aba Roteiro: **Ouvir** algumas falas (voz Piper), editar, aprovar | Voz em pt-BR inteligível; só aprovadas são ditas no Curso |
+| 5.6 | Ouvir `oficina/audio/<id>.opus` (`mpv <arquivo>`) e conferir que é a execução inteira, sem fala no início | Início e fim limpos (Dolphin, Mary e Jingle têm o Dó final possivelmente truncado) |
+| 5.7 | `scripts/atualizar-pacote-curso.sh` | Importa, assina, verifica ("confiável") e instala |
+
+**Aluno (com o REVAS)**
+
+| # | O que fazer | Esperado |
+|---|---|---|
+| 5.8 | **Cursos** › Curso do Luciano | Autor, licenciado e selo `[OK] confiável`; Lições da Seção 3; só Exercícios aprovados abrem |
+| 5.9 | Abrir um Exercício aprovado e tocar no modo Praticar | Notas verdes/vermelhas, progresso gravado em `cursos/progresso/luciano-alves.piano-1.txt` |
+| 5.10 | **Ouvir o professor** | Toca o trecho do Luciano e o cursor anda junto com as notas (Alinhamento) |
+| 5.11 | **Ver vídeo**: indicar a pasta `/mnt/e2/Musica/Curso-Piano-1/03 - Mão direita` | mpv abre a Aula no instante em que ele toca |
+| 5.12 | Professor falante ligado | Diz as falas aprovadas (antes, passos, acerto/erro, depois) sem travar a tela |
+| 5.13 | **Chamada e resposta** num Exercício de Curso e no exercício 7 (Tríade de Dó) da fábrica | "Ouça…" → "Sua vez" → `[OK] Acertou` ou `[X] Tente de novo (2/3)`; acorde tocado junto é aceito |
+| 5.14 | Tolerâncias da Chamada e resposta | Conferir se 250 ms de tolerância e 1,5 s de silêncio para fechar a resposta são confortáveis no REVAS |
+| 5.15 | Apagar `~/.local/share/piano-tutor/cursos/luciano-alves.piano-1` e abrir o app | App funciona igual, só com o Curso de fábrica |
+
 ## O que a noite já deixou provado só em software
 
 Testes automáticos verdes no workspace inteiro (núcleo, MIDI, áudio, diagnóstico e app), métricas
