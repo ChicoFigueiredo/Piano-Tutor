@@ -712,12 +712,14 @@ pub fn desenhar_tela(ui: &mut Ui, e: &mut EstadoRevisao, som: &mut ServicoSom) {
     if e.partitura_valida {
         e.partitura.atualizar(som);
     }
-    ui.heading("Revisão do tutor");
-    Frame::group(ui.style())
-        .inner_margin(Margin::symmetric(8, 4))
-        .show(ui, |ui| {
-            ui.label(RichText::new(AVISO_DO_MODO_TUTOR).color(AMARELO).strong());
-        });
+    ui.horizontal_wrapped(|ui| {
+        ui.heading("Revisão do tutor");
+        Frame::group(ui.style())
+            .inner_margin(Margin::symmetric(8, 2))
+            .show(ui, |ui| {
+                ui.label(RichText::new(AVISO_DO_MODO_TUTOR).color(AMARELO).strong());
+            });
+    });
     ui.add_space(4.0);
     ui.horizontal(|ui| {
         ui.selectable_value(&mut e.aba, AbaRevisao::Partituras, "Partituras");
@@ -783,15 +785,23 @@ fn desenhar_aba_partituras(ui: &mut Ui, e: &mut EstadoRevisao, som: &mut Servico
     }
     Panel::left("rev-lista")
         .resizable(true)
-        .default_size(300.0)
-        .size_range(220.0..=480.0)
+        .default_size(250.0)
+        .size_range(170.0..=480.0)
         .show(ui, |ui| desenhar_lista(ui, e, som));
-    Panel::bottom("rev-divergencias")
-        .resizable(true)
-        .default_size(150.0)
-        .size_range(60.0..=400.0)
-        .show(ui, |ui| desenhar_divergencias(ui, e));
-    desenhar_corpo(ui, e, som);
+    // Um painel inferior não serve aqui (num `Ui` de cima para baixo o conteúdo seguinte o
+    // cobriria): a altura é repartida à mão entre o corpo e as divergências.
+    let total = ui.available_height();
+    let largura = ui.available_width();
+    let altura_das_divergencias = (total * 0.24).clamp(90.0, 220.0).min(total * 0.5);
+    let altura_do_corpo = (total - altura_das_divergencias - 8.0).max(60.0);
+    ui.allocate_ui(vec2(largura, altura_do_corpo), |ui| {
+        ui.set_min_size(vec2(largura, altura_do_corpo));
+        desenhar_corpo(ui, e, som);
+    });
+    ui.separator();
+    ui.allocate_ui(vec2(largura, altura_das_divergencias - 8.0), |ui| {
+        desenhar_divergencias(ui, e);
+    });
 }
 
 fn desenhar_lista(ui: &mut Ui, e: &mut EstadoRevisao, som: &mut ServicoSom) {
@@ -1017,6 +1027,7 @@ fn desenhar_botoes_de_estado(
 fn desenhar_coluna_da_pagina(ui: &mut Ui, e: &mut EstadoRevisao) {
     ui.label(RichText::new("Página do PDF").strong());
     ui.horizontal_wrapped(|ui| {
+        ui.spacing_mut().slider_width = 90.0;
         let largura = (ui.available_width() - 16.0).max(100.0);
         let [w, _] = e.pagina.tamanho;
         let zoom_auto = if w > 0 {
@@ -1090,6 +1101,7 @@ fn desenhar_coluna_da_partitura(ui: &mut Ui, e: &mut EstadoRevisao, som: &mut Se
         return;
     }
     ui.horizontal_wrapped(|ui| {
+        ui.spacing_mut().slider_width = 90.0;
         if e.tocando() {
             if ui.button("Parar").clicked() {
                 e.parar_partitura(som);
@@ -1112,19 +1124,24 @@ fn desenhar_coluna_da_partitura(ui: &mut Ui, e: &mut EstadoRevisao, som: &mut Se
         {
             e.definir_bpm(bpm);
         }
-        let mut z = e.partitura.zoom;
+        ui.label(format!("zoom {:.0}%", e.partitura.zoom * 100.0));
+        let (min, max) = (
+            crate::partitura_visual::ZOOM_MIN,
+            crate::partitura_visual::ZOOM_MAX,
+        );
         if ui
-            .add(
-                Slider::new(
-                    &mut z,
-                    crate::partitura_visual::ZOOM_MIN..=crate::partitura_visual::ZOOM_MAX,
-                )
-                .text("zoom")
-                .custom_formatter(|v, _| format!("{:.0}%", v * 100.0)),
-            )
-            .changed()
+            .small_button("−")
+            .on_hover_text("Diminui a partitura")
+            .clicked()
         {
-            e.partitura.zoom = z;
+            e.partitura.zoom = (e.partitura.zoom / 1.25).clamp(min, max);
+        }
+        if ui
+            .small_button("+")
+            .on_hover_text("Aumenta a partitura")
+            .clicked()
+        {
+            e.partitura.zoom = (e.partitura.zoom * 1.25).clamp(min, max);
         }
     });
     if let Some(a) = &e.partitura.aviso {
