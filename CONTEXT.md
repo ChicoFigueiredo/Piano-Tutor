@@ -139,6 +139,14 @@ _Evitar_: bug grave, bloqueador (sem definição)
 Julgamento auditivo (timbre, estalo, clipping) registrado e assinado pelo revisor humano como evidência de critério subjetivo.
 _Evitar_: "soa bem", inspeção informal
 
+**Plataforma de referência**:
+Sistema e máquina onde os Gates são verificados; hoje Linux no cerebro.
+_Evitar_: plataforma principal, sistema oficial
+
+**Plataforma de teste pessoal**:
+Sistema onde o titular usa o app com as mesmas funcionalidades, sem valer como evidência de Gate; hoje macOS no Mac Home.
+_Evitar_: porte, versão beta, segunda plataforma
+
 **Meta experimental**:
 Meta de qualidade de IA cuja falha libera a Fase como beta, sem permitir uso do conteúdo sem revisão.
 
