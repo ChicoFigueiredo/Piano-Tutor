@@ -482,19 +482,22 @@ pub fn achar_video(pasta: &Path, nome: &str) -> Option<PathBuf> {
     if nome.is_empty() || nome.contains(['/', '\\']) || nome == "." || nome == ".." {
         return None;
     }
-    let direto = pasta.join(nome);
-    if direto.is_file() {
-        return Some(direto);
-    }
+    // Pelo nome listado na pasta, não por `join(nome).is_file()`: no macOS (APFS sem distinção
+    // de maiúsculas) este acharia `A.MP4` e devolveria um caminho com a grafia pedida, não a do disco.
     let minusculo = nome.to_lowercase();
     let procurar = |dir: &Path| -> Option<PathBuf> {
-        fs::read_dir(dir)
-            .ok()?
-            .filter_map(Result::ok)
-            .find(|e| {
-                e.file_name().to_string_lossy().to_lowercase() == minusculo && e.path().is_file()
+        let entradas: Vec<fs::DirEntry> = fs::read_dir(dir).ok()?.filter_map(Result::ok).collect();
+        let exato = entradas
+            .iter()
+            .find(|e| e.file_name().to_string_lossy() == nome && e.path().is_file());
+        exato
+            .or_else(|| {
+                entradas.iter().find(|e| {
+                    e.file_name().to_string_lossy().to_lowercase() == minusculo
+                        && e.path().is_file()
+                })
             })
-            .map(|e| e.path())
+            .map(fs::DirEntry::path)
     };
     if let Some(p) = procurar(pasta) {
         return Some(p);
@@ -506,13 +509,7 @@ pub fn achar_video(pasta: &Path, nome: &str) -> Option<PathBuf> {
         .filter(|p| p.is_dir())
         .collect();
     subpastas.sort();
-    subpastas.iter().take(64).find_map(|d| {
-        if d.join(nome).is_file() {
-            Some(d.join(nome))
-        } else {
-            procurar(d)
-        }
-    })
+    subpastas.iter().take(64).find_map(|d| procurar(d))
 }
 
 /// Resultado da conferência do arquivo de vídeo.
