@@ -445,8 +445,14 @@ pub fn pasta_de_sessoes(
     Some(base.join("piano-tutor").join("sessoes"))
 }
 
-/// [`pasta_de_sessoes`] com as variáveis do ambiente atual.
+/// [`pasta_de_sessoes`] com as variáveis do ambiente atual. No macOS a pasta de dados é a da
+/// plataforma (`~/Library/Application Support/piano-tutor`, via `dirs::data_dir`), a mesma que
+/// a voz e o SoundFont já usam (ADR-0014); `XDG_DATA_HOME` definido ainda vale.
 pub fn pasta_de_sessoes_do_ambiente() -> Option<PathBuf> {
+    #[cfg(target_os = "macos")]
+    if std::env::var_os("XDG_DATA_HOME").is_none() {
+        return dirs::data_dir().map(|d| d.join("piano-tutor").join("sessoes"));
+    }
     pasta_de_sessoes(std::env::var_os("XDG_DATA_HOME"), std::env::var_os("HOME"))
 }
 
