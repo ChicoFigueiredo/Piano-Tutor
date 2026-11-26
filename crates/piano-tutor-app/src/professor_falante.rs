@@ -119,13 +119,37 @@ pub fn procurar_executavel(nome: &str, pastas: &[PathBuf]) -> Option<PathBuf> {
         .find(|p| e_executavel(p))
 }
 
-/// Pastas onde procurar programas: o `PATH` e `~/.local/bin`.
+/// Pastas onde procurar programas: o `PATH` e `~/.local/bin`. No macOS também as do Homebrew e
+/// as dos `.app` do MuseScore, porque um app aberto pelo Finder recebe só `/usr/bin:/bin:...`
+/// no `PATH` (ADR-0014).
 pub fn pastas_de_programas() -> Vec<PathBuf> {
     let mut v: Vec<PathBuf> = std::env::var_os("PATH")
         .map(|p| std::env::split_paths(&p).collect())
         .unwrap_or_default();
-    if let Some(home) = dirs::home_dir() {
+    let home = dirs::home_dir();
+    if let Some(home) = &home {
         v.push(home.join(".local").join("bin"));
+    }
+    if cfg!(target_os = "macos") {
+        v.extend(pastas_extras_do_macos(home.as_deref()));
+    }
+    v
+}
+
+/// Pastas de programas do macOS que não estão no `PATH` de um app aberto pelo Finder.
+pub fn pastas_extras_do_macos(home: Option<&Path>) -> Vec<PathBuf> {
+    let mut v: Vec<PathBuf> = ["/opt/homebrew/bin", "/usr/local/bin"]
+        .iter()
+        .map(PathBuf::from)
+        .collect();
+    let mut aplicativos = vec![PathBuf::from("/Applications")];
+    if let Some(home) = home {
+        aplicativos.push(home.join("Applications"));
+    }
+    for pasta in aplicativos {
+        for app in ["MuseScore 4.app", "MuseScore 3.app", "MuseScore Studio.app"] {
+            v.push(pasta.join(app).join("Contents").join("MacOS"));
+        }
     }
     v
 }
@@ -1029,6 +1053,19 @@ mod testes {
         assert!(msg.contains("player de áudio"));
         let mut v = v;
         v.parar(); // não faz nada, mas existe
+    }
+
+    #[test]
+    fn pastas_extras_do_macos_tem_homebrew_e_musescore() {
+        let v = pastas_extras_do_macos(Some(Path::new("/Users/chico")));
+        assert!(v.contains(&PathBuf::from("/opt/homebrew/bin")));
+        assert!(v.contains(&PathBuf::from("/usr/local/bin")));
+        assert!(v.contains(&PathBuf::from(
+            "/Applications/MuseScore 4.app/Contents/MacOS"
+        )));
+        assert!(v.contains(&PathBuf::from(
+            "/Users/chico/Applications/MuseScore 4.app/Contents/MacOS"
+        )));
     }
 
     #[test]

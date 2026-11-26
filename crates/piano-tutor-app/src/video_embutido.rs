@@ -36,7 +36,46 @@ const NOMES_DA_LIB: &[&str] = &["libmpv-2.dll", "mpv-2.dll", "mpv.dll"];
 #[cfg(not(any(target_os = "linux", target_os = "macos", target_os = "windows")))]
 const NOMES_DA_LIB: &[&str] = &["libmpv.so.2"];
 
+/// Pastas onde a libmpv costuma estar no macOS fora do caminho padrão do `dyld`: o
+/// `Contents/Frameworks` do próprio `.app` e as do Homebrew (Apple Silicon e Intel). ADR-0014.
+#[cfg(target_os = "macos")]
+fn pastas_da_lib() -> Vec<std::path::PathBuf> {
+    let mut v = Vec::new();
+    if let Ok(exe) = std::env::current_exe()
+        && let Some(macos) = exe.parent()
+        && let Some(contents) = macos.parent()
+    {
+        v.push(contents.join("Frameworks"));
+    }
+    v.push("/opt/homebrew/lib".into());
+    v.push("/usr/local/lib".into());
+    v
+}
+
+#[cfg(not(target_os = "macos"))]
+fn pastas_da_lib() -> Vec<std::path::PathBuf> {
+    Vec::new()
+}
+
+/// Caminhos a tentar, na ordem: primeiro o nome puro (busca padrão do sistema), depois cada
+/// nome dentro das pastas extras da plataforma.
+fn candidatos_da_lib() -> Vec<std::path::PathBuf> {
+    candidatos_em(NOMES_DA_LIB, &pastas_da_lib())
+}
+
+fn candidatos_em(nomes: &[&str], pastas: &[std::path::PathBuf]) -> Vec<std::path::PathBuf> {
+    let mut v: Vec<std::path::PathBuf> = nomes.iter().map(std::path::PathBuf::from).collect();
+    for pasta in pastas {
+        v.extend(nomes.iter().map(|n| pasta.join(n)));
+    }
+    v
+}
+
 /// Como instalar a libmpv, em português, para mostrar ao aluno.
+#[cfg(target_os = "macos")]
+pub const COMO_INSTALAR_A_LIBMPV: &str = "A biblioteca libmpv não foi encontrada. Para ver o vídeo dentro do Piano Tutor, instale o mpv pelo Homebrew (brew install mpv) e abra o programa de novo. Enquanto isso, o botão \"Ver vídeo\" abre o mpv numa janela à parte.";
+/// Como instalar a libmpv, em português, para mostrar ao aluno.
+#[cfg(not(target_os = "macos"))]
 pub const COMO_INSTALAR_A_LIBMPV: &str = "A biblioteca libmpv não foi encontrada. Para ver o vídeo dentro do Piano Tutor, instale-a (no Kubuntu: sudo apt install libmpv2) e abra o programa de novo. Enquanto isso, o botão \"Ver vídeo\" abre o mpv numa janela à parte.";
 
 // ---------------------------------------------------------------------------------------------
@@ -152,7 +191,8 @@ impl Api {
     fn carregar() -> Result<Self, String> {
         let mut ultimo_erro = String::new();
         let mut lib = None;
-        for nome in NOMES_DA_LIB {
+        for nome in candidatos_da_lib() {
+            let nome = nome.as_os_str();
             // SAFETY: carregar uma biblioteca de sistema roda seus inicializadores; a libmpv
             // não tem efeitos colaterais perigosos ao ser carregada.
             match unsafe { Library::new(nome) } {
@@ -795,6 +835,23 @@ impl Drop for VideoEmbutido {
 #[cfg(test)]
 mod testes {
     use super::*;
+
+    #[test]
+    fn candidatos_tentam_o_nome_puro_e_depois_as_pastas() {
+        let v = candidatos_em(
+            &["libmpv.2.dylib"],
+            &["/opt/homebrew/lib".into(), "/usr/local/lib".into()],
+        );
+        let v: Vec<String> = v.iter().map(|p| p.display().to_string()).collect();
+        assert_eq!(
+            v,
+            [
+                "libmpv.2.dylib",
+                "/opt/homebrew/lib/libmpv.2.dylib",
+                "/usr/local/lib/libmpv.2.dylib"
+            ]
+        );
+    }
 
     #[test]
     fn cabe_preservando_a_proporcao_pela_largura() {
