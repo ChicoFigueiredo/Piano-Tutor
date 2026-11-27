@@ -12,18 +12,25 @@
 //! identidades de nota do layout, e exporta. Sem janela, áudio, rede nem disco: quem grava
 //! arquivos é o chamador. Nada aqui é interface (seam S1).
 
+mod comando;
 mod duracao;
 mod edicao;
 mod erro;
 mod exportar;
+mod grafia;
 mod ids;
 mod leitura;
 pub mod servico;
 mod texto;
 
+pub use comando::{
+    AvisoDeEdicao, ComandoDeEdicao, ErroDeEdicao, LimitesDeAltura, ResultadoDaEdicao,
+    SentidoDaAltura, UnidadeDeAltura,
+};
 pub use duracao::mmc_dos_denominadores;
 pub use erro::ErroDocumento;
 pub use exportar::{Impressao, Patch, Patches, impressao_de};
+pub use grafia::{nome_da_altura, nome_do_midi};
 pub use ids::{ChaveNota, TabelaIds};
 pub use servico::{DocumentoAberto, ErroServico, Formato, IdsPorNota};
 
@@ -81,6 +88,13 @@ pub struct Altura {
     pub passo: char,
     pub alter: i8,
     pub oitava: i8,
+}
+
+impl Altura {
+    /// Número MIDI (Dó4 = 60), sem checar limites; `None` se o passo não é `A..=G`.
+    pub fn numero_midi(self) -> Option<i32> {
+        grafia::midi(self)
+    }
 }
 
 /// Dados semânticos de uma nota, lidos na abertura (a verdade textual continua nas faixas).

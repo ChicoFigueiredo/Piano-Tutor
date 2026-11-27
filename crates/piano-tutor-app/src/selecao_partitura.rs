@@ -376,6 +376,12 @@ impl SelecaoPartitura {
         }
     }
 
+    /// Pede para levar a nota selecionada à vista no próximo quadro (depois de uma edição que
+    /// pode tê-la deslocado na pauta).
+    pub fn pedir_rolagem(&mut self) {
+        self.rolar = self.nota.is_some();
+    }
+
     /// A nota a levar para a vista, uma única vez (depois de navegar pelo teclado).
     pub fn tomar_rolagem(&mut self) -> Option<IdNota> {
         if std::mem::take(&mut self.rolar) {

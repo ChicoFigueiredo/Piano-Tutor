@@ -152,6 +152,93 @@ impl Documento {
         Ok(())
     }
 
+    /// Texto do `<accidental>` da nota, se tiver.
+    pub fn acidente_da_nota(&self, id: IdNota) -> Result<Option<String>, ErroDocumento> {
+        let loc = self.local(id)?;
+        let no = self.copia_da_nota(loc)?;
+        Ok(no
+            .filho("accidental")
+            .and_then(|a| a.conteudo_folha(&self.original))
+            .map(|t| t.trim().to_owned()))
+    }
+
+    /// A nota participa de ligadura de prolongamento (`<tie>` ou `<tied>`)?
+    pub fn tem_ligadura_de_valor(&self, id: IdNota) -> Result<bool, ErroDocumento> {
+        let loc = self.local(id)?;
+        let no = self.copia_da_nota(loc)?;
+        Ok(no.filho("tie").is_some() || no.texto(&self.original).contains("<tied"))
+    }
+
+    /// Troca a altura **e** deixa o `<accidental>` exatamente como `acidente` (`Some` define ou
+    /// troca o texto, `None` remove). Atômico: em erro o documento fica como estava. Devolve
+    /// `false` (e não suja nada) se a nota já estava assim.
+    ///
+    /// `<alter>` criado nesta sessão some de novo quando a alteração volta a zero, de modo que
+    /// o comando inverso restaura o texto exato.
+    pub fn definir_altura_e_acidente(
+        &mut self,
+        id: IdNota,
+        nova: Altura,
+        acidente: Option<&str>,
+    ) -> Result<bool, ErroDocumento> {
+        validar(nova)?;
+        if let Some(t) = acidente
+            && (t.is_empty() || t.contains(['<', '>', '&']))
+        {
+            return Err(ErroDocumento::AlturaInvalida(format!("acidente '{t}'")));
+        }
+        let loc = self.local(id)?;
+        let atual = self.partes[loc.0].compassos[loc.1].notas[loc.2]
+            .altura
+            .ok_or(ErroDocumento::NotaSemAltura(id))?;
+        let mut no = self.copia_da_nota(loc)?;
+        let base = &self.original;
+        let acidente_atual = no
+            .filho("accidental")
+            .and_then(|a| a.conteudo_folha(base))
+            .map(|t| t.trim().to_owned());
+        if atual == nova && acidente_atual.as_deref() == acidente {
+            return Ok(false);
+        }
+        let pitch = no
+            .filho_mut("pitch")
+            .ok_or(ErroDocumento::NotaSemAltura(id))?;
+        if nova.passo != atual.passo {
+            pitch
+                .filho_mut("step")
+                .ok_or(ErroDocumento::NotaSemAltura(id))?
+                .definir_conteudo(base, &nova.passo.to_string())?;
+        }
+        if nova.oitava != atual.oitava {
+            pitch
+                .filho_mut("octave")
+                .ok_or(ErroDocumento::NotaSemAltura(id))?
+                .definir_conteudo(base, &nova.oitava.to_string())?;
+        }
+        if nova.alter != atual.alter {
+            let texto = nova.alter.to_string();
+            match pitch.filho_mut("alter") {
+                Some(a) if nova.alter == 0 && a.criado_na_sessao() => {
+                    pitch.remover_filho("alter");
+                }
+                Some(a) => a.definir_conteudo(base, &texto)?,
+                None => pitch.inserir_em_ordem(leaf("alter", &texto), &posto_pitch)?,
+            }
+        }
+        match acidente {
+            Some(t) => match no.filho_mut("accidental") {
+                Some(a) => a.definir_conteudo(base, t)?,
+                None => no.inserir_em_ordem(leaf("accidental", t), &posto_nota)?,
+            },
+            None => {
+                no.remover_filho("accidental");
+            }
+        }
+        self.gravar_nota(loc, no);
+        self.partes[loc.0].compassos[loc.1].notas[loc.2].altura = Some(nova);
+        Ok(true)
+    }
+
     /// Define (`Some`), troca ou remove (`None`) o `<accidental>` da nota, na ordem do esquema.
     pub fn definir_acidente(
         &mut self,

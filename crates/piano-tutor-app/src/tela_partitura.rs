@@ -21,7 +21,10 @@ use bancada_casca::Atalho;
 use bancada_casca::egui::{self, Button, ComboBox, Event, Key, RichText, Slider, TextEdit, Ui};
 use piano_tutor_core::NotaMidi;
 use piano_tutor_core::comparador::EventoEsperado;
-use piano_tutor_core::documento::ErroServico;
+use piano_tutor_core::documento::{
+    ComandoDeEdicao, ErroServico, ResultadoDaEdicao, SentidoDaAltura, UnidadeDeAltura,
+    nome_da_altura,
+};
 use piano_tutor_core::partitura::{Partitura, SinalClave, TAMANHO_MAXIMO_BYTES};
 use piano_tutor_core::pratica::{
     BATIDAS_RETOMADA, ConfigPratica, EstadoEvento, ModoPratica, Pratica, Resumo, Retomada, Veredito,
@@ -31,6 +34,8 @@ use std::time::Duration;
 
 /// Antecedência de agendamento (igual à do ritmo).
 pub const ANTECEDENCIA: Duration = Duration::from_millis(150);
+/// Quanto a nota editada soa quando o som está ligado.
+const AUDICAO_DA_EDICAO: Duration = Duration::from_millis(400);
 /// Folga entre apertar Tocar e a primeira nota.
 const ATRASO_INICIO: Duration = Duration::from_millis(120);
 /// Andamento mínimo e máximo do controle, em semínimas por minuto.
@@ -266,6 +271,12 @@ pub struct EstadoPartitura {
     capturando_atalho: Option<AcaoAtalho>,
     /// Último aviso ou recusa de atalho (ação pendente, conflito, combinação recusada).
     aviso_atalho: Option<String>,
+    /// O que a última edição de altura fez (ou por que foi recusada), com os avisos do serviço.
+    ultima_edicao: Option<String>,
+    /// Nota (MIDI) que acabou de ser editada e ainda não soou.
+    audicao_pendente: Option<u8>,
+    /// Quantas vezes a nota editada soou (uma por edição, se o som está ligado).
+    pub(crate) audicoes: u32,
     /// Identidade do widget da vista no último quadro (foco do teclado; testes).
     pub(crate) id_da_vista: Option<egui::Id>,
     /// Arquivo onde as preferências de exibição são gravadas (sem pasta de dados, não grava).
@@ -358,6 +369,9 @@ impl EstadoPartitura {
             atalhos: MapaAtalhos::padrao(),
             capturando_atalho: None,
             aviso_atalho: None,
+            ultima_edicao: None,
+            audicao_pendente: None,
+            audicoes: 0,
             id_da_vista: None,
             preferencias_gravadas: prefs,
             preferencias_mudadas: None,
@@ -410,6 +424,8 @@ impl EstadoPartitura {
         self.compasso_em_foco = None;
         // Outro documento, outras identidades de nota: a seleção anterior não vale mais.
         self.selecao.limpar();
+        self.ultima_edicao = None;
+        self.audicao_pendente = None;
         self.pratica = None;
         self.visual.invalidar();
     }
@@ -471,6 +487,84 @@ impl EstadoPartitura {
             self.compasso_em_foco = Some(c);
         }
         Some(r)
+    }
+
+    /// Muda a altura da nota selecionada chamando o comando tipado do serviço de documento
+    /// (ticket 14): a tecla só traduz a ação em unidade e sentido; o resultado é o do comando
+    /// chamado direto. Recusa (com mensagem) sem nota selecionada e durante a reprodução ou a
+    /// prática, para não trocar a música debaixo do cursor. A seleção segue na mesma identidade.
+    pub fn mudar_altura(
+        &mut self,
+        unidade: UnidadeDeAltura,
+        sentido: SentidoDaAltura,
+    ) -> Option<ResultadoDaEdicao> {
+        self.documento.as_ref()?;
+        let Some(nota) = self.selecao.nota() else {
+            self.ultima_edicao = Some(
+                "Selecione uma nota (clique nela ou use as setas) antes de mudar a altura.".into(),
+            );
+            return None;
+        };
+        if self.tocando() || self.praticando() {
+            self.ultima_edicao =
+                Some("Pare a reprodução ou a prática antes de editar a partitura.".into());
+            return None;
+        }
+        let d = self.documento.as_mut()?;
+        match d.aplicar(ComandoDeEdicao::MudarAltura {
+            nota,
+            unidade,
+            sentido,
+        }) {
+            Ok(r) => {
+                if r.alterou {
+                    self.selecao.reancorar(&d.leitura);
+                    self.selecao.pedir_rolagem();
+                    if let Some(c) = d.leitura.entrada(nota).map(|e| e.compasso) {
+                        self.compasso_em_foco = Some(c);
+                    }
+                    // O que a prática e o desenho guardam é da música antiga.
+                    self.pratica = None;
+                    self.visual.invalidar();
+                    self.audicao_pendente = r.midi_depois();
+                }
+                let mut texto = format!(
+                    "Altura: {} → {}.",
+                    nome_da_altura(r.antes),
+                    nome_da_altura(r.depois)
+                );
+                for a in &r.avisos {
+                    texto.push(' ');
+                    texto.push_str(&a.texto());
+                }
+                self.ultima_edicao = Some(texto);
+                Some(r)
+            }
+            Err(e) => {
+                self.ultima_edicao = Some(e.to_string());
+                None
+            }
+        }
+    }
+
+    /// Texto do que a última edição de altura fez ou do motivo da recusa.
+    pub fn ultima_edicao(&self) -> Option<&str> {
+        self.ultima_edicao.as_deref()
+    }
+
+    /// Faz soar, uma vez, a nota que acabou de ser editada (se o som está ligado e nada toca).
+    /// Som real no PC de referência: NÃO VERIFICADO.
+    pub fn soar_nota_editada(&mut self, som: &mut ServicoSom) {
+        let Some(midi) = self.audicao_pendente.take() else {
+            return;
+        };
+        if som.estado() != EstadoSom::Pronto || self.tocando() {
+            return;
+        }
+        if let Some(nota) = NotaMidi::nova(midi) {
+            som.demonstrar(&[nota], som.agora_ns(), AUDICAO_DA_EDICAO);
+            self.audicoes += 1;
+        }
     }
 
     /// Compasso (índice a partir de 0) que o usuário apontou por último na partitura: o da nota
@@ -1001,7 +1095,7 @@ impl EstadoPartitura {
             .collect()
     }
 
-    /// Grava o MusicXML carregado, sem alterar nada, e confere relendo o arquivo.
+    /// Grava o MusicXML exportado pelo serviço (com as edições, se houver) e confere relendo.
     pub fn exportar(&mut self, caminho: &str) -> Result<PathBuf, String> {
         let c = destino_de_exportacao(caminho)?;
         let d = self
@@ -1183,9 +1277,13 @@ pub fn desenhar_corpo(
                         Destino::Comando(c) => {
                             e.navegar(c);
                         }
+                        Destino::Altura(u, s) => {
+                            e.mudar_altura(u, s);
+                        }
                         Destino::Pendente(a) => e.avisar_pendente(a),
                     }
                 }
+                e.soar_nota_editada(som);
                 ui.ctx().request_repaint();
             }
         }
@@ -1299,6 +1397,9 @@ fn desenhar_estado_da_selecao(ui: &mut Ui, e: &mut EstadoPartitura) {
     if let Some(a) = e.aviso_de_atalho() {
         partes.push(a.to_owned());
     }
+    if let Some(t) = e.ultima_edicao() {
+        partes.push(t.to_owned());
+    }
     ui.label(RichText::new(partes.join(" · ")).weak());
     desenhar_lista_de_atalhos(ui, e);
 }
@@ -1333,7 +1434,7 @@ fn desenhar_lista_de_atalhos(ui: &mut Ui, e: &mut EstadoPartitura) {
                         };
                         ui.monospace(texto);
                         let mut situacao = Vec::new();
-                        if acao.comando().is_none() {
+                        if acao.pendente() {
                             situacao.push("pendente: ainda sem comando".to_owned());
                         }
                         if let Some((_, a)) = avisos.iter().find(|(x, _)| *x == acao) {
@@ -1665,7 +1766,7 @@ fn desenhar_exportacao(ui: &mut Ui, e: &mut EstadoPartitura) {
         ui.checkbox(&mut e.sobrescrever, "Sobrescrever");
         if ui
             .button("Exportar")
-            .on_hover_text("Grava o arquivo carregado sem alterações e confere relendo (somente leitura: sem edição de notas)")
+            .on_hover_text("Grava o MusicXML aberto, com as alterações de altura feitas, e confere relendo o arquivo (sem alterações, sai idêntico ao original)")
             .clicked()
         {
             let destino = e.campo_exportar.clone();
@@ -2526,12 +2627,245 @@ mod testes {
         partitura_em_foco(&ctx, &mut e, &mut som);
         apertar(&ctx, &mut e, &mut som, Key::ArrowRight, Modifiers::NONE);
         let sel = e.nota_selecionada();
-        apertar(&ctx, &mut e, &mut som, Key::ArrowUp, Modifiers::NONE);
+        apertar(&ctx, &mut e, &mut som, Key::Num4, Modifiers::NONE);
         let aviso = e.aviso_de_atalho().expect("aviso de pendente");
-        assert!(aviso.contains("Subir um semitom"), "{aviso}");
+        assert!(aviso.contains("Duração: colcheia"), "{aviso}");
         assert!(aviso.contains("ainda não tem comando"), "{aviso}");
         assert_eq!(e.nota_selecionada(), sel);
         assert!(!e.documento.as_ref().expect("doc").editado());
+    }
+
+    // --- Ticket 14: mudar a altura da nota selecionada pelas setas ---------------------------
+
+    /// Documento do serviço aberto direto do mesmo texto que a tela abriu (o "outro caminho").
+    fn aberto_direto(e: &EstadoPartitura) -> piano_tutor_core::documento::DocumentoAberto {
+        piano_tutor_core::documento::DocumentoAberto::abrir_texto(
+            "direto",
+            e.documento.as_ref().expect("doc").xml(),
+        )
+        .expect("abre")
+    }
+
+    fn alt_shift() -> Modifiers {
+        Modifiers {
+            alt: true,
+            shift: true,
+            ..Modifiers::NONE
+        }
+    }
+
+    #[test]
+    fn a12_cada_tecla_de_altura_da_o_mesmo_resultado_que_o_comando_chamado_no_servico() {
+        use SentidoDaAltura::{Abaixo, Acima};
+        use UnidadeDeAltura::{GrauDaEscala, Oitava, Semitom};
+        use piano_tutor_core::documento::ComandoDeEdicao;
+        let teclas = [
+            (Key::ArrowUp, Modifiers::NONE, Semitom, Acima),
+            (Key::ArrowDown, Modifiers::NONE, Semitom, Abaixo),
+            (Key::ArrowUp, alt_shift(), GrauDaEscala, Acima),
+            (Key::ArrowDown, alt_shift(), GrauDaEscala, Abaixo),
+            (Key::ArrowUp, Modifiers::COMMAND, Oitava, Acima),
+            (Key::ArrowDown, Modifiers::COMMAND, Oitava, Abaixo),
+        ];
+        for (tecla, mods, unidade, sentido) in teclas {
+            let (mut som, ctx) = banco();
+            let mut e = ode();
+            let id = partitura_em_foco(&ctx, &mut e, &mut som);
+            // Anda até uma nota do meio da peça (a tecla de altura age na selecionada).
+            for _ in 0..5 {
+                apertar(&ctx, &mut e, &mut som, Key::ArrowRight, Modifiers::NONE);
+            }
+            let sel = e.nota_selecionada().expect("selecionada");
+            let mut direto = aberto_direto(&e);
+            let r = direto
+                .aplicar(ComandoDeEdicao::MudarAltura {
+                    nota: sel,
+                    unidade,
+                    sentido,
+                })
+                .expect("o serviço aplica");
+            assert!(r.alterou);
+
+            apertar(&ctx, &mut e, &mut som, tecla, mods);
+            let d = e.documento.as_ref().expect("doc");
+            assert!(d.editado(), "{tecla:?} {mods:?}: a tecla não editou");
+            // Mesmo texto exportado, mesmo modelo de tocar, mesma música: o caminho da tecla é o
+            // do comando.
+            assert_eq!(
+                d.exportado().expect("exporta"),
+                direto.exportar().expect("exporta"),
+                "{tecla:?} {mods:?}"
+            );
+            assert_eq!(d.partitura(), direto.partitura(), "{tecla:?} {mods:?}");
+            assert_eq!(
+                d.musica.eventos,
+                Musica::de(direto.partitura()).eventos,
+                "{tecla:?} {mods:?}"
+            );
+            // A mesma nota segue selecionada e o foco ficou na partitura.
+            assert_eq!(e.nota_selecionada(), Some(sel), "{tecla:?} {mods:?}");
+            assert!(d.leitura.contem(sel));
+            assert!(ctx.memory(|m| m.has_focus(id)));
+            let aviso = e.ultima_edicao().expect("mensagem da edição");
+            assert!(aviso.starts_with("Altura: "), "{aviso}");
+            // Só um compasso sujo, e a exportação difere do original só nele.
+            let sujos = d.compassos_editados();
+            assert_eq!(sujos.len(), 1, "{sujos:?}");
+            assert_eq!(sujos, direto.documento().compassos_sujos());
+            // O som ligado faz a nota editada soar uma vez.
+            assert_eq!(e.audicoes, 1, "{tecla:?} {mods:?}");
+        }
+    }
+
+    #[test]
+    fn teclas_seguidas_editam_de_novo_porque_o_foco_fica_na_partitura() {
+        let (mut som, ctx) = banco();
+        let mut e = ode();
+        let id = partitura_em_foco(&ctx, &mut e, &mut som);
+        apertar(&ctx, &mut e, &mut som, Key::ArrowRight, Modifiers::NONE);
+        let sel = e.nota_selecionada().expect("selecionada");
+        let altura = |e: &EstadoPartitura| {
+            e.documento
+                .as_ref()
+                .and_then(|d| d.leitura.entrada(sel).map(|x| x.altura))
+                .expect("altura")
+        };
+        let a0 = altura(&e);
+        for _ in 0..3 {
+            apertar(&ctx, &mut e, &mut som, Key::ArrowUp, Modifiers::NONE);
+        }
+        assert!(ctx.memory(|m| m.has_focus(id)));
+        assert_eq!(e.nota_selecionada(), Some(sel));
+        assert_eq!(e.audicoes, 3, "uma audição por edição");
+        let a3 = altura(&e);
+        let midi = |a: piano_tutor_core::partitura::Altura| a.numero_midi().expect("midi");
+        assert_eq!(midi(a3) - midi(a0), 3, "três semitons acima");
+        // Descer três volta à altura de antes e o compasso segue como o único editado.
+        for _ in 0..3 {
+            apertar(&ctx, &mut e, &mut som, Key::ArrowDown, Modifiers::NONE);
+        }
+        assert_eq!(midi(altura(&e)), midi(a0));
+        assert_eq!(
+            e.documento
+                .as_ref()
+                .expect("doc")
+                .compassos_editados()
+                .len(),
+            1
+        );
+    }
+
+    #[test]
+    fn tecla_de_altura_sem_nota_selecionada_avisa_e_nao_edita() {
+        let (mut som, ctx) = banco();
+        let mut e = ode();
+        partitura_em_foco(&ctx, &mut e, &mut som);
+        apertar(&ctx, &mut e, &mut som, Key::ArrowUp, Modifiers::NONE);
+        assert!(
+            e.ultima_edicao()
+                .expect("aviso")
+                .contains("Selecione uma nota")
+        );
+        assert!(!e.documento.as_ref().expect("doc").editado());
+        assert_eq!(e.audicoes, 0);
+    }
+
+    #[test]
+    fn altura_fora_dos_limites_e_recusada_na_tela_com_mensagem_e_nada_muda() {
+        let (mut som, ctx) = banco();
+        let mut e = EstadoPartitura::novo(None);
+        // Lá0 é o extremo grave do teclado de referência: descer não pode.
+        let xml = PEQUENA.replace(
+            "<step>C</step><octave>4</octave>",
+            "<step>A</step><octave>0</octave>",
+        );
+        assert_ne!(xml, PEQUENA, "a substituição achou a nota");
+        e.abrir_xml("limite", xml).expect("abre");
+        partitura_em_foco(&ctx, &mut e, &mut som);
+        apertar(&ctx, &mut e, &mut som, Key::ArrowRight, Modifiers::NONE);
+        let sel = e.nota_selecionada();
+        let antes = e
+            .documento
+            .as_ref()
+            .expect("doc")
+            .exportado()
+            .expect("exporta");
+        apertar(&ctx, &mut e, &mut som, Key::ArrowDown, Modifiers::NONE);
+        let msg = e.ultima_edicao().expect("mensagem");
+        assert!(msg.contains("fora dos limites"), "{msg}");
+        assert!(msg.contains("não foi alterada"), "{msg}");
+        let d = e.documento.as_ref().expect("doc");
+        assert!(!d.editado());
+        assert_eq!(d.exportado().expect("exporta"), antes);
+        assert_eq!(e.nota_selecionada(), sel);
+        assert_eq!(e.audicoes, 0, "recusa não soa");
+    }
+
+    #[test]
+    fn sem_som_pronto_ou_tocando_a_edicao_vale_mas_nao_soa_e_durante_a_reproducao_e_recusada() {
+        use crate::som::apoio_testes::servico;
+        // Som não pronto: edita, mas não soa.
+        let (mut mudo, _motor) = servico(Arc::new(RelogioManual::novo()) as Arc<dyn Relogio>);
+        let ctx = Context::default();
+        let mut e = ode();
+        partitura_em_foco(&ctx, &mut e, &mut mudo);
+        apertar(&ctx, &mut e, &mut mudo, Key::ArrowRight, Modifiers::NONE);
+        apertar(&ctx, &mut e, &mut mudo, Key::ArrowUp, Modifiers::NONE);
+        assert!(e.documento.as_ref().expect("doc").editado());
+        assert_eq!(e.audicoes, 0);
+        // Durante a reprodução a edição é recusada com mensagem, sem mexer na música.
+        let (mut som, ctx) = banco();
+        let mut e = ode();
+        partitura_em_foco(&ctx, &mut e, &mut som);
+        apertar(&ctx, &mut e, &mut som, Key::ArrowRight, Modifiers::NONE);
+        e.tocar(&mut som);
+        assert!(e.tocando());
+        apertar(&ctx, &mut e, &mut som, Key::ArrowUp, Modifiers::NONE);
+        assert!(
+            e.ultima_edicao()
+                .expect("aviso")
+                .contains("Pare a reprodução")
+        );
+        assert!(!e.documento.as_ref().expect("doc").editado());
+        assert_eq!(e.audicoes, 0);
+    }
+
+    #[test]
+    fn exporta_a_partitura_editada_e_a_exportacao_difere_so_no_compasso_da_nota() {
+        let (mut som, ctx) = banco();
+        let mut e = ode();
+        partitura_em_foco(&ctx, &mut e, &mut som);
+        for _ in 0..5 {
+            apertar(&ctx, &mut e, &mut som, Key::ArrowRight, Modifiers::NONE);
+        }
+        let original = e.documento.as_ref().expect("doc").xml().to_owned();
+        apertar(&ctx, &mut e, &mut som, Key::ArrowUp, Modifiers::COMMAND);
+        let pasta = std::env::temp_dir().join(format!("pt-edita-{}", std::process::id()));
+        std::fs::create_dir_all(&pasta).expect("pasta");
+        let destino = pasta.join("editada.musicxml");
+        let _ = std::fs::remove_file(&destino);
+        e.exportar(destino.to_str().expect("utf8"))
+            .expect("exporta e confere");
+        let gravado = std::fs::read_to_string(&destino).expect("lê");
+        let _ = std::fs::remove_dir_all(&pasta);
+        assert_ne!(gravado, original);
+        let rel = piano_tutor_fixtures_comparar(&original, &gravado);
+        assert_eq!(rel, 1, "só um compasso difere");
+    }
+
+    /// Quantos compassos (`<measure>`) diferem entre dois textos com a mesma estrutura.
+    fn piano_tutor_fixtures_comparar(a: &str, b: &str) -> usize {
+        let medidas =
+            |t: &str| -> Vec<String> { t.split("<measure ").skip(1).map(str::to_owned).collect() };
+        let (ma, mb) = (medidas(a), medidas(b));
+        assert_eq!(ma.len(), mb.len());
+        // O cabeçalho (tudo antes do primeiro compasso) é idêntico.
+        assert_eq!(
+            a.split("<measure ").next(),
+            b.split("<measure ").next(),
+            "cabeçalho mudou"
+        );
+        ma.iter().zip(&mb).filter(|(x, y)| x != y).count()
     }
 
     #[test]

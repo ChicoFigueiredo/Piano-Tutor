@@ -465,15 +465,17 @@ pub fn desenhar_partitura(
                 ui.ctx().request_repaint();
             }
             if resposta.com_foco {
-                // Setas horizontais (e Tab, havendo mais de uma voz) são da partitura; Esc devolve
-                // o foco à janela, então o teclado nunca fica preso.
+                // Setas (horizontais para navegar e, desde o ticket 14, verticais para mudar a
+                // altura) e Tab, havendo mais de uma voz, são da partitura; Esc devolve o foco
+                // à janela, então o teclado nunca fica preso. Sem as verticais o egui moveria o
+                // foco para outro controle ao primeiro ↑ ou ↓.
                 ui.ctx().memory_mut(|m| {
                     m.set_focus_lock_filter(
                         resp.id,
                         EventFilter {
                             tab: sel.captura_tab,
                             horizontal_arrows: true,
-                            vertical_arrows: false,
+                            vertical_arrows: true,
                             escape: false,
                         },
                     );

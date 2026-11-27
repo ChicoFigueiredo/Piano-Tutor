@@ -28,7 +28,7 @@
 //! DTD que expande elementos e estrutura de compasso inconsistente. Normalizar a codificação é
 //! decisão de importação posterior (a exportação passaria a valer sobre o derivado).
 
-use super::{Documento, ErroDocumento, IdNota};
+use super::{Documento, ErroDocumento, IdNota, LimitesDeAltura};
 use crate::mxl::extrair_musicxml;
 use crate::partitura::{ErroPartitura, Partitura};
 use std::fmt;
@@ -120,9 +120,11 @@ impl IdsPorNota {
 pub struct DocumentoAberto {
     nome: String,
     formato: Formato,
-    documento: Documento,
-    partitura: Partitura,
-    ids: IdsPorNota,
+    pub(super) documento: Documento,
+    pub(super) partitura: Partitura,
+    pub(super) ids: IdsPorNota,
+    /// Limites de altura que os comandos de edição respeitam (ticket 14).
+    pub(super) limites: LimitesDeAltura,
 }
 
 impl DocumentoAberto {
@@ -158,6 +160,7 @@ impl DocumentoAberto {
             documento,
             partitura,
             ids,
+            limites: LimitesDeAltura::default(),
         })
     }
 

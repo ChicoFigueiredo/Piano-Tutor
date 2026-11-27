@@ -17,7 +17,10 @@
 //!   **sinalizado** ao remapear e na lista.
 //! - **Uso duplicado**: atribuir uma combinação que outra ação já usa é recusado, citando a
 //!   ação. Para trocar duas, libere uma antes ([`MapaAtalhos::remover`]).
-//! - **Pendentes**: ação sem comando ainda ([`AcaoAtalho::comando`] `None`) aparece em
+//! - **Altura** (ticket 14): as seis ações de altura ([`AcaoAtalho::altura`]) viram
+//!   [`Destino::Altura`] (unidade e sentido); a tela monta o comando tipado do serviço de
+//!   documento e o chama. A tecla nunca edita por conta própria.
+//! - **Pendentes**: ação sem comando ainda ([`AcaoAtalho::pendente`]) aparece em
 //!   [`MapaAtalhos::pendentes`]; ao apertar a tecla, a tela avisa em vez de calar.
 //! - **Persistência**: texto `id=Ctrl+Shift+Z` por linha (seção `tela.atalhos` do perfil,
 //!   ADR-0010); `id=-` é "sem atalho". Texto ausente, com id desconhecido ou combinação
@@ -28,6 +31,7 @@ use crate::opcoes::Kv;
 use crate::selecao_partitura::Comando;
 use bancada_casca::Atalho;
 use bancada_casca::egui::{Key, Modifiers};
+use piano_tutor_core::documento::{SentidoDaAltura, UnidadeDeAltura};
 use std::fmt;
 
 /// Uma ação da Oficina que pode ter atalho.
@@ -213,8 +217,29 @@ impl AcaoAtalho {
         }
     }
 
-    /// Comando ligado à ação; `None` = ainda sem comando (pendente). Os comandos de edição
-    /// entram nas fatias seguintes.
+    /// Comando de **edição de altura** ligado à ação (ticket 14): a tecla só traduz a ação em
+    /// unidade e sentido; quem edita é o comando tipado do serviço de documento.
+    pub fn altura(self) -> Option<(UnidadeDeAltura, SentidoDaAltura)> {
+        use SentidoDaAltura::{Abaixo, Acima};
+        use UnidadeDeAltura::{GrauDaEscala, Oitava, Semitom};
+        match self {
+            Self::SemitomAcima => Some((Semitom, Acima)),
+            Self::SemitomAbaixo => Some((Semitom, Abaixo)),
+            Self::GrauAcima => Some((GrauDaEscala, Acima)),
+            Self::GrauAbaixo => Some((GrauDaEscala, Abaixo)),
+            Self::OitavaAcima => Some((Oitava, Acima)),
+            Self::OitavaAbaixo => Some((Oitava, Abaixo)),
+            _ => None,
+        }
+    }
+
+    /// Ação com atalho mas ainda sem comando nenhum (nem de navegação, nem de edição).
+    pub fn pendente(self) -> bool {
+        self.comando().is_none() && self.altura().is_none()
+    }
+
+    /// Comando de navegação ligado à ação; `None` = não é navegação (edição ou ainda pendente).
+    /// Os demais comandos de edição entram nas fatias seguintes.
     pub fn comando(self) -> Option<Comando> {
         match self {
             Self::NotaAnterior => Some(Comando::Anterior),
@@ -378,6 +403,8 @@ impl fmt::Display for AvisoTelaTeclado {
 pub enum Destino {
     /// Comando de navegação existente.
     Comando(Comando),
+    /// Mudar a altura da nota selecionada (ticket 14): vira o comando tipado do serviço.
+    Altura(UnidadeDeAltura, SentidoDaAltura),
     /// Ação do perfil sem comando ainda: a tela avisa.
     Pendente(AcaoAtalho),
 }
@@ -427,7 +454,7 @@ impl MapaAtalhos {
     pub fn pendentes(&self) -> Vec<AcaoAtalho> {
         self.ligacoes
             .iter()
-            .filter(|(a, _)| a.comando().is_none())
+            .filter(|(a, _)| a.pendente())
             .map(|(a, _)| *a)
             .collect()
     }
@@ -508,9 +535,10 @@ impl MapaAtalhos {
         if tecla == Key::Tab && !tab_ativo {
             return None;
         }
-        Some(match acao.comando() {
-            Some(c) => Destino::Comando(c),
-            None => Destino::Pendente(acao),
+        Some(match (acao.comando(), acao.altura()) {
+            (Some(c), _) => Destino::Comando(c),
+            (None, Some((unidade, sentido))) => Destino::Altura(unidade, sentido),
+            (None, None) => Destino::Pendente(acao),
         })
     }
 
@@ -688,9 +716,9 @@ mod testes {
     fn acoes_sem_comando_ficam_registradas_como_pendentes_e_roteiam_como_pendente() {
         let m = MapaAtalhos::padrao();
         let p = m.pendentes();
-        assert_eq!(p.len(), ACOES.len() - 4);
+        // Navegação (4) e altura (6) têm comando; o resto segue pendente.
+        assert_eq!(p.len(), ACOES.len() - 4 - 6);
         for a in [
-            AcaoAtalho::SemitomAcima,
             AcaoAtalho::Refazer,
             AcaoAtalho::Cifra,
             AcaoAtalho::Duracao(3),
@@ -698,10 +726,7 @@ mod testes {
             assert!(p.contains(&a), "{a:?}");
         }
         assert!(!p.contains(&AcaoAtalho::NotaSeguinte));
-        assert_eq!(
-            m.rotear(Key::ArrowUp, Modifiers::NONE, true),
-            Some(Destino::Pendente(AcaoAtalho::SemitomAcima))
-        );
+        assert!(!p.contains(&AcaoAtalho::SemitomAcima));
         assert_eq!(
             m.rotear(Key::Z, mods(true, false, true), true),
             Some(Destino::Pendente(AcaoAtalho::Refazer))
@@ -710,6 +735,45 @@ mod testes {
             m.rotear(Key::Num4, Modifiers::NONE, true),
             Some(Destino::Pendente(AcaoAtalho::Duracao(4)))
         );
+    }
+
+    #[test]
+    fn as_seis_acoes_de_altura_roteiam_para_unidade_e_sentido_do_servico() {
+        use SentidoDaAltura::{Abaixo, Acima};
+        use UnidadeDeAltura::{GrauDaEscala, Oitava, Semitom};
+        let m = MapaAtalhos::padrao();
+        let casos = [
+            (Key::ArrowUp, Modifiers::NONE, Semitom, Acima),
+            (Key::ArrowDown, Modifiers::NONE, Semitom, Abaixo),
+            (Key::ArrowUp, mods(false, true, true), GrauDaEscala, Acima),
+            (
+                Key::ArrowDown,
+                mods(false, true, true),
+                GrauDaEscala,
+                Abaixo,
+            ),
+            (Key::ArrowUp, mods(true, false, false), Oitava, Acima),
+            (Key::ArrowDown, mods(true, false, false), Oitava, Abaixo),
+        ];
+        for (tecla, mods, unidade, sentido) in casos {
+            assert_eq!(
+                m.rotear(tecla, mods, true),
+                Some(Destino::Altura(unidade, sentido)),
+                "{tecla:?} {mods:?}"
+            );
+        }
+        // Alt sem Shift, Shift sem Alt e Ctrl+Shift não são ações de altura.
+        assert_eq!(m.rotear(Key::ArrowUp, mods(false, true, false), true), None);
+        assert_eq!(m.rotear(Key::ArrowUp, mods(false, false, true), true), None);
+        // Remapeada, a ação de altura segue a nova tecla.
+        let mut m = MapaAtalhos::padrao();
+        let novo = Atalho::ctrl(Key::J);
+        assert_eq!(m.remapear(AcaoAtalho::SemitomAcima, novo), Ok(None));
+        assert_eq!(
+            m.rotear(Key::J, Modifiers::COMMAND, true),
+            Some(Destino::Altura(Semitom, Acima))
+        );
+        assert_eq!(m.rotear(Key::ArrowUp, Modifiers::NONE, true), None);
     }
 
     #[test]

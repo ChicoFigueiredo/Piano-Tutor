@@ -5,7 +5,10 @@
 //! documento`); aqui ficam apenas a leitura e a gravação de arquivos, com os limites de tamanho.
 
 use crate::selecao_partitura::IndiceLeitura;
-use piano_tutor_core::documento::{DocumentoAberto, ErroServico, Formato, IdsPorNota};
+use piano_tutor_core::documento::{
+    ComandoDeEdicao, DocumentoAberto, ErroDeEdicao, ErroServico, Formato, IdsPorNota,
+    ResultadoDaEdicao,
+};
 use piano_tutor_core::mxl::MXL_TAMANHO_MAXIMO_BYTES;
 use piano_tutor_core::partitura::{
     EventoReproducao, MapaAndamento, Partitura, TAMANHO_MAXIMO_BYTES,
@@ -190,9 +193,31 @@ impl DocumentoPartitura {
         self.aberto.ids()
     }
 
+    /// Aplica um comando de edição do serviço de documento (ticket 14) e recalcula o que deriva
+    /// da partitura: os dados musicais (tocar) e a ordem de leitura. Só o serviço edita; em erro
+    /// nada muda, nem aqui.
+    pub fn aplicar(&mut self, comando: ComandoDeEdicao) -> Result<ResultadoDaEdicao, ErroDeEdicao> {
+        let r = self.aberto.aplicar(comando)?;
+        if r.alterou {
+            self.musica = Musica::de(self.aberto.partitura());
+            self.leitura = IndiceLeitura::de(self.aberto.partitura(), self.aberto.ids());
+        }
+        Ok(r)
+    }
+
     /// Há compasso editado (sujo)? Abrir e navegar nunca editam.
     pub fn editado(&self) -> bool {
         self.aberto.editado()
+    }
+
+    /// Compassos editados (sujos), os únicos que a exportação regenera.
+    pub fn compassos_editados(&self) -> Vec<piano_tutor_core::documento::PosCompasso> {
+        self.aberto.documento().compassos_sujos()
+    }
+
+    /// O texto MusicXML exportado agora (com as edições; sem edição, idêntico ao original).
+    pub fn exportado(&self) -> Result<String, ErroServico> {
+        self.aberto.exportar()
     }
 
     /// O texto MusicXML original, que a exportação sem edição devolve idêntico.

@@ -342,7 +342,7 @@ pub enum Acidente {
 }
 
 impl Acidente {
-    fn de_texto(t: &str) -> Option<Self> {
+    pub fn de_texto(t: &str) -> Option<Self> {
         Some(match t {
             "sharp" => Self::Sustenido,
             "flat" => Self::Bemol,

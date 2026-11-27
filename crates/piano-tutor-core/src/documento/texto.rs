@@ -95,6 +95,14 @@ impl No {
         }
     }
 
+    /// O elemento inteiro nasceu nesta sessão (nenhum byte vem do texto original).
+    pub fn criado_na_sessao(&self) -> bool {
+        self.pecas.iter().all(|p| match p {
+            Peca::Txt(t) => matches!(t, Texto::Novo(_)),
+            Peca::Elem(n) => n.criado_na_sessao(),
+        })
+    }
+
     pub fn filho(&self, nome: &str) -> Option<&No> {
         self.pecas.iter().find_map(|p| match p {
             Peca::Elem(n) if n.nome == nome => Some(n),
