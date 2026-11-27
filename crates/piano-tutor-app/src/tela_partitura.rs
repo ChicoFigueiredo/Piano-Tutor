@@ -6,6 +6,8 @@
 //! O app chama [`EstadoPartitura::atualizar`] a cada quadro (agenda as notas até
 //! `agora + ANTECEDENCIA`) e [`EstadoPartitura::tocando`] para saber se há reprodução.
 
+pub use crate::documento_partitura::Musica;
+use crate::documento_partitura::{DocumentoPartitura, destino_de_exportacao, ler_arquivo};
 use crate::partitura_visual::{
     Destaque, EstadoVisual, Mao, MapaResultados, Marcas, ModoRolagem, OpcoesVisuais, ResultadoNota,
     ZOOM_MAX, ZOOM_MIN, desenhar_partitura,
@@ -15,10 +17,7 @@ use crate::som::{EstadoSom, ServicoSom};
 use bancada_casca::egui::{self, Button, ComboBox, Key, RichText, Slider, TextEdit, Ui};
 use piano_tutor_core::NotaMidi;
 use piano_tutor_core::comparador::EventoEsperado;
-use piano_tutor_core::mxl::{MXL_TAMANHO_MAXIMO_BYTES, extrair_musicxml};
-use piano_tutor_core::partitura::{
-    ErroPartitura, EventoReproducao, MapaAndamento, Partitura, SinalClave, TAMANHO_MAXIMO_BYTES,
-};
+use piano_tutor_core::partitura::{ErroPartitura, Partitura, SinalClave, TAMANHO_MAXIMO_BYTES};
 use piano_tutor_core::pratica::{
     BATIDAS_RETOMADA, ConfigPratica, EstadoEvento, ModoPratica, Pratica, Resumo, Retomada, Veredito,
 };
@@ -61,54 +60,6 @@ pub const EMBUTIDAS: [(&str, &str); 5] = [
 ];
 
 // --- Plano de reprodução (puro) ------------------------------------------------------------
-
-/// Dados musicais derivados da partitura, calculados uma vez por carga.
-#[derive(Clone, Debug)]
-pub struct Musica {
-    pub eventos: Vec<EventoReproducao>,
-    pub mapa: MapaAndamento,
-    /// Início de cada compasso tocado (semínimas na execução) e seu índice.
-    pub execucao: Vec<(f64, usize)>,
-    pub duracao_q: f64,
-    pub bpm_arquivo: Option<f64>,
-}
-
-impl Musica {
-    pub fn de(p: &Partitura) -> Self {
-        Self {
-            // Sem uníssonos: a mesma lista (e a mesma numeração) de `esperados_da_partitura`.
-            eventos: p.eventos_sem_unissono(),
-            mapa: p.mapa_de_andamento(),
-            execucao: p
-                .compassos_na_execucao()
-                .into_iter()
-                .map(|(q, c)| (q.como_f64(), c))
-                .collect(),
-            duracao_q: p.duracao_da_execucao().como_f64(),
-            bpm_arquivo: p.andamento_inicial(),
-        }
-    }
-
-    /// Segundos do início da execução até `q` semínimas, no andamento `bpm_alvo`.
-    pub fn segundos(&self, q: f64, bpm_alvo: f64) -> f64 {
-        let base = self.bpm_arquivo.unwrap_or(bpm_alvo).max(1.0);
-        self.mapa.segundos(q, base, bpm_alvo / base)
-    }
-
-    /// Instante (semínimas na execução) do primeiro compasso `c` tocado.
-    pub fn inicio_do_compasso(&self, c: usize) -> Option<f64> {
-        self.execucao.iter().find(|(_, i)| *i == c).map(|(q, _)| *q)
-    }
-
-    /// Compasso e tempo dentro dele para a posição `q` (semínimas na execução).
-    pub fn compasso_em(&self, q: f64) -> Option<(usize, f64)> {
-        self.execucao
-            .iter()
-            .rev()
-            .find(|(ini, _)| *ini <= q + 1e-9)
-            .map(|(ini, c)| (*c, (q - ini).max(0.0)))
-    }
-}
 
 /// Uma nota a tocar: instante e duração no relógio comum, em nanossegundos.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -289,11 +240,8 @@ pub struct EstadoPartitura {
     fontes: Vec<Fonte>,
     selecionada: usize,
     campo_caminho: String,
-    partitura: Option<Partitura>,
-    musica: Option<Musica>,
-    /// Texto XML carregado, gravado de volta na exportação (nada é descartado).
-    xml: String,
-    nome: String,
+    /// Documento carregado (texto XML, modelo e dados musicais), fora da interface.
+    documento: Option<DocumentoPartitura>,
     pub erro: Option<String>,
     pub aviso: Option<String>,
     pub zoom: f32,
@@ -320,38 +268,6 @@ pub struct EstadoPartitura {
     /// Espera tocar: quanto voltar ao retomar depois de uma parada.
     pub retomada_pratica: Retomada,
     pratica: Option<SessaoPratica>,
-}
-
-fn ler_arquivo(caminho: &Path) -> Result<String, String> {
-    let ext = caminho
-        .extension()
-        .and_then(|e| e.to_str())
-        .map(str::to_lowercase)
-        .unwrap_or_default();
-    if ext != "musicxml" && ext != "xml" && ext != "mxl" {
-        return Err("use um arquivo .musicxml, .xml ou .mxl".into());
-    }
-    let meta = std::fs::metadata(caminho).map_err(|e| format!("{}: {e}", caminho.display()))?;
-    if !meta.is_file() {
-        return Err(format!("{} não é um arquivo", caminho.display()));
-    }
-    if ext == "mxl" {
-        if meta.len() > MXL_TAMANHO_MAXIMO_BYTES as u64 {
-            return Err(format!(
-                "arquivo grande demais ({} bytes; máximo {MXL_TAMANHO_MAXIMO_BYTES})",
-                meta.len()
-            ));
-        }
-        let bytes = std::fs::read(caminho).map_err(|e| format!("{}: {e}", caminho.display()))?;
-        return extrair_musicxml(&bytes).map_err(|e| e.to_string());
-    }
-    if meta.len() > TAMANHO_MAXIMO_BYTES as u64 {
-        return Err(format!(
-            "arquivo grande demais ({} bytes; máximo {TAMANHO_MAXIMO_BYTES})",
-            meta.len()
-        ));
-    }
-    std::fs::read_to_string(caminho).map_err(|e| format!("{}: {e}", caminho.display()))
 }
 
 impl EstadoPartitura {
@@ -409,10 +325,7 @@ impl EstadoPartitura {
             fontes,
             selecionada: 0,
             campo_caminho: String::new(),
-            partitura: None,
-            musica: None,
-            xml: String::new(),
-            nome: String::new(),
+            documento: None,
             erro: None,
             aviso: None,
             zoom: prefs.zoom,
@@ -442,24 +355,24 @@ impl EstadoPartitura {
     }
 
     pub fn partitura(&self) -> Option<&Partitura> {
-        self.partitura.as_ref()
+        self.documento.as_ref().map(|d| &d.partitura)
+    }
+
+    fn musica(&self) -> Option<&Musica> {
+        self.documento.as_ref().map(|d| &d.musica)
     }
 
     pub fn nome(&self) -> &str {
-        &self.nome
+        self.documento.as_ref().map_or("", |d| d.nome.as_str())
     }
 
     fn carregar_texto(&mut self, nome: String, texto: String) -> Result<(), ErroPartitura> {
-        let p = Partitura::de_musicxml(&texto)?;
-        let m = Musica::de(&p);
-        if let Some(b) = m.bpm_arquivo {
+        let d = DocumentoPartitura::de_texto(nome, texto)?;
+        if let Some(b) = d.musica.bpm_arquivo {
             self.bpm = (b as f32).clamp(BPM_MIN, BPM_MAX);
         }
-        self.campo_exportar = format!("{}.musicxml", nome_de_arquivo(&nome));
-        self.nome = nome;
-        self.xml = texto;
-        self.partitura = Some(p);
-        self.musica = Some(m);
+        self.campo_exportar = format!("{}.musicxml", nome_de_arquivo(&d.nome));
+        self.documento = Some(d);
         self.compasso_inicial = None;
         self.pratica = None;
         self.visual.invalidar();
@@ -545,7 +458,7 @@ impl EstadoPartitura {
 
     /// Começa a tocar a partir do compasso escolhido (ou do início).
     pub fn tocar(&mut self, som: &mut ServicoSom) {
-        let Some(m) = &self.musica else {
+        let Some(m) = self.musica() else {
             return;
         };
         let q0 = self
@@ -590,7 +503,10 @@ impl EstadoPartitura {
     /// Muda o andamento; se estiver tocando, continua do ponto ainda não agendado.
     pub fn definir_bpm(&mut self, bpm: f32) {
         self.bpm = bpm.clamp(BPM_MIN, BPM_MAX);
-        let (Some(r), Some(m)) = (self.reproducao.as_mut(), self.musica.as_ref()) else {
+        let (Some(r), Some(m)) = (
+            self.reproducao.as_mut(),
+            self.documento.as_ref().map(|d| &d.musica),
+        ) else {
             return;
         };
         let t_h = r
@@ -638,7 +554,7 @@ impl EstadoPartitura {
 
     /// Posição atual em semínimas na execução, se estiver tocando.
     fn posicao_q(&self, agora_ns: u64) -> Option<f64> {
-        let (r, m) = (self.reproducao.as_ref()?, self.musica.as_ref()?);
+        let (r, m) = (self.reproducao.as_ref()?, self.musica()?);
         Some(q_em_ns(m, r, agora_ns))
     }
 
@@ -666,7 +582,7 @@ impl EstadoPartitura {
                         });
                     }
                     let t = s.segundos(agora_ns).max(s.piso_s);
-                    let m = self.musica.as_ref()?;
+                    let m = self.musica()?;
                     let q = q_em_s(m, &s.relogio, t);
                     let (compasso, tempo) = m.compasso_em(q)?;
                     Some(Destaque { compasso, tempo })
@@ -674,7 +590,7 @@ impl EstadoPartitura {
             };
         }
         let q = self.posicao_q(agora_ns)?;
-        let (compasso, tempo) = self.musica.as_ref()?.compasso_em(q)?;
+        let (compasso, tempo) = self.musica()?.compasso_em(q)?;
         Some(Destaque { compasso, tempo })
     }
 
@@ -729,7 +645,7 @@ impl EstadoPartitura {
     /// Nos modos com andamento (Espera tocar e Seguir o andamento) há uma contagem de entrada de
     /// duas semínimas antes do primeiro compasso.
     pub fn iniciar_pratica(&mut self, agora_ns: u64) {
-        let (Some(m), Some(p)) = (self.musica.as_ref(), self.partitura.as_ref()) else {
+        let (Some(m), Some(p)) = (self.musica(), self.partitura()) else {
             return;
         };
         let q0 = self
@@ -885,7 +801,7 @@ impl EstadoPartitura {
     /// Quantas notas a partitura tem (a ordem é a de `esperados_da_partitura`, a mesma do
     /// `indice` do Alinhamento do Pacote de Curso).
     pub fn total_de_notas(&self) -> usize {
-        self.musica.as_ref().map_or(0, |m| m.eventos.len())
+        self.musica().map_or(0, |m| m.eventos.len())
     }
 
     /// Índice da nota que a prática espera agora (na ordem do Alinhamento), se houver prática
@@ -916,7 +832,7 @@ impl EstadoPartitura {
 
     /// Onde o cursor fica quando a nota `indice` soa (compasso e tempo dentro dele).
     pub fn destaque_da_nota(&self, indice: usize) -> Option<Destaque> {
-        let m = self.musica.as_ref()?;
+        let m = self.musica()?;
         let e = m.eventos.get(indice)?;
         let (compasso, tempo) = m.compasso_em(e.inicio.como_f64())?;
         Some(Destaque { compasso, tempo })
@@ -925,7 +841,7 @@ impl EstadoPartitura {
     /// Notas esperadas no andamento atual, para o modo Chamada e resposta. `mao` filtra pela
     /// clave (fá = esquerda); `None` leva as duas mãos.
     pub fn esperados_para_chamada(&self, mao: Option<Mao>) -> Vec<EventoEsperado> {
-        let (Some(m), Some(p)) = (self.musica.as_ref(), self.partitura.as_ref()) else {
+        let (Some(m), Some(p)) = (self.musica(), self.partitura()) else {
             return Vec::new();
         };
         let bpm = f64::from(self.bpm);
@@ -954,47 +870,12 @@ impl EstadoPartitura {
 
     /// Grava o MusicXML carregado, sem alterar nada, e confere relendo o arquivo.
     pub fn exportar(&mut self, caminho: &str) -> Result<PathBuf, String> {
-        let t = caminho.trim();
-        if t.is_empty() {
-            return Err("digite o caminho do arquivo de destino".into());
-        }
-        let mut c = PathBuf::from(t);
-        if c.extension().is_none() {
-            c.set_extension("musicxml");
-        }
-        let ext = c
-            .extension()
-            .and_then(|e| e.to_str())
-            .map(str::to_lowercase)
-            .unwrap_or_default();
-        if ext != "musicxml" && ext != "xml" {
-            return Err("o destino deve terminar em .musicxml ou .xml".into());
-        }
-        if self.xml.is_empty() {
-            return Err("nenhuma partitura carregada".into());
-        }
-        let mut aberto = std::fs::OpenOptions::new();
-        aberto.write(true);
-        if self.sobrescrever {
-            aberto.create(true).truncate(true);
-        } else {
-            aberto.create_new(true);
-        }
-        use std::io::Write;
-        let mut f = aberto.open(&c).map_err(|e| {
-            format!(
-                "{}: {e} (marque \"Sobrescrever\" para trocar um arquivo)",
-                c.display()
-            )
-        })?;
-        f.write_all(self.xml.as_bytes())
-            .map_err(|e| format!("{}: {e}", c.display()))?;
-        drop(f);
-        let lido = std::fs::read_to_string(&c).map_err(|e| format!("{}: {e}", c.display()))?;
-        let relido = Partitura::de_musicxml(&lido).map_err(|e| e.to_string())?;
-        if Some(&relido) != self.partitura.as_ref() {
-            return Err("a releitura do arquivo exportado difere da partitura carregada".into());
-        }
+        let c = destino_de_exportacao(caminho)?;
+        let d = self
+            .documento
+            .as_ref()
+            .ok_or_else(|| "nenhuma partitura carregada".to_owned())?;
+        d.gravar(&c, self.sobrescrever)?;
         Ok(c)
     }
 }
@@ -1091,7 +972,7 @@ pub fn desenhar_corpo(
     if let Some(msg) = &e.aviso {
         ui.label(RichText::new(msg).weak());
     }
-    if let Some(p) = &e.partitura {
+    if let Some(p) = e.partitura() {
         let mut partes = Vec::new();
         if let Some(t) = &p.titulo {
             partes.push(t.clone());
@@ -1112,13 +993,13 @@ pub fn desenhar_corpo(
     ui.add_space(4.0);
     let agora = som.agora_ns();
     let destaque = opcoes.cursor_externo.or_else(|| e.destaque(agora));
-    let Some(p) = e.partitura.take() else {
+    let Some(d) = e.documento.take() else {
         ui.label("Nenhuma partitura carregada.");
         return;
     };
     let resposta = desenhar_partitura(
         ui,
-        &p,
+        &d.partitura,
         &mut e.visual,
         OpcoesVisuais {
             zoom: e.zoom,
@@ -1132,7 +1013,7 @@ pub fn desenhar_corpo(
             resultados: e.pratica.as_ref().map(|s| &s.mapa),
         },
     );
-    e.partitura = Some(p);
+    e.documento = Some(d);
     if let Some(c) = resposta.compasso_clicado {
         e.compasso_inicial = if e.compasso_inicial == Some(c) {
             None
@@ -1154,13 +1035,13 @@ pub fn desenhar_vista(ui: &mut Ui, e: &mut EstadoPartitura, som: &ServicoSom) {
 
 /// A vista da partitura com o cursor dado por fora (o Player de Aula segue o vídeo).
 pub fn desenhar_vista_com_cursor(ui: &mut Ui, e: &mut EstadoPartitura, destaque: Option<Destaque>) {
-    let Some(p) = e.partitura.take() else {
+    let Some(d) = e.documento.take() else {
         ui.label(RichText::new("Nenhuma partitura carregada.").weak());
         return;
     };
     desenhar_partitura(
         ui,
-        &p,
+        &d.partitura,
         &mut e.visual,
         OpcoesVisuais {
             zoom: e.zoom,
@@ -1174,7 +1055,7 @@ pub fn desenhar_vista_com_cursor(ui: &mut Ui, e: &mut EstadoPartitura, destaque:
             resultados: None,
         },
     );
-    e.partitura = Some(p);
+    e.documento = Some(d);
     if e.tocando() || destaque.is_some() {
         ui.ctx().request_repaint();
     }
@@ -1212,7 +1093,7 @@ fn texto_do_resumo_com(r: &Resumo, com_paradas: bool) -> String {
 }
 
 fn desenhar_pratica(ui: &mut Ui, e: &mut EstadoPartitura, som: &mut ServicoSom) {
-    if e.partitura.is_none() {
+    if e.documento.is_none() {
         return;
     }
     ui.horizontal_wrapped(|ui| {
@@ -1353,8 +1234,7 @@ fn desenhar_transporte(ui: &mut Ui, e: &mut EstadoPartitura, som: &mut ServicoSo
             }
         }
         match e.compasso_inicial.and_then(|c| {
-            e.partitura
-                .as_ref()
+            e.partitura()
                 .and_then(|p| p.compassos.get(c).map(|i| i.numero.clone()))
         }) {
             Some(n) => {
@@ -1586,7 +1466,7 @@ mod testes {
         e.compasso_inicial = Some(2);
         e.tocar(&mut som);
         let r = e.reproducao.as_ref().expect("tocando");
-        let m = e.musica.as_ref().expect("musica");
+        let m = e.musica().expect("musica");
         assert_eq!(Some(r.q0), m.inicio_do_compasso(2));
         assert!(r.q0 > 0.0);
     }
@@ -1672,7 +1552,13 @@ mod testes {
         e.abrir_caminho(&bom_mxl.to_string_lossy());
         assert!(e.erro.is_none(), "{:?}", e.erro);
         assert_eq!(e.partitura().map(|p| p.compassos.len()), Some(16));
-        assert_eq!(e.xml, EMBUTIDAS[3].1);
+        assert_eq!(
+            e.documento
+                .as_ref()
+                .map(|d| d.xml.as_str())
+                .unwrap_or_default(),
+            EMBUTIDAS[3].1
+        );
         e.abrir_caminho(&pasta.join("a.txt").to_string_lossy());
         assert!(e.erro.is_some());
         let boa = pasta.join("boa.musicxml");
@@ -1755,7 +1641,7 @@ mod testes {
 
     /// Notas esperadas (instante em semínimas, altura) da partitura carregada.
     fn eventos_de(e: &EstadoPartitura) -> Vec<(f64, u8)> {
-        let m = e.musica.as_ref().expect("música");
+        let m = e.musica().expect("música");
         m.eventos
             .iter()
             .map(|x| (x.inicio.como_f64(), x.midi))
@@ -1929,11 +1815,7 @@ mod testes {
         // Vence a janela: para, o cursor fica na nota que falta e não anda mais.
         e.atualizar_pratica(t0 + 700 * MS);
         assert!(e.pratica_parada());
-        let esperado = e
-            .musica
-            .as_ref()
-            .and_then(|m| m.compasso_em(q1))
-            .expect("posição");
+        let esperado = e.musica().and_then(|m| m.compasso_em(q1)).expect("posição");
         for agora in [t0 + 700 * MS, t0 + 5 * S, t0 + 60 * S] {
             e.atualizar_pratica(agora);
             let d = e.destaque(agora).expect("cursor");
@@ -1972,10 +1854,7 @@ mod testes {
         assert!(!e.pratica_parada());
         assert!(e.praticando());
         let pos = |e: &EstadoPartitura, q: f64| {
-            e.musica
-                .as_ref()
-                .and_then(|m| m.compasso_em(q))
-                .expect("posição")
+            e.musica().and_then(|m| m.compasso_em(q)).expect("posição")
         };
         // Contagem de dois tempos (1 s a 120 bpm) com o cursor no ponto de retomada.
         assert_eq!(e.aviso_da_pratica(t).as_deref(), Some("Contagem: 2"));
