@@ -27,6 +27,7 @@ pub mod dedos;
 pub mod espelho;
 pub mod estado;
 pub mod exercicios;
+pub mod geometria;
 pub mod gravacao;
 pub mod icones;
 pub mod licoes;

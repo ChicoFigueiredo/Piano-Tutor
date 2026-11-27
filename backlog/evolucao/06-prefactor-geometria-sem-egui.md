@@ -12,13 +12,13 @@
 
 **Blocked by:** None (can start immediately)
 
-**Status:** ready-for-agent
+**Status:** feito, aguarda revisão (critério de tempo de layout inconclusivo, ver abaixo)
 
-- [ ] O desenho de todas as partituras embutidas, a 100% e 150%, é pixel a pixel igual ao anterior (teste de captura por golden de primitivas, não por imagem do SO).
-- [ ] As posições calculadas pelo layout (cabeças, hastes, barras, linhas suplementares) passam nos testes geométricos existentes sem alterar valores esperados.
-- [ ] O layout é calculável e inspecionável em teste sem criar contexto do egui; a conversão para egui fica num único adaptador.
-- [ ] Cada primitiva de nota expõe uma identidade de nota opcional e há um hit test (ponto em sp → nota ou compasso) coberto por testes com tolerância definida; sem identidade, o comportamento antigo por compasso é mantido.
-- [ ] A migração segue expandir-contrair: um PR de expansão (novo tipo ao lado do antigo), batches por área do layout, e o PR que remove o tipo antigo só quando nenhum chamador resta. Se o tamanho exigir, este ticket é o de expansão e os demais batches viram tickets filhos no próprio PR de planejamento.
-- [ ] Sem aumento mensurável no tempo de layout de uma peça de 100 compassos (medição informal registrada; a baseline formal é o ticket 26).
+- [x] O desenho de todas as partituras embutidas, a 100% e 150%, é pixel a pixel igual ao anterior (teste de captura por golden de primitivas, não por imagem do SO). (golden FNV de layout e malha tesselada, 5 partituras x 100%/150%, capturado no código antigo e idêntico no novo: `golden_de_primitivas_das_partituras_embutidas`)
+- [x] As posições calculadas pelo layout (cabeças, hastes, barras, linhas suplementares) passam nos testes geométricos existentes sem alterar valores esperados.
+- [x] O layout é calculável e inspecionável em teste sem criar contexto do egui; a conversão para egui fica num único adaptador. (`crates/piano-tutor-app/src/geometria.rs` + `partitura_visual/adaptador_egui.rs`)
+- [x] Cada primitiva de nota expõe uma identidade de nota opcional e há um hit test (ponto em sp → nota ou compasso) coberto por testes com tolerância definida; sem identidade, o comportamento antigo por compasso é mantido. (`Layout::nota_em`/`acertar`, tolerância `TOLERANCIA_NOTA_SP`; `Item.nota` fica `None` até o ticket 10)
+- [x] A migração segue expandir-contrair: um PR de expansão (novo tipo ao lado do antigo), batches por área do layout, e o PR que remove o tipo antigo só quando nenhum chamador resta. Se o tamanho exigir, este ticket é o de expansão e os demais batches viram tickets filhos no próprio PR de planejamento. (expansão e contração no mesmo PR: nenhum chamador externo usava as formas com tipos do egui, então não restou tipo antigo)
+- [ ] Sem aumento mensurável no tempo de layout de uma peça de 100 compassos (medição informal registrada; a baseline formal é o ticket 26). NÃO CONCLUÍDO: medição informal e ruidosa (0,84 a 0,87 ms antes; 0,86 a 1,7 ms depois, 42 compassos, release, máquina compartilhada); não dá para afirmar ausência de aumento. Baseline formal é o ticket 26.
 
 **Notas:** Wide refactor (to-tickets): sequenciar expandir/migrar/contrair; a CI deve ficar verde em cada batch.
