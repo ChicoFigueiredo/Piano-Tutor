@@ -13,7 +13,7 @@
 //! aprovação migrada vale para o conteúdo de agora, o que o titular vê no aviso ao abrir a
 //! Oficina (que lista tudo o que foi migrado). Decisão documentada no ticket 23.
 //!
-//! Garantias: idempotente (com índice, não faz nada); nunca altera `<id>.musicxml` nem
+//! Garantias: idempotente (índice com decisão ou com Versões além da Hipótese não é tocado; índice só com a origem, de uma migração interrompida, é completado); nunca altera `<id>.musicxml` nem
 //! `<id>.estado.toml`; índice ilegível é relatado e deixado como está; sem arquivo MusicXML
 //! legível a partitura não migra (relatada). Roda ao abrir a Oficina.
 
@@ -90,8 +90,11 @@ fn migrar_em(oficina: &Oficina, em: &str) -> RelatorioDaMigracao {
         }
         let v = Versoes::da_partitura(&item);
         match v.indice() {
-            Ok(Some(_)) => continue,
-            Ok(None) => {}
+            // Índice com Versões além da Hipótese ou com decisões: o titular já trabalhou nele.
+            Ok(Some(i)) if i.versoes.len() > 1 || !i.decisoes.is_empty() => continue,
+            // Só a origem, sem decisão: uma migração anterior caiu entre os dois passos. Completa
+            // (registrar a origem é idempotente), senão a aprovação antiga se perderia em silêncio.
+            Ok(Some(_)) | Ok(None) => {}
             Err(e) => {
                 r.problemas.push((item.id, e.to_string()));
                 continue;
@@ -253,5 +256,25 @@ mod testes {
         migrar_em(&o, "2026-11-28T10:00:00Z");
         fs::write(o.pasta_de_partituras().join("a.musicxml"), "<outro/>").expect("w");
         assert!(aprovacao(&o, "a").is_none());
+    }
+
+    #[test]
+    fn migracao_interrompida_depois_da_origem_e_completada() {
+        let d = tempfile::tempdir().expect("tmp");
+        let o = oficina(d.path());
+        partitura(&o, "a", "aprovada", Some(XML));
+        let item = ItemPartitura::ler(&o, "a");
+        // Simula a queda: a origem foi registrada, a decisão não.
+        Versoes::da_partitura(&item)
+            .registrar_origem(REVISOR_DA_MIGRACAO, "2026-11-28T00:00:00Z")
+            .expect("origem");
+        let r = migrar_em(&o, "2026-11-28T00:00:01Z");
+        assert_eq!(r.migradas, vec!["a".to_owned()]);
+        assert!(
+            aprovacao(&o, "a").is_some(),
+            "a aprovação antiga foi preservada"
+        );
+        // E a segunda execução não faz nada.
+        assert!(migrar_em(&o, "2026-11-28T00:00:02Z").vazio());
     }
 }
