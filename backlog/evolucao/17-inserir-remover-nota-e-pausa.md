@@ -23,3 +23,5 @@
 - [ ] A posição de inserção usa as colunas do layout e o cursor de entrada; o teste usa a posição, não coordenadas de pixel.
 
 **Supervisor (2026-11-27):** quando o arquivo lateral de IdNota existir, trocar o pareamento do diff (`documento/diff.rs`, ticket 22) para usá-lo, com teste de inserção no meio de compasso sem `id` no MusicXML.
+
+**Supervisor (2026-11-27):** restaurar a conferência completa de `conferir_exportacao` (`servico.rs`) em edições que criam ou tiram notas, que o ticket 16 reduziu à contagem de notas, e atualizar `tabela_ids_para` no compasso editado.

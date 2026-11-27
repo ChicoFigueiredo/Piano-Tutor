@@ -144,6 +144,9 @@ pub struct DocumentoAberto {
     pub(super) limites: LimitesDeAltura,
     /// Pilhas de desfazer e refazer (ticket 15).
     pub(super) historico: Historico,
+    /// Alguma edição criou ou tirou notas (ticket 16): as identidades deixam de seguir a ordem
+    /// do arquivo, então a releitura de conferência só confere o total delas.
+    pub(super) estrutura_editada: bool,
 }
 
 impl DocumentoAberto {
@@ -181,6 +184,7 @@ impl DocumentoAberto {
             ids,
             limites: LimitesDeAltura::default(),
             historico: Historico::default(),
+            estrutura_editada: false,
         })
     }
 
@@ -232,7 +236,16 @@ impl DocumentoAberto {
                 "o modelo da partitura mudou".into(),
             ));
         }
-        if relido.ids != self.ids {
+        // Edição que cria ou tira notas (pausa de preenchimento, ticket 16) deixa ids que a
+        // releitura, que numera na ordem do arquivo, não reproduz: sem o arquivo lateral de ids
+        // (ticket 17) só se confere que o total bate.
+        if self.estrutura_editada {
+            if relido.ids.total() != self.ids.total() {
+                return Err(ErroServico::ReleituraDifere(
+                    "o número de notas mudou".into(),
+                ));
+            }
+        } else if relido.ids != self.ids {
             return Err(ErroServico::ReleituraDifere(
                 "as identidades das notas mudaram".into(),
             ));

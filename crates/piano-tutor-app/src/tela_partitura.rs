@@ -28,7 +28,7 @@ use piano_tutor_core::NotaMidi;
 use piano_tutor_core::comparador::EventoEsperado;
 use piano_tutor_core::documento::{
     ComandoDeEdicao, ErroServico, Exibicao, ResultadoDaEdicao, SentidoDaAltura, UnidadeDeAltura,
-    nome_da_altura,
+    ValorDeDuracao, figura_da_tecla, nome_da_altura, nome_da_figura,
 };
 use piano_tutor_core::partitura::{Partitura, SinalClave, TAMANHO_MAXIMO_BYTES};
 use piano_tutor_core::pratica::{
@@ -627,6 +627,77 @@ impl EstadoPartitura {
                     nome_da_altura(r.antes),
                     nome_da_altura(r.depois)
                 );
+                for a in &r.avisos {
+                    texto.push(' ');
+                    texto.push_str(&a.texto());
+                }
+                self.ultima_edicao = Some(texto);
+                Some(r)
+            }
+            Err(e) => {
+                self.ultima_edicao = Some(e.to_string());
+                None
+            }
+        }
+    }
+
+    /// Escolhe a figura da nota selecionada com a tecla `1` a `9` (ticket 16): a tecla só traduz
+    /// o número em figura e chama o comando tipado do serviço de documento, que valida o compasso
+    /// (A4). Recusa, com mensagem, sem nota selecionada e durante a reprodução ou a prática.
+    pub fn mudar_duracao(&mut self, tecla: u8) -> Option<ResultadoDaEdicao> {
+        match figura_da_tecla(tecla) {
+            Ok(figura) => {
+                self.editar_duracao(move |nota| ComandoDeEdicao::MudarDuracao { nota, figura })
+            }
+            Err(e) => {
+                self.ultima_edicao = Some(e.to_string());
+                None
+            }
+        }
+    }
+
+    /// Liga ou desliga o ponto de aumento da nota selecionada (ticket 16).
+    pub fn alternar_ponto(&mut self) -> Option<ResultadoDaEdicao> {
+        self.editar_duracao(|nota| ComandoDeEdicao::AlternarPonto { nota })
+    }
+
+    fn editar_duracao(
+        &mut self,
+        comando: impl FnOnce(IdNota) -> ComandoDeEdicao,
+    ) -> Option<ResultadoDaEdicao> {
+        self.documento.as_ref()?;
+        let Some(nota) = self.selecao.nota() else {
+            self.ultima_edicao = Some(
+                "Selecione uma nota (clique nela ou use as setas) antes de mudar a duração.".into(),
+            );
+            return None;
+        };
+        if self.tocando() || self.praticando() {
+            self.ultima_edicao =
+                Some("Pare a reprodução ou a prática antes de editar a partitura.".into());
+            return None;
+        }
+        let d = self.documento.as_mut()?;
+        match d.aplicar(comando(nota)) {
+            Ok(r) => {
+                if r.alterou {
+                    self.selecao.reancorar(&d.leitura);
+                    self.selecao.pedir_rolagem();
+                    if let Some(c) = d.leitura.entrada(nota).map(|e| e.compasso) {
+                        self.compasso_em_foco = Some(c);
+                    }
+                    self.pratica = None;
+                    self.visual.invalidar();
+                    self.audicao_pendente = r.midi_depois();
+                }
+                let mut texto = match &r.duracao {
+                    Some(m) if r.alterou => format!(
+                        "Duração: {} → {}.",
+                        descricao_da_duracao(m.antes),
+                        descricao_da_duracao(m.depois)
+                    ),
+                    _ => "A nota já tem essa duração.".to_owned(),
+                };
                 for a in &r.avisos {
                     texto.push(' ');
                     texto.push_str(&a.texto());
@@ -1891,6 +1962,12 @@ pub fn desenhar_corpo(
                         Destino::Refazer => {
                             e.refazer();
                         }
+                        Destino::Duracao(n) => {
+                            e.mudar_duracao(n);
+                        }
+                        Destino::Ponto => {
+                            e.alternar_ponto();
+                        }
                         Destino::Pendente(a) => e.avisar_pendente(a),
                     }
                 }
@@ -2079,6 +2156,16 @@ fn desenhar_elementos_sem_suporte(ui: &mut Ui, e: &EstadoPartitura) {
                 ui.label(format!("{l}{onde}"));
             }
         });
+}
+
+/// «semínima», «colcheia pontuada»: a figura e os pontos de um valor de duração.
+fn descricao_da_duracao(v: ValorDeDuracao) -> String {
+    let nome = nome_da_figura(v.figura);
+    match v.pontos {
+        0 => nome.to_owned(),
+        1 => format!("{nome} pontuada"),
+        n => format!("{nome} com {n} pontos"),
+    }
 }
 
 /// Lista de atalhos da Oficina: rótulo em PT-BR, combinação, situação (pendente, conflito com a
@@ -3410,9 +3497,9 @@ mod testes {
         partitura_em_foco(&ctx, &mut e, &mut som);
         apertar(&ctx, &mut e, &mut som, Key::ArrowRight, Modifiers::NONE);
         let sel = e.nota_selecionada();
-        apertar(&ctx, &mut e, &mut som, Key::Num4, Modifiers::NONE);
+        apertar(&ctx, &mut e, &mut som, Key::Delete, Modifiers::NONE);
         let aviso = e.aviso_de_atalho().expect("aviso de pendente");
-        assert!(aviso.contains("Duração: colcheia"), "{aviso}");
+        assert!(aviso.contains("Apagar"), "{aviso}");
         assert!(aviso.contains("ainda não tem comando"), "{aviso}");
         assert_eq!(e.nota_selecionada(), sel);
         assert!(!e.documento.as_ref().expect("doc").editado());
@@ -3498,6 +3585,104 @@ mod testes {
             // O som ligado faz a nota editada soar uma vez.
             assert_eq!(e.audicoes, 1, "{tecla:?} {mods:?}");
         }
+    }
+
+    // --- Ticket 16: mudar a duração da nota selecionada com 1 a 9 e ponto --------------------
+
+    #[test]
+    fn a12_cada_tecla_de_duracao_da_o_mesmo_resultado_que_o_comando_chamado_no_servico() {
+        use piano_tutor_core::documento::ComandoDeEdicao;
+        use piano_tutor_core::partitura::Figura;
+        // A semínima vira colcheia (a pausa de preenchimento é declarada) e volta a semínima
+        // (a pausa é consumida): cada tecla é o comando chamado direto.
+        let (mut som, ctx) = banco();
+        let mut e = ode();
+        let id = partitura_em_foco(&ctx, &mut e, &mut som);
+        for _ in 0..5 {
+            apertar(&ctx, &mut e, &mut som, Key::ArrowRight, Modifiers::NONE);
+        }
+        let sel = e.nota_selecionada().expect("selecionada");
+        let mut direto = aberto_direto(&e);
+        for (tecla, figura) in [(Key::Num4, Figura::Colcheia), (Key::Num5, Figura::Seminima)] {
+            let r = direto
+                .aplicar(ComandoDeEdicao::MudarDuracao { nota: sel, figura })
+                .expect("o serviço aplica");
+            assert!(r.alterou);
+            apertar(&ctx, &mut e, &mut som, tecla, Modifiers::NONE);
+            let d = e.documento.as_ref().expect("doc");
+            assert_eq!(
+                d.exportado().expect("exporta"),
+                direto.exportar().expect("exporta"),
+                "{tecla:?}"
+            );
+            assert_eq!(d.partitura(), direto.partitura(), "{tecla:?}");
+            assert_eq!(
+                d.musica.eventos,
+                Musica::de(direto.partitura()).eventos,
+                "{tecla:?}"
+            );
+            assert_eq!(e.nota_selecionada(), Some(sel), "{tecla:?}");
+            assert!(d.leitura.contem(sel));
+            assert!(ctx.memory(|m| m.has_focus(id)));
+            let aviso = e.ultima_edicao().expect("mensagem da edição");
+            assert!(aviso.starts_with("Duração: "), "{aviso}");
+            if figura == Figura::Colcheia {
+                assert!(aviso.contains("pausa"), "o aviso da pausa criada: {aviso}");
+            }
+            assert_eq!(d.compassos_editados().len(), 1, "só o compasso da nota");
+        }
+        assert_eq!(e.audicoes, 2, "uma audição por edição");
+        // Desfazer duas vezes devolve o arquivo original, byte a byte.
+        apertar(&ctx, &mut e, &mut som, Key::Z, Modifiers::COMMAND);
+        apertar(&ctx, &mut e, &mut som, Key::Z, Modifiers::COMMAND);
+        let d = e.documento.as_ref().expect("doc");
+        assert_eq!(d.exportado().expect("exporta"), d.xml());
+        assert!(!d.modificado());
+    }
+
+    #[test]
+    fn a4_tecla_de_duracao_que_estoura_o_compasso_e_recusada_com_mensagem_e_nada_muda() {
+        let (mut som, ctx) = banco();
+        let mut e = ode();
+        partitura_em_foco(&ctx, &mut e, &mut som);
+        apertar(&ctx, &mut e, &mut som, Key::ArrowRight, Modifiers::NONE);
+        let sel = e.nota_selecionada();
+        let original = e.documento.as_ref().expect("doc").xml().to_owned();
+        // Semibreve (7) e ponto (.) numa semínima de compasso cheio: estouram.
+        for tecla in [Key::Num7, Key::Period] {
+            apertar(&ctx, &mut e, &mut som, tecla, Modifiers::NONE);
+            let aviso = e.ultima_edicao().expect("mensagem").to_owned();
+            assert!(aviso.contains("compasso"), "{tecla:?}: {aviso}");
+            assert!(aviso.contains("não foi alterada"), "{tecla:?}: {aviso}");
+            let d = e.documento.as_ref().expect("doc");
+            assert!(!d.editado(), "{tecla:?}");
+            assert!(!d.modificado(), "{tecla:?}");
+            assert!(!d.pode_desfazer(), "{tecla:?}: o undo não ganhou entrada");
+            assert_eq!(d.exportado().expect("exporta"), original);
+            assert_eq!(e.nota_selecionada(), sel);
+        }
+        assert_eq!(e.audicoes, 0, "recusa não soa");
+    }
+
+    #[test]
+    fn tecla_nove_longa_e_duracao_sem_nota_selecionada_avisam_em_vez_de_calar() {
+        let (mut som, ctx) = banco();
+        let mut e = ode();
+        partitura_em_foco(&ctx, &mut e, &mut som);
+        // Sem nota selecionada: pede para selecionar.
+        apertar(&ctx, &mut e, &mut som, Key::Num5, Modifiers::NONE);
+        assert!(
+            e.ultima_edicao()
+                .expect("msg")
+                .contains("Selecione uma nota"),
+            "{:?}",
+            e.ultima_edicao()
+        );
+        apertar(&ctx, &mut e, &mut som, Key::ArrowRight, Modifiers::NONE);
+        apertar(&ctx, &mut e, &mut som, Key::Num9, Modifiers::NONE);
+        let aviso = e.ultima_edicao().expect("msg");
+        assert!(aviso.contains("longa"), "{aviso}");
+        assert!(!e.documento.as_ref().expect("doc").editado());
     }
 
     #[test]

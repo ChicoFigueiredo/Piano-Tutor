@@ -33,13 +33,14 @@
 //! - **Nada é gravado.** A edição vive em memória; exportar e gravar arquivo é decisão do
 //!   chamador (autosave e Versão são o ticket 21).
 
+use super::editar_duracao::MudancaDeDuracao;
 use super::grafia::{
     Anterior, acidente_de, alter_do_acidente, alteracao_em_vigor, antes, de_partitura, midi,
     nome_da_altura, nome_do_midi, para_partitura, por_grau, por_oitava, por_semitom,
 };
 use super::servico::DocumentoAberto;
 use super::{Altura, ErroDocumento, IdNota, PosCompasso};
-use crate::partitura::Acidente;
+use crate::partitura::{Acidente, Figura, Fracao};
 use std::fmt;
 
 /// De quanto a altura muda.
@@ -76,14 +77,89 @@ pub enum ComandoDeEdicao {
         altura: Altura,
         acidente: Option<String>,
     },
+    /// Escolhe a figura de `nota` (as teclas 1 a 8 do perfil MuseScore 4), sem ponto: a
+    /// **intenção** do usuário (ticket 16). Ver o contrato de duração em [`super::editar_duracao`].
+    MudarDuracao { nota: IdNota, figura: Figura },
+    /// Liga o ponto de aumento de `nota` (ou o desliga, se já tinha): a tecla `.`.
+    AlternarPonto { nota: IdNota },
+    /// Põe `nota` exatamente na figura e nos pontos dados (0 a 3): a **forma resolvida** de
+    /// [`Self::MudarDuracao`] e [`Self::AlternarPonto`], a do `aplicado` e a do `inverso`.
+    DefinirDuracao {
+        nota: IdNota,
+        figura: Figura,
+        pontos: u8,
+    },
 }
 
 impl ComandoDeEdicao {
     /// A nota que o comando edita.
     pub fn nota(&self) -> IdNota {
         match self {
-            Self::MudarAltura { nota, .. } | Self::DefinirAltura { nota, .. } => *nota,
+            Self::MudarAltura { nota, .. }
+            | Self::DefinirAltura { nota, .. }
+            | Self::MudarDuracao { nota, .. }
+            | Self::AlternarPonto { nota }
+            | Self::DefinirDuracao { nota, .. } => *nota,
         }
+    }
+
+    /// O comando muda a duração (ticket 16) em vez da altura?
+    pub(super) fn e_de_duracao(&self) -> bool {
+        matches!(
+            self,
+            Self::MudarDuracao { .. } | Self::AlternarPonto { .. } | Self::DefinirDuracao { .. }
+        )
+    }
+}
+
+/// Figura escolhida por uma tecla de duração do perfil MuseScore 4: `1` = semifusa (1/64),
+/// `2` = fusa, `3` = semicolcheia, `4` = colcheia, `5` = semínima, `6` = mínima, `7` =
+/// semibreve, `8` = breve. A `9` (longa) não existe no modelo de partitura: recusa explícita,
+/// nunca uma figura trocada em silêncio.
+pub fn figura_da_tecla(tecla: u8) -> Result<Figura, ErroDeEdicao> {
+    Ok(match tecla {
+        1 => Figura::Semifusa,
+        2 => Figura::Fusa,
+        3 => Figura::Semicolcheia,
+        4 => Figura::Colcheia,
+        5 => Figura::Seminima,
+        6 => Figura::Minima,
+        7 => Figura::Semibreve,
+        8 => Figura::Breve,
+        outra => return Err(ErroDeEdicao::FiguraNaoSuportada(outra)),
+    })
+}
+
+/// Nome da figura em português, para as mensagens.
+pub fn nome_da_figura(figura: Figura) -> &'static str {
+    match figura {
+        Figura::Breve => "breve",
+        Figura::Semibreve => "semibreve",
+        Figura::Minima => "mínima",
+        Figura::Seminima => "semínima",
+        Figura::Colcheia => "colcheia",
+        Figura::Semicolcheia => "semicolcheia",
+        Figura::Fusa => "fusa",
+        Figura::Semifusa => "semifusa",
+        Figura::Quasifusa => "quartifusa",
+    }
+}
+
+/// «colcheia», «semínima pontuada», «mínima com 2 pontos»...
+fn figura_com_pontos(figura: Figura, pontos: u8) -> String {
+    match pontos {
+        0 => nome_da_figura(figura).to_owned(),
+        1 => format!("{} pontuada", nome_da_figura(figura)),
+        n => format!("{} com {n} pontos", nome_da_figura(figura)),
+    }
+}
+
+/// Número do compasso para mensagens (o rótulo impresso, ou a posição se não houver).
+fn rotulo_do_compasso(p: &PosCompasso) -> String {
+    if p.numero.is_empty() {
+        (p.indice + 1).to_string()
+    } else {
+        p.numero.clone()
     }
 }
 
@@ -141,6 +217,36 @@ pub enum ErroDeEdicao {
     },
     /// Outra recusa do documento (altura mal formada, texto inconsistente...).
     Documento(ErroDocumento),
+    /// A nova duração faria a soma da voz passar do que o compasso comporta (A4). `ficaria` e
+    /// `esperado` em semínimas, com `Fracao` exata.
+    CompassoNaoFecha {
+        compasso: PosCompasso,
+        voz: String,
+        ficaria: Fracao,
+        esperado: Fracao,
+    },
+    /// Alongar a nota exigiria espaço livre (pausa) depois dela, e não há (`faltam` semínimas).
+    SemPausaParaAlongar {
+        nota: IdNota,
+        faltam: Fracao,
+    },
+    /// A duração pedida não é múltipla de `1/divisions`: mudar `divisions` reescreveria a parte
+    /// inteira e é recusado por padrão (nunca se arredonda).
+    DuracaoExigeMudarDivisions {
+        valor: Fracao,
+        divisions: i64,
+        necessarias: i64,
+    },
+    /// O resto de um encurtamento (ou de uma pausa consumida) não se escreve com figuras.
+    PausaNaoRepresentavel(Fracao),
+    /// Pausa: mudar a duração de pausas ainda não é suportado (a seleção só alcança notas).
+    PausaNaoEditavel(IdNota),
+    /// Nota de adorno não ocupa tempo: não há duração para mudar.
+    NotaDeGracaSemDuracao(IdNota),
+    /// A tecla de duração não tem figura no modelo (a `9`, longa, ou fora de `1..=9`).
+    FiguraNaoSuportada(u8),
+    /// Não se sabe a figura escrita da nota (sem `<type>` reconhecível nem dedução possível).
+    ValorEscritoDesconhecido(IdNota),
 }
 
 impl fmt::Display for ErroDeEdicao {
@@ -165,6 +271,57 @@ impl fmt::Display for ErroDeEdicao {
                 nome_do_midi(*agudo),
             ),
             Self::Documento(e) => write!(f, "{e}. A nota não foi alterada."),
+            Self::CompassoNaoFecha {
+                compasso,
+                voz,
+                ficaria,
+                esperado,
+            } => write!(
+                f,
+                "No compasso {}, a voz {voz} ficaria com {ficaria} tempo(s) de semínima, mas o \
+                 compasso comporta {esperado}. A duração não foi alterada: encurte outra nota \
+                 antes, ou escolha uma figura menor.",
+                rotulo_do_compasso(compasso),
+            ),
+            Self::SemPausaParaAlongar { faltam, .. } => write!(
+                f,
+                "Não há pausa livre depois desta nota para alongá-la (faltam {faltam} tempo(s) de \
+                 semínima). A duração não foi alterada."
+            ),
+            Self::DuracaoExigeMudarDivisions {
+                valor,
+                divisions,
+                necessarias,
+            } => write!(
+                f,
+                "Esta duração ({valor} de semínima) não cabe na grade de tempo do arquivo \
+                 (divisions = {divisions}; seria preciso {necessarias}). Mudar divisions \
+                 reescreve a parte inteira e é recusado por padrão. A duração não foi alterada."
+            ),
+            Self::PausaNaoRepresentavel(d) => write!(
+                f,
+                "O espaço que sobraria ({d} de semínima) não se escreve com uma pausa. A \
+                 duração não foi alterada."
+            ),
+            Self::PausaNaoEditavel(_) => write!(
+                f,
+                "Mudar a duração de uma pausa ainda não é suportado: selecione uma nota."
+            ),
+            Self::NotaDeGracaSemDuracao(_) => write!(
+                f,
+                "Nota de adorno não ocupa tempo no compasso: não há duração para mudar."
+            ),
+            Self::FiguraNaoSuportada(9) => write!(
+                f,
+                "A longa (tecla 9) ainda não existe no modelo de partitura. Use as teclas 1 a 8."
+            ),
+            Self::FiguraNaoSuportada(t) => {
+                write!(f, "A tecla {t} não escolhe uma duração (use 1 a 8).")
+            }
+            Self::ValorEscritoDesconhecido(_) => write!(
+                f,
+                "Não foi possível saber a figura escrita desta nota. A duração não foi alterada."
+            ),
         }
     }
 }
@@ -193,6 +350,21 @@ pub enum AvisoDeEdicao {
     /// O histórico passou do limite de memória: as `quantas` edições mais antigas saíram da pilha
     /// de desfazer (não dá mais para voltar até elas; nada foi corrompido).
     EdicaoMaisAntigaDescartada { quantas: usize },
+    /// Encurtar a nota deixou um espaço, preenchido com uma pausa da duração exata (nunca por
+    /// arredondamento): o aviso diz qual pausa nasceu.
+    PausaCriada {
+        pausa: IdNota,
+        figura: Figura,
+        pontos: u8,
+    },
+    /// Alongar a nota consumiu (`duracao`, em semínimas) as pausas que vinham depois dela.
+    PausasConsumidas { duracao: Fracao },
+    /// A nota está numa ligadura de prolongamento: o valor total da ligadura mudou.
+    LigaduraDeValorMudouDuracao { nota: IdNota },
+    /// A nota faz parte de uma tupla: o grupo pode não somar mais a tupla inteira.
+    TuplaPodeTerFicadoIncompleta { nota: IdNota },
+    /// As vigas do compasso ficariam inconsistentes e foram refeitas.
+    VigasRefeitas { compasso: PosCompasso },
 }
 
 impl AvisoDeEdicao {
@@ -213,6 +385,25 @@ impl AvisoDeEdicao {
                 "O histórico de desfazer está cheio: {quantas} edição(ões) mais antiga(s) não \
                  poderá(ão) mais ser desfeita(s)."
             ),
+            Self::PausaCriada { figura, pontos, .. } => format!(
+                "Foi criada uma pausa de {} depois da nota, para manter o compasso fechado.",
+                figura_com_pontos(*figura, *pontos)
+            ),
+            Self::PausasConsumidas { duracao } => format!(
+                "A nota ocupou {duracao} tempo(s) de semínima de pausa que vinha depois dela."
+            ),
+            Self::LigaduraDeValorMudouDuracao { .. } => {
+                "A nota está numa ligadura de prolongamento: o valor total da ligadura mudou. \
+                 Confira a outra nota ligada."
+                    .to_owned()
+            }
+            Self::TuplaPodeTerFicadoIncompleta { .. } => {
+                "A nota faz parte de uma tupla: confira se o grupo continua completo.".to_owned()
+            }
+            Self::VigasRefeitas { compasso } => format!(
+                "As vigas do compasso {} ficariam inconsistentes e foram refeitas.",
+                rotulo_do_compasso(compasso)
+            ),
         }
     }
 }
@@ -220,9 +411,9 @@ impl AvisoDeEdicao {
 /// O que um comando fez.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct ResultadoDaEdicao {
-    /// A forma resolvida do que foi aplicado (sempre `DefinirAltura`).
+    /// A forma resolvida do que foi aplicado (`DefinirAltura` ou `DefinirDuracao`).
     pub aplicado: ComandoDeEdicao,
-    /// O comando que desfaz este (sempre `DefinirAltura`).
+    /// O comando que desfaz este (`DefinirAltura` ou `DefinirDuracao`).
     pub inverso: ComandoDeEdicao,
     /// A nota editada (a mesma identidade de antes).
     pub nota: IdNota,
@@ -233,6 +424,9 @@ pub struct ResultadoDaEdicao {
     /// Compassos que este comando sujou (zero ou um).
     pub compassos_afetados: Vec<PosCompasso>,
     pub avisos: Vec<AvisoDeEdicao>,
+    /// O que mudou na duração (`Some` só nos comandos de duração, ticket 16). Nesses comandos
+    /// `antes` e `depois` são a altura da nota, que não muda.
+    pub duracao: Option<MudancaDeDuracao>,
 }
 
 impl ResultadoDaEdicao {
@@ -271,6 +465,9 @@ impl DocumentoAberto {
         &mut self,
         comando: ComandoDeEdicao,
     ) -> Result<ResultadoDaEdicao, ErroDeEdicao> {
+        if comando.e_de_duracao() {
+            return self.aplicar_duracao(&comando);
+        }
         let id = comando.nota();
         let local = self.local_da_nota(id)?;
         let antes_altura = self
@@ -306,6 +503,14 @@ impl DocumentoAberto {
                 self.conferir_limites(altura)?;
                 (altura, acidente)
             }
+            // Já despachado no começo da função.
+            ComandoDeEdicao::MudarDuracao { .. }
+            | ComandoDeEdicao::AlternarPonto { .. }
+            | ComandoDeEdicao::DefinirDuracao { .. } => {
+                return Err(ErroDeEdicao::Documento(ErroDocumento::NaoSuportado(
+                    "comando de duração fora do caminho de duração".into(),
+                )));
+            }
         };
         let sem_sinal_antes = self.sem_sinal_devido(local);
         let alterou = self
@@ -328,6 +533,7 @@ impl DocumentoAberto {
             alterou,
             compassos_afetados: Vec::new(),
             avisos: Vec::new(),
+            duracao: None,
         };
         if !alterou {
             return Ok(resultado);

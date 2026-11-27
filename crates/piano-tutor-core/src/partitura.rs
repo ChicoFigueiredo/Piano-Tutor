@@ -285,7 +285,34 @@ impl Figura {
         !matches!(self, Self::Breve | Self::Semibreve)
     }
 
-    fn de_texto(t: &str) -> Option<Self> {
+    /// Texto do `<type>` do MusicXML que escreve a figura.
+    pub(crate) const fn texto_xml(self) -> &'static str {
+        match self {
+            Self::Breve => "breve",
+            Self::Semibreve => "whole",
+            Self::Minima => "half",
+            Self::Seminima => "quarter",
+            Self::Colcheia => "eighth",
+            Self::Semicolcheia => "16th",
+            Self::Fusa => "32nd",
+            Self::Semifusa => "64th",
+            Self::Quasifusa => "128th",
+        }
+    }
+
+    /// Duração escrita, em semínimas, com `pontos` pontos de aumento (cada ponto vale metade do
+    /// anterior: 1 ponto = 3/2, 2 pontos = 7/4, 3 pontos = 15/8).
+    pub(crate) fn com_pontos(self, pontos: u8) -> Fracao {
+        let nominal = self.duracao_nominal();
+        match pontos {
+            0 => nominal,
+            1 => nominal.vezes(3, 2),
+            2 => nominal.vezes(7, 4),
+            _ => nominal.vezes(15, 8),
+        }
+    }
+
+    pub(crate) fn de_texto(t: &str) -> Option<Self> {
         Some(match t {
             "breve" => Self::Breve,
             "whole" => Self::Semibreve,
@@ -300,7 +327,7 @@ impl Figura {
         })
     }
 
-    const TODAS: [Figura; 9] = [
+    pub(crate) const TODAS: [Figura; 9] = [
         Self::Breve,
         Self::Semibreve,
         Self::Minima,
@@ -313,7 +340,7 @@ impl Figura {
     ];
 
     /// Figura e pontos que escrevem a duração `d` (semínimas), se houver.
-    fn por_duracao(d: Fracao) -> Option<(Self, u8)> {
+    pub(crate) fn por_duracao(d: Fracao) -> Option<(Self, u8)> {
         for f in Self::TODAS {
             for pontos in 0..=2u8 {
                 let nominal = f.duracao_nominal();
@@ -1112,57 +1139,63 @@ fn vigar_automaticamente(p: &mut Partitura) {
             chaves.sort_unstable();
             chaves.dedup();
             for (pauta, voz) in chaves {
-                let mut idx: Vec<usize> = comp
-                    .notas
-                    .iter()
-                    .enumerate()
-                    .filter(|(_, n)| n.pauta == pauta && n.voz == voz && !n.adorno && !n.acorde)
-                    .map(|(i, _)| i)
-                    .collect();
-                idx.sort_by_key(|i| comp.notas[*i].posicao);
-                let mut grupo: Vec<usize> = Vec::new();
-                let mut pulso_atual: Option<i64> = None;
-                for i in idx {
-                    let n = &comp.notas[i];
-                    let elegivel = !n.e_pausa() && n.figura.bandeirolas() >= 1;
-                    let b = indice_do_pulso(n.posicao, pulso);
-                    if (!elegivel || pulso_atual.is_some_and(|p0| p0 != b)) && !grupo.is_empty() {
-                        if grupo.len() >= 2 {
-                            aplicar_vigas(&grupo, &mut comp.notas);
-                        }
-                        grupo.clear();
-                    }
-                    if elegivel {
-                        grupo.push(i);
-                        pulso_atual = Some(b);
-                    } else {
-                        pulso_atual = None;
-                    }
-                }
-                if grupo.len() >= 2 {
-                    aplicar_vigas(&grupo, &mut comp.notas);
-                }
-                // Notas de acorde herdam as vigas da nota principal.
-                for k in 0..comp.notas.len() {
-                    if comp.notas[k].acorde {
-                        let (pa, vo, po) = (
-                            comp.notas[k].pauta,
-                            comp.notas[k].voz,
-                            comp.notas[k].posicao,
-                        );
-                        if pa != pauta || vo != voz {
-                            continue;
-                        }
-                        let herdadas = comp
-                            .notas
-                            .iter()
-                            .find(|o| !o.acorde && o.pauta == pa && o.voz == vo && o.posicao == po)
-                            .map(|o| o.vigas.clone());
-                        if let Some(v) = herdadas {
-                            comp.notas[k].vigas = v;
-                        }
-                    }
-                }
+                vigar_voz(comp, pulso, pauta, voz);
+            }
+        }
+    }
+}
+
+/// Vigas automáticas por pulso da voz `voz` na pauta `pauta` de um compasso (as vigas antigas
+/// dessa voz devem ter sido limpas antes). Notas de acorde herdam as vigas da principal.
+pub(crate) fn vigar_voz(comp: &mut Compasso, pulso: Fracao, pauta: u8, voz: u8) {
+    let mut idx: Vec<usize> = comp
+        .notas
+        .iter()
+        .enumerate()
+        .filter(|(_, n)| n.pauta == pauta && n.voz == voz && !n.adorno && !n.acorde)
+        .map(|(i, _)| i)
+        .collect();
+    idx.sort_by_key(|i| comp.notas[*i].posicao);
+    let mut grupo: Vec<usize> = Vec::new();
+    let mut pulso_atual: Option<i64> = None;
+    for i in idx {
+        let n = &comp.notas[i];
+        let elegivel = !n.e_pausa() && n.figura.bandeirolas() >= 1;
+        let b = indice_do_pulso(n.posicao, pulso);
+        if (!elegivel || pulso_atual.is_some_and(|p0| p0 != b)) && !grupo.is_empty() {
+            if grupo.len() >= 2 {
+                aplicar_vigas(&grupo, &mut comp.notas);
+            }
+            grupo.clear();
+        }
+        if elegivel {
+            grupo.push(i);
+            pulso_atual = Some(b);
+        } else {
+            pulso_atual = None;
+        }
+    }
+    if grupo.len() >= 2 {
+        aplicar_vigas(&grupo, &mut comp.notas);
+    }
+    // Notas de acorde herdam as vigas da nota principal.
+    for k in 0..comp.notas.len() {
+        if comp.notas[k].acorde {
+            let (pa, vo, po) = (
+                comp.notas[k].pauta,
+                comp.notas[k].voz,
+                comp.notas[k].posicao,
+            );
+            if pa != pauta || vo != voz {
+                continue;
+            }
+            let herdadas = comp
+                .notas
+                .iter()
+                .find(|o| !o.acorde && o.pauta == pa && o.voz == vo && o.posicao == po)
+                .map(|o| o.vigas.clone());
+            if let Some(v) = herdadas {
+                comp.notas[k].vigas = v;
             }
         }
     }
@@ -1204,6 +1237,31 @@ fn aplicar_vigas(grupo: &[usize], notas: &mut [Nota]) {
             notas[grupo[k]].vigas.push(estado);
         }
     }
+}
+
+/// Relê um único compasso (`<measure>...</measure>`) com o estado musical que valia ao seu
+/// redor: o serviço de documento usa para refazer o modelo de tocar do compasso editado. O
+/// resultado é o do leitor de sempre (mesmo código), sem as vigas automáticas (que dependem da
+/// partitura inteira; ver [`vigar_voz`]).
+pub(crate) fn reler_compasso(
+    xml: &str,
+    divisoes: i64,
+    armadura: Armadura,
+    forma: Forma,
+) -> Result<Compasso, ErroPartitura> {
+    let doc = crate::xml_seguro::analisar(xml)?;
+    let raiz = doc.root_element();
+    if raiz.tag_name().name() != "measure" {
+        return Err(ErroPartitura::RaizNaoSuportada(
+            raiz.tag_name().name().to_owned(),
+        ));
+    }
+    let mut est = EstadoParte::novo();
+    est.divisoes = divisoes;
+    est.armadura = armadura;
+    est.forma = forma;
+    let mut total = 0usize;
+    Ok(parse_compasso(raiz, &mut est, &mut total)?.compasso)
 }
 
 impl Partitura {
