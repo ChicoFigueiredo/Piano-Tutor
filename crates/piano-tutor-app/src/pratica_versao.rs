@@ -29,13 +29,11 @@
 use crate::revisao::{Estado, rotulo_do_estado};
 use crate::som::{EstadoSom, ServicoSom};
 use crate::tela_partitura::{EstadoPartitura, NotaAgendada};
-use crate::versoes::{
-    Aprovacao, ErroVersoes, Versao, Versoes, hash_curto, hash_do_conteudo, hash_valido,
-};
+use crate::versoes::ARQUIVO_DO_INDICE;
+use crate::versoes::{Aprovacao, ErroVersoes, Versao, Versoes, hash_curto};
 use piano_tutor_core::NotaMidi;
-use piano_tutor_curso::{DecideEstado, ErroPacote, EstadoConteudo};
+use piano_tutor_curso::EstadoConteudo;
 use std::fmt;
-use std::path::Path;
 use std::time::Duration;
 
 /// Antes do primeiro som do compasso (margem para o agendamento chegar ao motor).
@@ -306,55 +304,21 @@ pub fn ouvir_compasso(
 // --- Exercícios: o estado vem do hash ---------------------------------------------------------
 
 /// Decisor de estado do importador de Exercícios: o estado do Exercício é o da **Versão cujo
-/// hash é o do conteúdo** de `partituras/<id>.musicxml`, nunca o do `estado.toml`. Aprovada só
-/// com [`Versoes::aprovacao_de`] (registro de revisor); Em revisão, Hipótese e Rejeitada como
-/// estão no índice; conteúdo sem Versão registrada fica sem decisão (entra como Hipótese, com
-/// aviso). Mudar o arquivo muda o hash: a aprovação não acompanha.
-#[derive(Clone, Copy, Debug, Default)]
-pub struct DecisorPorHash;
-
-impl DecideEstado for DecisorPorHash {
-    fn estado_do_exercicio(
-        &self,
-        oficina: &Path,
-        id: &str,
-        conteudo: Option<&[u8]>,
-    ) -> Result<Option<EstadoConteudo>, ErroPacote> {
-        let Some(bytes) = conteudo else {
-            return Ok(None);
-        };
-        let versoes = Versoes::em(&oficina.join("partituras"), id, None);
-        estado_do_conteudo(&versoes, bytes).map_err(|e| ErroPacote::Importacao(e.to_string()))
-    }
-
-    fn aviso_sem_decisao(&self) -> &'static str {
-        "conteúdo sem Versão registrada (entram como hipótese)"
-    }
-}
+/// hash é o do conteúdo** de `partituras/<id>.musicxml`, nunca o do `estado.toml`. A regra mora
+/// em `piano-tutor-curso` (a CLI `importar` usa a mesma, sem duplicar): Aprovada só com o
+/// registro de decisão do revisor; conteúdo sem Versão registrada fica sem decisão.
+pub use piano_tutor_curso::DecisorPorHash;
 
 /// O estado do conteúdo `bytes` segundo as Versões, por hash. `None` = nenhuma Versão tem esse
-/// hash. Estado "Aprovada" sem registro de decisão **não** vale: conta como Hipótese.
+/// hash. Estado "Aprovada" sem registro de decisão **não** vale: conta como Hipótese. Mesma
+/// regra do importador (`piano_tutor_curso::estado_do_conteudo_no_indice`).
 pub fn estado_do_conteudo(
     versoes: &Versoes,
     bytes: &[u8],
 ) -> Result<Option<EstadoConteudo>, ErroVersoes> {
-    let hash = hash_do_conteudo(bytes);
-    debug_assert!(hash_valido(&hash));
-    if versoes.aprovacao_de(&hash)?.is_some() {
-        return Ok(Some(EstadoConteudo::Aprovada));
-    }
-    let Some(indice) = versoes.indice()? else {
-        return Ok(None);
-    };
-    Ok(indice
-        .versoes
-        .iter()
-        .find(|v| v.hash == hash)
-        .map(|v| match v.estado {
-            Estado::Aprovada | Estado::Hipotese => EstadoConteudo::Hipotese,
-            Estado::EmRevisao => EstadoConteudo::EmRevisao,
-            Estado::Rejeitada => EstadoConteudo::Rejeitada,
-        }))
+    let indice = versoes.pasta().join(ARQUIVO_DO_INDICE);
+    piano_tutor_curso::estado_do_conteudo_no_indice(&indice, bytes)
+        .map_err(|e| ErroVersoes::Formato(e.to_string()))
 }
 
 #[cfg(test)]
@@ -363,6 +327,7 @@ mod testes {
     use crate::som::apoio_testes::servico_pronto;
     use piano_tutor_audio::sintetizador::RegistroFalso;
     use piano_tutor_audio::{Relogio, RelogioManual};
+    use piano_tutor_curso::DecideEstado;
     use std::fs;
     use std::path::PathBuf;
     use std::sync::Arc;
