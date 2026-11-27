@@ -17,6 +17,9 @@ use crate::partitura_visual::{
 use crate::preferencias::PreferenciasPartitura;
 use crate::selecao_partitura::{Comando, EfeitoDoClique, Resultado, SelecaoPartitura, descrever};
 use crate::som::{EstadoSom, ServicoSom};
+use crate::versoes::{
+    LinhaDaLista, ResultadoDoSalvar, SituacaoDoOriginal, Versao, Versoes, agora_utc, hash_curto,
+};
 use bancada_casca::Atalho;
 use bancada_casca::egui::{self, Button, ComboBox, Event, Key, RichText, Slider, TextEdit, Ui};
 use piano_tutor_core::NotaMidi;
@@ -299,6 +302,24 @@ pub struct EstadoPartitura {
     /// Espera tocar: quanto voltar ao retomar depois de uma parada.
     pub retomada_pratica: Retomada,
     pratica: Option<SessaoPratica>,
+    /// Versões da partitura da Oficina aberta (ticket 21); `None` para arquivo solto ou embutido.
+    versoes: Option<Versoes>,
+    /// Lista de Versões (relida ao abrir e ao salvar, não a cada quadro).
+    lista_de_versoes: Vec<LinhaDaLista>,
+    /// Nota de motivo da próxima Versão (opcional).
+    campo_nota_versao: String,
+    /// Resultado da última ação com Versões.
+    aviso_versoes: Option<String>,
+    /// Alerta de que um original (MusicXML ou PDF) não confere com o hash registrado.
+    alerta_originais: Option<String>,
+    /// Versão antiga aberta em modo leitura; guarda o documento em edição para voltar a ele.
+    leitura: Option<LeituraDeVersao>,
+}
+
+/// Versão antiga aberta somente para leitura (ticket 21).
+struct LeituraDeVersao {
+    versao: Versao,
+    guardado: Option<DocumentoPartitura>,
 }
 
 impl EstadoPartitura {
@@ -385,6 +406,12 @@ impl EstadoPartitura {
             tolerancia_pratica_ms: TOLERANCIA_PRATICA_PADRAO_MS,
             retomada_pratica: Retomada::Zero,
             pratica: None,
+            versoes: None,
+            lista_de_versoes: Vec::new(),
+            campo_nota_versao: String::new(),
+            aviso_versoes: None,
+            alerta_originais: None,
+            leitura: None,
         };
         e.escolher(0);
         e
@@ -415,6 +442,16 @@ impl EstadoPartitura {
 
     /// Passa a mostrar um documento já aberto pelo serviço (texto, arquivo ou `.mxl`).
     fn carregar_documento(&mut self, d: DocumentoPartitura) {
+        // Outro documento: o vínculo com a Oficina e a leitura de Versão não valem mais.
+        self.versoes = None;
+        self.lista_de_versoes.clear();
+        self.aviso_versoes = None;
+        self.alerta_originais = None;
+        self.leitura = None;
+        self.instalar_documento(d);
+    }
+
+    fn instalar_documento(&mut self, d: DocumentoPartitura) {
         if let Some(b) = d.musica.bpm_arquivo {
             self.bpm = (b as f32).clamp(BPM_MIN, BPM_MAX);
         }
@@ -510,7 +547,20 @@ impl EstadoPartitura {
         unidade: UnidadeDeAltura,
         sentido: SentidoDaAltura,
     ) -> Option<ResultadoDaEdicao> {
+        let r = self.aplicar_altura(unidade, sentido);
+        self.conferir_originais();
+        r
+    }
+
+    fn aplicar_altura(
+        &mut self,
+        unidade: UnidadeDeAltura,
+        sentido: SentidoDaAltura,
+    ) -> Option<ResultadoDaEdicao> {
         self.documento.as_ref()?;
+        if self.recusar_em_leitura() {
+            return None;
+        }
         let Some(nota) = self.selecao.nota() else {
             self.ultima_edicao = Some(
                 "Selecione uma nota (clique nela ou use as setas) antes de mudar a altura.".into(),
@@ -572,7 +622,13 @@ impl EstadoPartitura {
     }
 
     fn percorrer_historico(&mut self, desfazendo: bool) -> bool {
-        if self.documento.is_none() {
+        let feito = self.percorrer_historico_sem_conferir(desfazendo);
+        self.conferir_originais();
+        feito
+    }
+
+    fn percorrer_historico_sem_conferir(&mut self, desfazendo: bool) -> bool {
+        if self.documento.is_none() || self.recusar_em_leitura() {
             return false;
         }
         let (verbo, nada) = if desfazendo {
@@ -760,8 +816,249 @@ impl EstadoPartitura {
             Ok(d) => {
                 self.carregar_documento(d);
                 self.erro = None;
+                self.vincular_a_oficina(c);
             }
             Err(e) => self.erro = Some(e),
+        }
+    }
+
+    // --- Versões (ticket 21) ------------------------------------------------------------------
+
+    /// Liga o arquivo aberto a uma partitura da Oficina: `<oficina>/partituras/<id>.musicxml` com
+    /// `<id>.estado.toml` ao lado (é como a Revisão do tutor abre um item). Qualquer outro
+    /// arquivo é "solto": sem Versões. Registra a origem (hashes) para a conferência.
+    fn vincular_a_oficina(&mut self, caminho: &Path) {
+        let Some(id) = caminho
+            .file_name()
+            .and_then(|n| n.to_str())
+            .and_then(|n| n.strip_suffix(".musicxml"))
+            .filter(|id| !id.is_empty())
+        else {
+            return;
+        };
+        let Some(pasta) = caminho.parent() else {
+            return;
+        };
+        let na_oficina = pasta.file_name().is_some_and(|n| n == "partituras")
+            && pasta.join(format!("{id}.estado.toml")).is_file();
+        let Some(raiz) = pasta.parent().filter(|_| na_oficina) else {
+            return;
+        };
+        let oficina = crate::revisao::Oficina {
+            tutor: String::new(),
+            raiz: raiz.to_path_buf(),
+        };
+        let item = crate::revisao::ItemPartitura::ler(&oficina, id);
+        let v = Versoes::da_partitura(&item);
+        if let Err(e) = v.registrar_origem(crate::revisao::REVISOR, &agora_utc()) {
+            self.aviso_versoes = Some(format!("Versões indisponíveis: {e}"));
+        }
+        self.versoes = Some(v);
+        self.atualizar_lista_de_versoes();
+        self.conferir_originais();
+    }
+
+    /// A partitura aberta é da Oficina (tem Versões)?
+    pub fn tem_versoes(&self) -> bool {
+        self.versoes.is_some()
+    }
+
+    /// Dá para salvar uma Versão agora? (partitura da Oficina, fora do modo leitura)
+    pub fn pode_salvar_versao(&self) -> bool {
+        self.versoes.is_some() && self.documento.is_some() && self.leitura.is_none()
+    }
+
+    /// Por que o botão "Salvar como Versão" está desativado (`None` se está ativo).
+    pub fn motivo_sem_salvar_versao(&self) -> Option<&'static str> {
+        if self.pode_salvar_versao() {
+            None
+        } else if self.leitura.is_some() {
+            Some("Volte à edição antes de salvar uma Versão.")
+        } else {
+            Some(
+                "Arquivo solto: só partituras da Oficina (pasta partituras/ com estado.toml) \
+                 têm Versões. Abra a partitura pela Oficina.",
+            )
+        }
+    }
+
+    /// Nota de motivo digitada para a próxima Versão.
+    pub fn nota_da_versao(&self) -> &str {
+        &self.campo_nota_versao
+    }
+
+    pub fn definir_nota_da_versao(&mut self, nota: &str) {
+        nota.clone_into(&mut self.campo_nota_versao);
+    }
+
+    /// A lista de Versões para a tela (Fonte e Hipótese primeiro, depois as correções).
+    pub fn lista_de_versoes(&self) -> &[LinhaDaLista] {
+        &self.lista_de_versoes
+    }
+
+    /// Mensagem da última ação com Versões.
+    pub fn aviso_de_versoes(&self) -> Option<&str> {
+        self.aviso_versoes.as_deref()
+    }
+
+    /// Alerta de original que não confere com o hash registrado (A8).
+    pub fn alerta_de_originais(&self) -> Option<&str> {
+        self.alerta_originais.as_deref()
+    }
+
+    /// Versão antiga aberta em modo leitura, se houver.
+    pub fn versao_em_leitura(&self) -> Option<&Versao> {
+        self.leitura.as_ref().map(|l| &l.versao)
+    }
+
+    fn atualizar_lista_de_versoes(&mut self) {
+        let Some(v) = &self.versoes else {
+            return;
+        };
+        match v.linhas() {
+            Ok(l) => self.lista_de_versoes = l,
+            Err(e) => {
+                self.lista_de_versoes.clear();
+                self.aviso_versoes = Some(format!("Não foi possível listar as Versões: {e}"));
+            }
+        }
+    }
+
+    /// Confere os originais por hash; roda após cada ação da Oficina (A8). Só lê.
+    pub fn conferir_originais(&mut self) {
+        let Some(v) = &self.versoes else {
+            self.alerta_originais = None;
+            return;
+        };
+        self.alerta_originais = match v.verificar_originais() {
+            Err(e) => Some(format!("Não foi possível conferir os originais: {e}")),
+            Ok(r) if r.integro() => None,
+            // Nenhum registro de origem ainda: nada a comparar, não é alteração.
+            Ok(r) if r.hipotese == SituacaoDoOriginal::NaoRegistrado => None,
+            Ok(r) => {
+                let mut partes = Vec::new();
+                if !r.hipotese.integro() {
+                    partes.push(format!("MusicXML da Hipótese: {:?}", r.hipotese));
+                }
+                if let Some(p) = r.pdf.filter(|p| !p.integro()) {
+                    partes.push(format!("PDF de origem: {p:?}"));
+                }
+                Some(format!(
+                    "ALERTA: arquivo original não confere com o hash registrado ({}).",
+                    partes.join("; ")
+                ))
+            }
+        };
+    }
+
+    /// Salva o que foi feito como nova Versão, com a nota de motivo opcional. Nunca toca na
+    /// Hipótese nem no PDF. Marca o documento como salvo (ticket 15) quando o conteúdo ficou
+    /// guardado.
+    pub fn salvar_versao(&mut self) -> Result<ResultadoDoSalvar, String> {
+        if let Some(m) = self.motivo_sem_salvar_versao() {
+            return Err(m.to_owned());
+        }
+        let (Some(v), Some(d)) = (&self.versoes, &self.documento) else {
+            return Err("nenhuma partitura carregada".into());
+        };
+        let texto = d.exportado().map_err(|e| e.to_string())?;
+        let nota = self.campo_nota_versao.trim();
+        let r = v
+            .salvar(
+                None,
+                &texto,
+                (!nota.is_empty()).then_some(nota),
+                crate::revisao::REVISOR,
+                &agora_utc(),
+            )
+            .map_err(|e| e.to_string());
+        let r = match r {
+            Ok(r) => r,
+            Err(e) => {
+                self.aviso_versoes = Some(format!("Não foi possível salvar a Versão: {e}"));
+                self.conferir_originais();
+                return Err(e);
+            }
+        };
+        if let Some(d) = self.documento.as_mut() {
+            d.marcar_salvo();
+        }
+        self.aviso_versoes = Some(match &r {
+            ResultadoDoSalvar::Criada(v) => {
+                self.campo_nota_versao.clear();
+                format!("Versão salva ({}).", hash_curto(&v.hash))
+            }
+            ResultadoDoSalvar::SemMudancas { .. } => {
+                "Sem mudanças desde a última Versão: nada foi criado.".into()
+            }
+            ResultadoDoSalvar::JaExiste { .. } => {
+                "Esse conteúdo já é o de uma Versão: nada foi criado.".into()
+            }
+        });
+        self.atualizar_lista_de_versoes();
+        self.conferir_originais();
+        Ok(r)
+    }
+
+    /// Abre uma Versão antiga em modo leitura (sem editar nem salvar). O documento em edição fica
+    /// guardado até [`Self::voltar_da_leitura`].
+    pub fn abrir_versao(&mut self, hash: &str) {
+        let Some(v) = &self.versoes else {
+            return;
+        };
+        let aberta = match v.abrir(hash) {
+            Ok(a) => a,
+            Err(e) => {
+                self.aviso_versoes = Some(format!("Não foi possível abrir a Versão: {e}"));
+                self.conferir_originais();
+                return;
+            }
+        };
+        let nome = format!("{} (leitura)", self.nome().trim_end_matches(" (leitura)"));
+        match DocumentoPartitura::de_texto(nome, aberta.conteudo) {
+            Ok(d) => {
+                self.parar_sem_som();
+                let guardado = match self.leitura.take() {
+                    Some(l) => l.guardado,
+                    None => self.documento.take(),
+                };
+                self.instalar_documento(d);
+                self.aviso_versoes = Some(format!(
+                    "Lendo a Versão {} (somente leitura).",
+                    hash_curto(&aberta.versao.hash)
+                ));
+                self.leitura = Some(LeituraDeVersao {
+                    versao: aberta.versao,
+                    guardado,
+                });
+            }
+            Err(e) => {
+                self.aviso_versoes = Some(format!("A Versão não pôde ser lida: {e}"));
+            }
+        }
+        self.conferir_originais();
+    }
+
+    /// Sai do modo leitura e devolve o documento que estava em edição.
+    pub fn voltar_da_leitura(&mut self) {
+        let Some(l) = self.leitura.take() else {
+            return;
+        };
+        if let Some(d) = l.guardado {
+            self.instalar_documento(d);
+        }
+        self.aviso_versoes = None;
+        self.conferir_originais();
+    }
+
+    /// Em modo leitura a partitura não se edita: avisa e recusa.
+    fn recusar_em_leitura(&mut self) -> bool {
+        if self.leitura.is_some() {
+            self.ultima_edicao =
+                Some("Versão aberta para leitura: volte à edição para alterar a partitura.".into());
+            true
+        } else {
+            false
         }
     }
 
@@ -1282,6 +1579,14 @@ pub fn desenhar_corpo(
     desenhar_pratica(ui, e, som);
     if opcoes.com_exportacao {
         desenhar_exportacao(ui, e);
+        desenhar_versoes(ui, e);
+    }
+    if let Some(msg) = &e.alerta_originais {
+        ui.label(
+            RichText::new(msg)
+                .strong()
+                .color(egui::Color32::from_rgb(232, 112, 106)),
+        );
     }
     if let Some(msg) = &e.erro {
         ui.label(RichText::new(msg).color(egui::Color32::from_rgb(232, 112, 106)));
@@ -1940,6 +2245,62 @@ fn desenhar_exportacao(ui: &mut Ui, e: &mut EstadoPartitura) {
             }
         }
     });
+}
+
+/// Salvar como Versão, nota de motivo, lista de Versões e abertura em modo leitura (ticket 21).
+fn desenhar_versoes(ui: &mut Ui, e: &mut EstadoPartitura) {
+    ui.horizontal_wrapped(|ui| {
+        ui.label("Versões:");
+        ui.add_enabled(
+            e.pode_salvar_versao(),
+            TextEdit::singleline(&mut e.campo_nota_versao)
+                .hint_text("nota de motivo (opcional)")
+                .desired_width(240.0),
+        );
+        let salvar = ui.add_enabled(e.pode_salvar_versao(), Button::new("Salvar como Versão"));
+        let salvar = match e.motivo_sem_salvar_versao() {
+            Some(m) => salvar.on_disabled_hover_text(m),
+            None => salvar.on_hover_text(
+                "Guarda o que foi feito como nova Versão (Em revisão); a Hipótese e o PDF não mudam",
+            ),
+        };
+        if salvar.clicked() {
+            // O resultado (ou o erro) já vira aviso na tela.
+            let _ = e.salvar_versao();
+        }
+        if let Some(v) = e.versao_em_leitura() {
+            ui.label(RichText::new(format!("Lendo {} (somente leitura)", hash_curto(&v.hash))).strong());
+            if ui.button("Voltar à edição").clicked() {
+                e.voltar_da_leitura();
+            }
+        }
+    });
+    if !e.tem_versoes() {
+        if let Some(m) = e.motivo_sem_salvar_versao() {
+            ui.label(RichText::new(m).weak());
+        }
+        return;
+    }
+    let mut abrir = None;
+    egui::ScrollArea::vertical()
+        .id_salt("lista-de-versoes")
+        .max_height(130.0)
+        .show(ui, |ui| {
+            for l in e.lista_de_versoes() {
+                ui.horizontal_wrapped(|ui| {
+                    ui.label(l.em_texto());
+                    if l.abrivel && ui.small_button("Abrir").clicked() {
+                        abrir = Some(l.hash.clone());
+                    }
+                });
+            }
+        });
+    if let Some(h) = abrir {
+        e.abrir_versao(&h);
+    }
+    if let Some(a) = e.aviso_de_versoes() {
+        ui.label(RichText::new(a).weak());
+    }
 }
 
 #[cfg(test)]
@@ -3524,5 +3885,135 @@ mod testes {
         let mut outro = EstadoPartitura::novo(None);
         outro.definir_preferencias(p);
         assert!(outro.alto_contraste);
+    }
+
+    // --- Ticket 21: Versões na tela --------------------------------------------------------
+
+    /// Oficina temporária com a partitura `ode` (Hipótese = a embutida) aberta na tela.
+    fn com_oficina() -> (tempfile::TempDir, EstadoPartitura, PathBuf) {
+        let d = tempfile::tempdir().expect("pasta");
+        let pasta = d.path().join("oficina/partituras");
+        std::fs::create_dir_all(&pasta).expect("cria");
+        let xml = pasta.join("ode.musicxml");
+        std::fs::write(&xml, EMBUTIDAS[3].1).expect("hipótese");
+        std::fs::write(pasta.join("ode.estado.toml"), "estado = \"hipotese\"\n").expect("toml");
+        let mut e = EstadoPartitura::novo(None);
+        e.abrir_caminho(&xml.to_string_lossy());
+        assert!(e.erro.is_none(), "{:?}", e.erro);
+        (d, e, xml)
+    }
+
+    fn editar_uma_nota(e: &mut EstadoPartitura) {
+        e.navegar(Comando::Seguinte);
+        assert!(
+            e.mudar_altura(UnidadeDeAltura::Semitom, SentidoDaAltura::Acima)
+                .is_some()
+        );
+    }
+
+    #[test]
+    fn arquivo_solto_desativa_salvar_versao_com_dica_e_a_oficina_ativa() {
+        let (mut som, ctx) = banco();
+        let mut solto = ode();
+        assert!(!solto.pode_salvar_versao());
+        assert!(
+            solto
+                .motivo_sem_salvar_versao()
+                .expect("dica")
+                .contains("solto")
+        );
+        assert!(solto.salvar_versao().is_err());
+        quadro(&ctx, &mut solto, &mut som);
+        let (_d, mut e, _) = com_oficina();
+        assert!(e.pode_salvar_versao());
+        assert!(e.motivo_sem_salvar_versao().is_none());
+        quadro(&ctx, &mut e, &mut som);
+    }
+
+    #[test]
+    fn salvar_versao_cria_a_lista_com_autor_data_nota_e_estado_e_marca_salvo() {
+        let (_d, mut e, xml) = com_oficina();
+        let antes = std::fs::read(&xml).expect("lê");
+        editar_uma_nota(&mut e);
+        assert!(e.documento.as_ref().expect("doc").modificado());
+        e.definir_nota_da_versao("subi um semitom");
+        let r = e.salvar_versao().expect("salva");
+        let ResultadoDoSalvar::Criada(v) = r else {
+            panic!("esperava Criada");
+        };
+        assert_eq!(v.nota.as_deref(), Some("subi um semitom"));
+        assert!(
+            !e.documento.as_ref().expect("doc").modificado(),
+            "marcou salvo"
+        );
+        assert_eq!(e.nota_da_versao(), "", "a nota é limpa depois de salvar");
+        let l = e.lista_de_versoes();
+        assert_eq!(l.len(), 2, "Hipótese e a correção");
+        assert_eq!(l[0].rotulo, "Hipótese");
+        assert_eq!(l[1].rotulo, "Versão 1");
+        let t = l[1].em_texto();
+        assert!(t.contains("Chico") && t.contains("Em revisão") && t.contains("subi um semitom"));
+        assert!(!l[1].em.is_empty());
+        assert_eq!(std::fs::read(&xml).expect("lê"), antes, "Hipótese intacta");
+        // Salvar de novo sem mudar: não cria Versão.
+        let r2 = e.salvar_versao().expect("ok");
+        assert!(matches!(r2, ResultadoDoSalvar::SemMudancas { .. }));
+        assert_eq!(e.lista_de_versoes().len(), 2);
+        assert!(e.alerta_de_originais().is_none());
+    }
+
+    #[test]
+    fn abrir_versao_antiga_e_somente_leitura_e_voltar_devolve_a_edicao() {
+        let (mut som, ctx) = banco();
+        let (_d, mut e, _) = com_oficina();
+        editar_uma_nota(&mut e);
+        e.salvar_versao().expect("salva");
+        editar_uma_nota(&mut e);
+        let editado = e.documento.as_ref().expect("doc").exportado().expect("x");
+        let hipotese = e.lista_de_versoes()[0].hash.clone();
+        e.abrir_versao(&hipotese);
+        assert_eq!(
+            e.versao_em_leitura().map(|v| v.hash.clone()),
+            Some(hipotese)
+        );
+        assert_eq!(e.documento.as_ref().expect("doc").xml(), EMBUTIDAS[3].1);
+        assert!(!e.pode_salvar_versao());
+        assert!(e.salvar_versao().is_err());
+        e.navegar(Comando::Seguinte);
+        let antes = e.documento.as_ref().expect("doc").exportado().expect("x");
+        assert!(
+            e.mudar_altura(UnidadeDeAltura::Semitom, SentidoDaAltura::Acima)
+                .is_none()
+        );
+        assert!(!e.desfazer());
+        assert_eq!(
+            e.documento.as_ref().expect("doc").exportado().expect("x"),
+            antes
+        );
+        assert!(e.ultima_edicao().expect("aviso").contains("leitura"));
+        quadro(&ctx, &mut e, &mut som);
+        e.voltar_da_leitura();
+        assert!(e.versao_em_leitura().is_none());
+        assert_eq!(
+            e.documento.as_ref().expect("doc").exportado().expect("x"),
+            editado
+        );
+        assert!(e.pode_salvar_versao());
+    }
+
+    #[test]
+    fn original_alterado_mostra_alerta_apos_a_acao_da_oficina() {
+        let (mut som, ctx) = banco();
+        let (_d, mut e, xml) = com_oficina();
+        assert!(e.alerta_de_originais().is_none());
+        std::fs::write(&xml, "adulterado").expect("escreve");
+        editar_uma_nota(&mut e);
+        let a = e.alerta_de_originais().expect("alerta");
+        assert!(a.contains("ALERTA"), "{a}");
+        quadro(&ctx, &mut e, &mut som);
+        // Também depois de desfazer.
+        std::fs::write(&xml, EMBUTIDAS[3].1).expect("restaura");
+        assert!(e.desfazer());
+        assert!(e.alerta_de_originais().is_none());
     }
 }

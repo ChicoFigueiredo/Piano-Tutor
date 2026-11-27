@@ -235,6 +235,11 @@ impl DocumentoPartitura {
         self.aberto.modificado()
     }
 
+    /// Registra o estado de agora como o salvo (depois de gravar uma Versão; ticket 15).
+    pub fn marcar_salvo(&mut self) {
+        self.aberto.marcar_salvo();
+    }
+
     /// Há o que desfazer?
     pub fn pode_desfazer(&self) -> bool {
         self.aberto.pode_desfazer()
