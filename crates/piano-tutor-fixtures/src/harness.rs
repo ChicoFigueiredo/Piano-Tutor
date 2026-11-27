@@ -29,42 +29,8 @@ impl fmt::Display for ErroHarness {
 
 impl std::error::Error for ErroHarness {}
 
-/// Posição de um compasso: parte (id) e índice (0 = primeiro compasso da parte).
-///
-/// A igualdade considera só `parte` e `indice`; `numero` (o rótulo impresso) serve para mensagens.
-#[derive(Debug, Clone, Eq)]
-pub struct PosCompasso {
-    pub parte: String,
-    pub indice: usize,
-    pub numero: String,
-}
-
-impl PosCompasso {
-    /// Posição para listas de compassos editáveis (sem rótulo).
-    pub fn nova(parte: &str, indice: usize) -> Self {
-        Self {
-            parte: parte.to_owned(),
-            indice,
-            numero: String::new(),
-        }
-    }
-}
-
-impl PartialEq for PosCompasso {
-    fn eq(&self, o: &Self) -> bool {
-        self.parte == o.parte && self.indice == o.indice
-    }
-}
-
-impl fmt::Display for PosCompasso {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(f, "{}#{}", self.parte, self.indice)?;
-        if !self.numero.is_empty() {
-            write!(f, " (compasso {})", self.numero)?;
-        }
-        Ok(())
-    }
-}
+/// Posição de um compasso: tipo do núcleo (`piano_tutor_core::documento::PosCompasso`).
+pub use piano_tutor_core::documento::PosCompasso;
 
 fn analisar(xml: &str) -> Result<Document<'_>, ErroHarness> {
     Document::parse_with_options(

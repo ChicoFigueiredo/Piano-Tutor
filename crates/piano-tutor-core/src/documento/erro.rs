@@ -1,5 +1,5 @@
 use super::IdNota;
-use piano_tutor_core::partitura::Fracao;
+use crate::partitura::Fracao;
 use std::fmt;
 
 /// Falhas explícitas do modelo de documento: nunca se arredonda nem se descarta em silêncio.

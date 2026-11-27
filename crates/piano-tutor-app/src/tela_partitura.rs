@@ -7,7 +7,7 @@
 //! `agora + ANTECEDENCIA`) e [`EstadoPartitura::tocando`] para saber se há reprodução.
 
 pub use crate::documento_partitura::Musica;
-use crate::documento_partitura::{DocumentoPartitura, destino_de_exportacao, ler_arquivo};
+use crate::documento_partitura::{DocumentoPartitura, destino_de_exportacao};
 use crate::partitura_visual::{
     Destaque, EstadoVisual, Mao, MapaResultados, Marcas, ModoRolagem, OpcoesVisuais, ResultadoNota,
     ZOOM_MAX, ZOOM_MIN, desenhar_partitura,
@@ -17,7 +17,8 @@ use crate::som::{EstadoSom, ServicoSom};
 use bancada_casca::egui::{self, Button, ComboBox, Key, RichText, Slider, TextEdit, Ui};
 use piano_tutor_core::NotaMidi;
 use piano_tutor_core::comparador::EventoEsperado;
-use piano_tutor_core::partitura::{ErroPartitura, Partitura, SinalClave, TAMANHO_MAXIMO_BYTES};
+use piano_tutor_core::documento::ErroServico;
+use piano_tutor_core::partitura::{Partitura, SinalClave, TAMANHO_MAXIMO_BYTES};
 use piano_tutor_core::pratica::{
     BATIDAS_RETOMADA, ConfigPratica, EstadoEvento, ModoPratica, Pratica, Resumo, Retomada, Veredito,
 };
@@ -355,7 +356,7 @@ impl EstadoPartitura {
     }
 
     pub fn partitura(&self) -> Option<&Partitura> {
-        self.documento.as_ref().map(|d| &d.partitura)
+        self.documento.as_ref().map(DocumentoPartitura::partitura)
     }
 
     fn musica(&self) -> Option<&Musica> {
@@ -366,8 +367,14 @@ impl EstadoPartitura {
         self.documento.as_ref().map_or("", |d| d.nome.as_str())
     }
 
-    fn carregar_texto(&mut self, nome: String, texto: String) -> Result<(), ErroPartitura> {
+    fn carregar_texto(&mut self, nome: String, texto: String) -> Result<(), ErroServico> {
         let d = DocumentoPartitura::de_texto(nome, texto)?;
+        self.carregar_documento(d);
+        Ok(())
+    }
+
+    /// Passa a mostrar um documento já aberto pelo serviço (texto, arquivo ou `.mxl`).
+    fn carregar_documento(&mut self, d: DocumentoPartitura) {
         if let Some(b) = d.musica.bpm_arquivo {
             self.bpm = (b as f32).clamp(BPM_MIN, BPM_MAX);
         }
@@ -376,7 +383,6 @@ impl EstadoPartitura {
         self.compasso_inicial = None;
         self.pratica = None;
         self.visual.invalidar();
-        Ok(())
     }
 
     fn preferencias_visuais(&self) -> PreferenciasPartitura {
@@ -420,15 +426,17 @@ impl EstadoPartitura {
             return;
         };
         self.parar_sem_som();
-        let texto = match &f.caminho {
-            None => Ok(EMBUTIDAS[f.indice_embutida].1.to_owned()),
-            Some(c) => ler_arquivo(c),
+        let aberto = match &f.caminho {
+            None => DocumentoPartitura::de_texto(
+                f.nome.clone(),
+                EMBUTIDAS[f.indice_embutida].1.to_owned(),
+            )
+            .map_err(|e| e.to_string()),
+            Some(c) => DocumentoPartitura::de_arquivo(c, &f.nome),
         };
-        match texto.and_then(|t| {
-            self.carregar_texto(f.nome.clone(), t)
-                .map_err(|e| e.to_string())
-        }) {
-            Ok(()) => {
+        match aberto {
+            Ok(d) => {
+                self.carregar_documento(d);
                 self.selecionada = i;
                 self.erro = None;
             }
@@ -440,14 +448,11 @@ impl EstadoPartitura {
     pub fn abrir_caminho(&mut self, caminho: &str) {
         let c = Path::new(caminho.trim());
         self.parar_sem_som();
-        match ler_arquivo(c).and_then(|t| {
-            let nome = c
-                .file_name()
-                .map(|n| n.to_string_lossy().into_owned())
-                .unwrap_or_else(|| caminho.to_owned());
-            self.carregar_texto(nome, t).map_err(|e| e.to_string())
-        }) {
-            Ok(()) => self.erro = None,
+        match DocumentoPartitura::de_arquivo(c, caminho) {
+            Ok(d) => {
+                self.carregar_documento(d);
+                self.erro = None;
+            }
             Err(e) => self.erro = Some(e),
         }
     }
@@ -999,7 +1004,7 @@ pub fn desenhar_corpo(
     };
     let resposta = desenhar_partitura(
         ui,
-        &d.partitura,
+        d.partitura(),
         &mut e.visual,
         OpcoesVisuais {
             zoom: e.zoom,
@@ -1011,6 +1016,7 @@ pub fn desenhar_corpo(
             destaque,
             selecionado: e.compasso_inicial,
             resultados: e.pratica.as_ref().map(|s| &s.mapa),
+            ids: Some(d.ids()),
         },
     );
     e.documento = Some(d);
@@ -1041,7 +1047,7 @@ pub fn desenhar_vista_com_cursor(ui: &mut Ui, e: &mut EstadoPartitura, destaque:
     };
     desenhar_partitura(
         ui,
-        &d.partitura,
+        d.partitura(),
         &mut e.visual,
         OpcoesVisuais {
             zoom: e.zoom,
@@ -1053,6 +1059,7 @@ pub fn desenhar_vista_com_cursor(ui: &mut Ui, e: &mut EstadoPartitura, destaque:
             destaque,
             selecionado: None,
             resultados: None,
+            ids: Some(d.ids()),
         },
     );
     e.documento = Some(d);
@@ -1506,6 +1513,49 @@ mod testes {
     }
 
     #[test]
+    fn abre_arquivo_xml_e_mxl_mostra_com_identidades_e_exporta_identico() {
+        let pasta = std::env::temp_dir().join(format!("pt-partitura-ident-{}", std::process::id()));
+        std::fs::create_dir_all(&pasta).expect("pasta");
+        let origem = EMBUTIDAS[3].1;
+        let xml = pasta.join("ode.musicxml");
+        std::fs::write(&xml, origem).expect("grava");
+        let mxl = pasta.join("ode.mxl");
+        std::fs::write(&mxl, empacotar_mxl("ode.musicxml", origem).expect("zip")).expect("grava");
+        let relogio = RelogioManual::novo();
+        let (mut som, _m) = servico_pronto(Arc::new(relogio) as Arc<dyn Relogio>);
+        for (i, arq) in [&xml, &mxl].into_iter().enumerate() {
+            let mut e = EstadoPartitura::novo(None);
+            e.abrir_caminho(&arq.to_string_lossy());
+            assert!(e.erro.is_none(), "{:?}", e.erro);
+            // A tela desenha o documento aberto e o layout carrega a identidade das notas.
+            let ctx = Context::default();
+            quadro_tesselado(&ctx, &mut e, &mut som, (1280.0, 800.0));
+            let layout = e.visual.ultimo_layout.clone().expect("layout desenhado");
+            let cabecas: Vec<_> = layout
+                .sistemas
+                .iter()
+                .flat_map(|s| &s.itens)
+                .filter(|it| matches!(it.forma, crate::partitura_visual::Forma::Cabeca { .. }))
+                .collect();
+            assert!(!cabecas.is_empty());
+            assert!(cabecas.iter().all(|it| it.nota.is_some()), "arquivo {i}");
+            // Exportar grava o mesmo texto do original (o .mxl entrega o XML de dentro).
+            let destino = pasta.join(format!("saida-{i}.musicxml"));
+            e.campo_exportar = destino.to_string_lossy().into_owned();
+            let alvo = e.campo_exportar.clone();
+            e.exportar(&alvo).expect("exporta");
+            assert_eq!(std::fs::read(&destino).expect("lê"), origem.as_bytes());
+            assert!(
+                e.exportar(&alvo).is_err(),
+                "pede confirmação para sobrescrever"
+            );
+            e.sobrescrever = true;
+            assert!(e.exportar(&alvo).is_ok());
+        }
+        let _ = std::fs::remove_dir_all(&pasta);
+    }
+
+    #[test]
     fn abrir_caminho_valida_extensao_tamanho_e_conteudo() {
         let pasta = std::env::temp_dir().join(format!("pt-partitura-abrir-{}", std::process::id()));
         std::fs::create_dir_all(&pasta).expect("pasta");
@@ -1553,10 +1603,7 @@ mod testes {
         assert!(e.erro.is_none(), "{:?}", e.erro);
         assert_eq!(e.partitura().map(|p| p.compassos.len()), Some(16));
         assert_eq!(
-            e.documento
-                .as_ref()
-                .map(|d| d.xml.as_str())
-                .unwrap_or_default(),
+            e.documento.as_ref().map(|d| d.xml()).unwrap_or_default(),
             EMBUTIDAS[3].1
         );
         e.abrir_caminho(&pasta.join("a.txt").to_string_lossy());

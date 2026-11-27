@@ -309,6 +309,9 @@ pub struct Marcas<'a> {
     pub selecionado: Option<usize>,
     /// Notas acertadas (verde) e erradas (vermelho) da prática.
     pub resultados: Option<&'a MapaResultados>,
+    /// Identidades das notas do documento: com elas o layout carrega a identidade em cada nota.
+    /// O layout fica em cache até `EstadoVisual::invalidar`: troque o documento invalidando.
+    pub ids: Option<&'a IdsPorNota>,
 }
 
 /// Desenha a partitura com rolagem própria. A largura do layout acompanha a do `ui`.
@@ -338,10 +341,11 @@ pub fn desenhar_partitura(
     let layout = match &estado.cache {
         Some((k, v, l)) if *k == chave && *v == estado.versao => l.clone(),
         _ => {
-            let l = Arc::new(if fita {
-                calcular_layout_fita(p)
-            } else {
-                calcular_layout(p, largura_sp)
+            let l = Arc::new(match (fita, marcas.ids) {
+                (true, Some(ids)) => calcular_layout_fita_com_ids(p, ids),
+                (true, None) => calcular_layout_fita(p),
+                (false, Some(ids)) => calcular_layout_com_ids(p, ids, largura_sp),
+                (false, None) => calcular_layout(p, largura_sp),
             });
             estado.cache = Some((chave, estado.versao, l.clone()));
             estado.ultimo_sistema = None;
