@@ -288,6 +288,12 @@ impl DocumentoAberto {
         self.historico.salvo = Some(self.historico.estado);
     }
 
+    /// Declara o documento como diferente do salvo (trabalho recuperado do autosave: o conteúdo
+    /// não é o do arquivo salvo, mas o histórico recomeça vazio). Só `marcar_salvo` limpa.
+    pub fn marcar_modificado(&mut self) {
+        self.historico.salvo = None;
+    }
+
     /// Orçamento do histórico, em bytes (estimativa; ver o contrato do módulo).
     pub fn limite_do_historico(&self) -> usize {
         self.historico.limite

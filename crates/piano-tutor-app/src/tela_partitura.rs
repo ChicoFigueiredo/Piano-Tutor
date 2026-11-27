@@ -7,6 +7,7 @@
 //! `agora + ANTECEDENCIA`) e [`EstadoPartitura::tocando`] para saber se há reprodução.
 
 pub use crate::atalhos_partitura::{AcaoAtalho, Destino, MapaAtalhos};
+use crate::autosave::{Autosave, ConfigAutosave, ErroAutosave, Rascunho};
 use crate::documento_partitura::Musica;
 use crate::documento_partitura::{DocumentoPartitura, destino_de_exportacao};
 use crate::geometria::IdNota;
@@ -17,6 +18,10 @@ use crate::partitura_visual::{
 use crate::preferencias::PreferenciasPartitura;
 use crate::selecao_partitura::{Comando, EfeitoDoClique, Resultado, SelecaoPartitura, descrever};
 use crate::som::{EstadoSom, ServicoSom};
+use crate::versoes::{
+    AcaoDeRevisao, LinhaDaLista, ResultadoDoSalvar, SituacaoDoOriginal, Versao, Versoes, agora_utc,
+    hash_curto, hash_do_conteudo,
+};
 use bancada_casca::Atalho;
 use bancada_casca::egui::{self, Button, ComboBox, Event, Key, RichText, Slider, TextEdit, Ui};
 use piano_tutor_core::NotaMidi;
@@ -299,6 +304,40 @@ pub struct EstadoPartitura {
     /// Espera tocar: quanto voltar ao retomar depois de uma parada.
     pub retomada_pratica: Retomada,
     pratica: Option<SessaoPratica>,
+    /// Versões da partitura da Oficina aberta (ticket 21); `None` para arquivo solto ou embutido.
+    versoes: Option<Versoes>,
+    /// Lista de Versões (relida ao abrir e ao salvar, não a cada quadro).
+    lista_de_versoes: Vec<LinhaDaLista>,
+    /// Nota de motivo da próxima Versão (opcional).
+    campo_nota_versao: String,
+    /// Motivo da decisão (aprovar, rejeitar, reabrir); obrigatório, até `MAX_MOTIVO`.
+    campo_motivo_decisao: String,
+    /// Resultado da última ação com Versões.
+    aviso_versoes: Option<String>,
+    /// Alerta de que um original (MusicXML ou PDF) não confere com o hash registrado.
+    alerta_originais: Option<String>,
+    /// Versão antiga aberta em modo leitura; guarda o documento em edição para voltar a ele.
+    leitura: Option<LeituraDeVersao>,
+    /// Autosave da partitura da Oficina aberta (ticket 24).
+    autosave: Option<Autosave>,
+    /// Intervalo e pasta do autosave (padrão: 30 s, ao lado da partitura).
+    pub config_autosave: ConfigAutosave,
+    /// Rascunho de uma sessão anterior esperando a decisão do usuário (recuperar ou descartar).
+    rascunho_pendente: Option<Rascunho>,
+    /// Gravação do rascunho em andamento, numa thread (a interface não espera o disco).
+    gravacao_do_rascunho: Option<std::sync::mpsc::Receiver<Result<String, ErroAutosave>>>,
+    /// Hash do último texto entregue ao autosave (não regrava texto igual).
+    ultimo_hash_rascunho: Option<String>,
+    /// Há rascunho gravado por esta sessão.
+    rascunho_escrito: bool,
+    /// O trabalho atual veio de uma recuperação e ainda não virou Versão.
+    recuperado: bool,
+}
+
+/// Versão antiga aberta somente para leitura (ticket 21).
+struct LeituraDeVersao {
+    versao: Versao,
+    guardado: Option<DocumentoPartitura>,
 }
 
 impl EstadoPartitura {
@@ -385,6 +424,20 @@ impl EstadoPartitura {
             tolerancia_pratica_ms: TOLERANCIA_PRATICA_PADRAO_MS,
             retomada_pratica: Retomada::Zero,
             pratica: None,
+            versoes: None,
+            lista_de_versoes: Vec::new(),
+            campo_nota_versao: String::new(),
+            campo_motivo_decisao: String::new(),
+            aviso_versoes: None,
+            alerta_originais: None,
+            leitura: None,
+            autosave: None,
+            config_autosave: ConfigAutosave::default(),
+            rascunho_pendente: None,
+            gravacao_do_rascunho: None,
+            ultimo_hash_rascunho: None,
+            rascunho_escrito: false,
+            recuperado: false,
         };
         e.escolher(0);
         e
@@ -415,6 +468,22 @@ impl EstadoPartitura {
 
     /// Passa a mostrar um documento já aberto pelo serviço (texto, arquivo ou `.mxl`).
     fn carregar_documento(&mut self, d: DocumentoPartitura) {
+        // Outro documento: o vínculo com a Oficina e a leitura de Versão não valem mais.
+        self.versoes = None;
+        self.lista_de_versoes.clear();
+        self.aviso_versoes = None;
+        self.alerta_originais = None;
+        self.leitura = None;
+        self.autosave = None;
+        self.rascunho_pendente = None;
+        self.gravacao_do_rascunho = None;
+        self.ultimo_hash_rascunho = None;
+        self.rascunho_escrito = false;
+        self.recuperado = false;
+        self.instalar_documento(d);
+    }
+
+    fn instalar_documento(&mut self, d: DocumentoPartitura) {
         if let Some(b) = d.musica.bpm_arquivo {
             self.bpm = (b as f32).clamp(BPM_MIN, BPM_MAX);
         }
@@ -510,7 +579,20 @@ impl EstadoPartitura {
         unidade: UnidadeDeAltura,
         sentido: SentidoDaAltura,
     ) -> Option<ResultadoDaEdicao> {
+        let r = self.aplicar_altura(unidade, sentido);
+        self.conferir_originais();
+        r
+    }
+
+    fn aplicar_altura(
+        &mut self,
+        unidade: UnidadeDeAltura,
+        sentido: SentidoDaAltura,
+    ) -> Option<ResultadoDaEdicao> {
         self.documento.as_ref()?;
+        if self.recusar_em_leitura() {
+            return None;
+        }
         let Some(nota) = self.selecao.nota() else {
             self.ultima_edicao = Some(
                 "Selecione uma nota (clique nela ou use as setas) antes de mudar a altura.".into(),
@@ -572,7 +654,13 @@ impl EstadoPartitura {
     }
 
     fn percorrer_historico(&mut self, desfazendo: bool) -> bool {
-        if self.documento.is_none() {
+        let feito = self.percorrer_historico_sem_conferir(desfazendo);
+        self.conferir_originais();
+        feito
+    }
+
+    fn percorrer_historico_sem_conferir(&mut self, desfazendo: bool) -> bool {
+        if self.documento.is_none() || self.recusar_em_leitura() {
             return false;
         }
         let (verbo, nada) = if desfazendo {
@@ -760,8 +848,428 @@ impl EstadoPartitura {
             Ok(d) => {
                 self.carregar_documento(d);
                 self.erro = None;
+                self.vincular_a_oficina(c);
             }
             Err(e) => self.erro = Some(e),
+        }
+    }
+
+    // --- Versões (ticket 21) ------------------------------------------------------------------
+
+    /// Liga o arquivo aberto a uma partitura da Oficina: `<oficina>/partituras/<id>.musicxml` com
+    /// `<id>.estado.toml` ao lado (é como a Revisão do tutor abre um item). Qualquer outro
+    /// arquivo é "solto": sem Versões. Abrir não escreve nada: a origem (hashes) é registrada
+    /// pelo primeiro `salvar`; até lá a conferência diz "não registrado", sem alerta.
+    fn vincular_a_oficina(&mut self, caminho: &Path) {
+        let Some(id) = caminho
+            .file_name()
+            .and_then(|n| n.to_str())
+            .and_then(|n| n.strip_suffix(".musicxml"))
+            .filter(|id| !id.is_empty())
+        else {
+            return;
+        };
+        let Some(pasta) = caminho.parent() else {
+            return;
+        };
+        let na_oficina = pasta.file_name().is_some_and(|n| n == "partituras")
+            && pasta.join(format!("{id}.estado.toml")).is_file();
+        let Some(raiz) = pasta.parent().filter(|_| na_oficina) else {
+            return;
+        };
+        let oficina = crate::revisao::Oficina {
+            tutor: String::new(),
+            raiz: raiz.to_path_buf(),
+        };
+        let item = crate::revisao::ItemPartitura::ler(&oficina, id);
+        let v = Versoes::da_partitura(&item);
+        self.versoes = Some(v);
+        self.atualizar_lista_de_versoes();
+        self.conferir_originais();
+        self.preparar_autosave(pasta, id);
+    }
+
+    // --- Autosave e recuperação (ticket 24) ---------------------------------------------------
+
+    fn preparar_autosave(&mut self, pasta: &Path, id: &str) {
+        match Autosave::em(pasta, id, &self.config_autosave) {
+            Ok(mut a) => {
+                match a.pendente() {
+                    Ok(r) => self.rascunho_pendente = r,
+                    Err(e) => self.aviso_versoes = Some(format!("Recuperação indisponível: {e}")),
+                }
+                self.autosave = Some(a);
+            }
+            Err(e) => self.aviso_versoes = Some(format!("Autosave desligado: {e}")),
+        }
+    }
+
+    /// Rascunho de uma sessão anterior esperando decisão.
+    pub fn rascunho_pendente(&self) -> Option<&Rascunho> {
+        self.rascunho_pendente.as_ref()
+    }
+
+    /// Aceita a recuperação: o documento passa a ser o do rascunho, tido como modificado, e o
+    /// histórico de desfazer começa vazio (aviso explícito).
+    pub fn recuperar_rascunho(&mut self) {
+        let nome = self.nome().to_owned();
+        let Some(a) = self.autosave.as_mut() else {
+            return;
+        };
+        match a.recuperar(&nome) {
+            Ok(r) => {
+                self.rascunho_pendente = None;
+                self.recuperado = true;
+                self.rascunho_escrito = true;
+                self.parar_sem_som();
+                self.instalar_documento(DocumentoPartitura::de_recuperado(nome, r.documento));
+                self.aviso_versoes = Some(r.aviso_undo.to_owned());
+            }
+            Err(e) => {
+                self.rascunho_pendente = None;
+                self.aviso_versoes = Some(format!("Não foi possível recuperar: {e}"));
+            }
+        }
+        self.conferir_originais();
+    }
+
+    /// Recusa a recuperação: apaga só o rascunho (original e Versões ficam).
+    pub fn descartar_rascunho(&mut self) {
+        if let Some(a) = self.autosave.as_mut()
+            && let Err(e) = a.descartar()
+        {
+            self.aviso_versoes = Some(format!("Não foi possível descartar o rascunho: {e}"));
+        }
+        self.rascunho_pendente = None;
+        self.recuperado = false;
+        self.rascunho_escrito = false;
+        self.ultimo_hash_rascunho = None;
+    }
+
+    /// Há gravação do rascunho em andamento fora da thread da interface?
+    pub fn gravando_rascunho(&self) -> bool {
+        self.gravacao_do_rascunho.is_some()
+    }
+
+    /// Chamado a cada quadro com um relógio monotônico em ms. Exporta o texto (barato) e entrega
+    /// a gravação a uma thread: a interface nunca espera o disco. Sem edição, não grava; com a
+    /// decisão de recuperação pendente, fica quieto.
+    pub fn autosave_tick(&mut self, agora_ms: u64) {
+        use std::sync::mpsc::TryRecvError;
+        if let Some(rx) = &self.gravacao_do_rascunho {
+            match rx.try_recv() {
+                Ok(Ok(hash)) => {
+                    if let Some(a) = self.autosave.as_mut() {
+                        a.gravado(hash.clone(), agora_ms);
+                    }
+                    self.ultimo_hash_rascunho = Some(hash);
+                    self.rascunho_escrito = true;
+                    self.gravacao_do_rascunho = None;
+                }
+                Ok(Err(e)) => {
+                    self.aviso_versoes = Some(format!("Autosave falhou: {e}"));
+                    self.gravacao_do_rascunho = None;
+                }
+                Err(TryRecvError::Empty) => return,
+                Err(TryRecvError::Disconnected) => self.gravacao_do_rascunho = None,
+            }
+        }
+        if self.leitura.is_some() || self.rascunho_pendente.is_some() {
+            return;
+        }
+        let (Some(a), Some(d)) = (self.autosave.as_mut(), self.documento.as_ref()) else {
+            return;
+        };
+        let modificado = d.modificado();
+        if !modificado && self.rascunho_escrito && !self.recuperado {
+            // Voltou ao estado salvo: o rascunho ficou obsoleto.
+            if a.descartar().is_ok() {
+                self.rascunho_escrito = false;
+                self.ultimo_hash_rascunho = None;
+            }
+            return;
+        }
+        if !a.devido(agora_ms, modificado) {
+            return;
+        }
+        let Ok(texto) = d.exportado() else {
+            return;
+        };
+        let hash = hash_do_conteudo(texto.as_bytes());
+        if self.ultimo_hash_rascunho.as_deref() == Some(hash.as_str()) {
+            a.gravado(hash, agora_ms);
+            return;
+        }
+        let gravador = a.gravador();
+        let em = agora_utc();
+        let (tx, rx) = std::sync::mpsc::channel();
+        self.gravacao_do_rascunho = Some(rx);
+        std::thread::spawn(move || {
+            let _ = tx.send(gravador.gravar(&texto, &em));
+        });
+    }
+
+    /// A partitura aberta é da Oficina (tem Versões)?
+    pub fn tem_versoes(&self) -> bool {
+        self.versoes.is_some()
+    }
+
+    /// Dá para salvar uma Versão agora? (partitura da Oficina, fora do modo leitura)
+    pub fn pode_salvar_versao(&self) -> bool {
+        self.versoes.is_some() && self.documento.is_some() && self.leitura.is_none()
+    }
+
+    /// Por que o botão "Salvar como Versão" está desativado (`None` se está ativo).
+    pub fn motivo_sem_salvar_versao(&self) -> Option<&'static str> {
+        if self.pode_salvar_versao() {
+            None
+        } else if self.leitura.is_some() {
+            Some("Volte à edição antes de salvar uma Versão.")
+        } else {
+            Some(
+                "Arquivo solto: só partituras da Oficina (pasta partituras/ com estado.toml) \
+                 têm Versões. Abra a partitura pela Oficina.",
+            )
+        }
+    }
+
+    /// Nota de motivo digitada para a próxima Versão.
+    pub fn nota_da_versao(&self) -> &str {
+        &self.campo_nota_versao
+    }
+
+    pub fn definir_nota_da_versao(&mut self, nota: &str) {
+        nota.clone_into(&mut self.campo_nota_versao);
+    }
+
+    /// Motivo digitado para a próxima decisão sobre uma Versão.
+    pub fn motivo_da_decisao(&self) -> &str {
+        &self.campo_motivo_decisao
+    }
+
+    pub fn definir_motivo_da_decisao(&mut self, motivo: &str) {
+        motivo.clone_into(&mut self.campo_motivo_decisao);
+    }
+
+    /// Aprova, rejeita ou reabre a Versão `hash` com o motivo digitado (ticket 23). A transição
+    /// inválida, o motivo vazio ou longo demais são recusados com a mensagem do módulo; nada
+    /// muda. `direta` pede a aprovação direta (Hipótese → Aprovada, marcada como direta).
+    pub fn decidir_versao(
+        &mut self,
+        hash: &str,
+        acao: AcaoDeRevisao,
+        direta: bool,
+    ) -> Result<(), String> {
+        let Some(v) = &self.versoes else {
+            return Err("Esta partitura não tem Versões (arquivo solto).".into());
+        };
+        let motivo = self.campo_motivo_decisao.trim();
+        let motivo = (!motivo.is_empty()).then_some(motivo);
+        let revisor = crate::revisao::REVISOR;
+        let em = agora_utc();
+        let r = if direta {
+            v.aprovar_direto(hash, motivo, revisor, &em)
+        } else {
+            v.decidir(hash, acao, motivo, revisor, &em)
+        };
+        let r = match r {
+            Ok(d) => {
+                self.aviso_versoes = Some(format!(
+                    "Versão {}: {}.",
+                    hash_curto(&d.hash),
+                    crate::revisao::rotulo_do_estado(d.para)
+                ));
+                self.campo_motivo_decisao.clear();
+                Ok(())
+            }
+            Err(e) => {
+                let m = format!("Recusado: {e}");
+                self.aviso_versoes = Some(m.clone());
+                Err(m)
+            }
+        };
+        self.atualizar_lista_de_versoes();
+        self.conferir_originais();
+        r
+    }
+
+    /// A lista de Versões para a tela (Fonte e Hipótese primeiro, depois as correções).
+    pub fn lista_de_versoes(&self) -> &[LinhaDaLista] {
+        &self.lista_de_versoes
+    }
+
+    /// Mensagem da última ação com Versões.
+    pub fn aviso_de_versoes(&self) -> Option<&str> {
+        self.aviso_versoes.as_deref()
+    }
+
+    /// Alerta de original que não confere com o hash registrado (A8).
+    pub fn alerta_de_originais(&self) -> Option<&str> {
+        self.alerta_originais.as_deref()
+    }
+
+    /// Versão antiga aberta em modo leitura, se houver.
+    pub fn versao_em_leitura(&self) -> Option<&Versao> {
+        self.leitura.as_ref().map(|l| &l.versao)
+    }
+
+    fn atualizar_lista_de_versoes(&mut self) {
+        let Some(v) = &self.versoes else {
+            return;
+        };
+        match v.linhas() {
+            Ok(l) => self.lista_de_versoes = l,
+            Err(e) => {
+                self.lista_de_versoes.clear();
+                self.aviso_versoes = Some(format!("Não foi possível listar as Versões: {e}"));
+            }
+        }
+    }
+
+    /// Confere os originais por hash; roda após cada ação da Oficina (A8). Só lê.
+    pub fn conferir_originais(&mut self) {
+        let Some(v) = &self.versoes else {
+            self.alerta_originais = None;
+            return;
+        };
+        self.alerta_originais = match v.verificar_originais() {
+            Err(e) => Some(format!("Não foi possível conferir os originais: {e}")),
+            Ok(r) if r.integro() => None,
+            // Nenhum registro de origem ainda: nada a comparar, não é alteração.
+            Ok(r) if r.hipotese == SituacaoDoOriginal::NaoRegistrado => None,
+            Ok(r) => {
+                let mut partes = Vec::new();
+                if !r.hipotese.integro() {
+                    partes.push(format!("MusicXML da Hipótese: {:?}", r.hipotese));
+                }
+                if let Some(p) = r.pdf.filter(|p| !p.integro()) {
+                    partes.push(format!("PDF de origem: {p:?}"));
+                }
+                Some(format!(
+                    "ALERTA: arquivo original não confere com o hash registrado ({}).",
+                    partes.join("; ")
+                ))
+            }
+        };
+    }
+
+    /// Salva o que foi feito como nova Versão, com a nota de motivo opcional. Nunca toca na
+    /// Hipótese nem no PDF. Marca o documento como salvo (ticket 15) quando o conteúdo ficou
+    /// guardado.
+    pub fn salvar_versao(&mut self) -> Result<ResultadoDoSalvar, String> {
+        if let Some(m) = self.motivo_sem_salvar_versao() {
+            return Err(m.to_owned());
+        }
+        let (Some(v), Some(d)) = (&self.versoes, &self.documento) else {
+            return Err("nenhuma partitura carregada".into());
+        };
+        let texto = d.exportado().map_err(|e| e.to_string())?;
+        let nota = self.campo_nota_versao.trim();
+        let r = v
+            .salvar(
+                None,
+                &texto,
+                (!nota.is_empty()).then_some(nota),
+                crate::revisao::REVISOR,
+                &agora_utc(),
+            )
+            .map_err(|e| e.to_string());
+        let r = match r {
+            Ok(r) => r,
+            Err(e) => {
+                self.aviso_versoes = Some(format!("Não foi possível salvar a Versão: {e}"));
+                self.conferir_originais();
+                return Err(e);
+            }
+        };
+        if let Some(d) = self.documento.as_mut() {
+            d.marcar_salvo();
+        }
+        self.aviso_versoes = Some(match &r {
+            ResultadoDoSalvar::Criada(v) => {
+                self.campo_nota_versao.clear();
+                format!("Versão salva ({}).", hash_curto(&v.hash))
+            }
+            ResultadoDoSalvar::SemMudancas { .. } => {
+                "Sem mudanças desde a última Versão: nada foi criado.".into()
+            }
+            ResultadoDoSalvar::JaExiste { .. } => {
+                "Esse conteúdo já é o de uma Versão: nada foi criado.".into()
+            }
+        });
+        // O trabalho virou Versão: o rascunho de recuperação não faz mais sentido.
+        if let Some(a) = self.autosave.as_mut()
+            && let Err(e) = a.ao_salvar_versao()
+        {
+            self.aviso_versoes = Some(format!("Versão salva, mas o rascunho ficou: {e}"));
+        }
+        self.recuperado = false;
+        self.rascunho_escrito = false;
+        self.ultimo_hash_rascunho = None;
+        self.atualizar_lista_de_versoes();
+        self.conferir_originais();
+        Ok(r)
+    }
+
+    /// Abre uma Versão antiga em modo leitura (sem editar nem salvar). O documento em edição fica
+    /// guardado até [`Self::voltar_da_leitura`].
+    pub fn abrir_versao(&mut self, hash: &str) {
+        let Some(v) = &self.versoes else {
+            return;
+        };
+        let aberta = match v.abrir(hash) {
+            Ok(a) => a,
+            Err(e) => {
+                self.aviso_versoes = Some(format!("Não foi possível abrir a Versão: {e}"));
+                self.conferir_originais();
+                return;
+            }
+        };
+        let nome = format!("{} (leitura)", self.nome().trim_end_matches(" (leitura)"));
+        match DocumentoPartitura::de_texto(nome, aberta.conteudo) {
+            Ok(d) => {
+                self.parar_sem_som();
+                let guardado = match self.leitura.take() {
+                    Some(l) => l.guardado,
+                    None => self.documento.take(),
+                };
+                self.instalar_documento(d);
+                self.aviso_versoes = Some(format!(
+                    "Lendo a Versão {} (somente leitura).",
+                    hash_curto(&aberta.versao.hash)
+                ));
+                self.leitura = Some(LeituraDeVersao {
+                    versao: aberta.versao,
+                    guardado,
+                });
+            }
+            Err(e) => {
+                self.aviso_versoes = Some(format!("A Versão não pôde ser lida: {e}"));
+            }
+        }
+        self.conferir_originais();
+    }
+
+    /// Sai do modo leitura e devolve o documento que estava em edição.
+    pub fn voltar_da_leitura(&mut self) {
+        let Some(l) = self.leitura.take() else {
+            return;
+        };
+        if let Some(d) = l.guardado {
+            self.instalar_documento(d);
+        }
+        self.aviso_versoes = None;
+        self.conferir_originais();
+    }
+
+    /// Em modo leitura a partitura não se edita: avisa e recusa.
+    fn recusar_em_leitura(&mut self) -> bool {
+        if self.leitura.is_some() {
+            self.ultima_edicao =
+                Some("Versão aberta para leitura: volte à edição para alterar a partitura.".into());
+            true
+        } else {
+            false
         }
     }
 
@@ -1278,10 +1786,19 @@ pub fn desenhar_corpo(
         desenhar_origem(ui, e);
     }
     e.atualizar_pratica(som.agora_ns());
+    e.autosave_tick(som.agora_ns() / 1_000_000);
     desenhar_transporte(ui, e, som);
     desenhar_pratica(ui, e, som);
     if opcoes.com_exportacao {
         desenhar_exportacao(ui, e);
+        desenhar_versoes(ui, e);
+    }
+    if let Some(msg) = &e.alerta_originais {
+        ui.label(
+            RichText::new(msg)
+                .strong()
+                .color(egui::Color32::from_rgb(232, 112, 106)),
+        );
     }
     if let Some(msg) = &e.erro {
         ui.label(RichText::new(msg).color(egui::Color32::from_rgb(232, 112, 106)));
@@ -1940,6 +2457,111 @@ fn desenhar_exportacao(ui: &mut Ui, e: &mut EstadoPartitura) {
             }
         }
     });
+}
+
+/// Salvar como Versão, nota de motivo, lista de Versões e abertura em modo leitura (ticket 21).
+fn desenhar_versoes(ui: &mut Ui, e: &mut EstadoPartitura) {
+    ui.horizontal_wrapped(|ui| {
+        ui.label("Versões:");
+        ui.add_enabled(
+            e.pode_salvar_versao(),
+            TextEdit::singleline(&mut e.campo_nota_versao)
+                .hint_text("nota de motivo (opcional)")
+                .desired_width(240.0),
+        );
+        let salvar = ui.add_enabled(e.pode_salvar_versao(), Button::new("Salvar como Versão"));
+        let salvar = match e.motivo_sem_salvar_versao() {
+            Some(m) => salvar.on_disabled_hover_text(m),
+            None => salvar.on_hover_text(
+                "Guarda o que foi feito como nova Versão (Em revisão); a Hipótese e o PDF não mudam",
+            ),
+        };
+        if salvar.clicked() {
+            // O resultado (ou o erro) já vira aviso na tela.
+            let _ = e.salvar_versao();
+        }
+        if let Some(v) = e.versao_em_leitura() {
+            ui.label(RichText::new(format!("Lendo {} (somente leitura)", hash_curto(&v.hash))).strong());
+            if ui.button("Voltar à edição").clicked() {
+                e.voltar_da_leitura();
+            }
+        }
+    });
+    if e.rascunho_pendente().is_some() {
+        let em = e
+            .rascunho_pendente()
+            .map(|r| r.em.clone())
+            .unwrap_or_default();
+        ui.horizontal_wrapped(|ui| {
+            ui.label(
+                RichText::new(format!(
+                    "Há trabalho não salvo de uma sessão anterior ({em}). O desfazer não foi guardado."
+                ))
+                .strong(),
+            );
+            if ui.button("Recuperar").clicked() {
+                e.recuperar_rascunho();
+            }
+            if ui.button("Descartar").clicked() {
+                e.descartar_rascunho();
+            }
+        });
+    }
+    if !e.tem_versoes() {
+        if let Some(m) = e.motivo_sem_salvar_versao() {
+            ui.label(RichText::new(m).weak());
+        }
+        return;
+    }
+    ui.horizontal_wrapped(|ui| {
+        ui.label("Motivo da decisão:");
+        ui.add(
+            TextEdit::singleline(&mut e.campo_motivo_decisao)
+                .hint_text("obrigatório para aprovar, rejeitar ou reabrir (até 280 caracteres)")
+                .desired_width(320.0),
+        );
+    });
+    let mut abrir = None;
+    let mut decidir: Option<(String, AcaoDeRevisao, bool)> = None;
+    egui::ScrollArea::vertical()
+        .id_salt("lista-de-versoes")
+        .max_height(130.0)
+        .show(ui, |ui| {
+            for l in e.lista_de_versoes() {
+                ui.horizontal_wrapped(|ui| {
+                    ui.label(l.em_texto());
+                    if l.abrivel && ui.small_button("Abrir").clicked() {
+                        abrir = Some(l.hash.clone());
+                    }
+                    if l.abrivel && l.estado.is_some() {
+                        for (rotulo, acao, direta) in [
+                            ("Aprovar", AcaoDeRevisao::Aprovar, false),
+                            ("Rejeitar", AcaoDeRevisao::Rejeitar, false),
+                            ("Reabrir", AcaoDeRevisao::Reabrir, false),
+                            ("Aprovar direto", AcaoDeRevisao::Aprovar, true),
+                        ] {
+                            // Aprovação direta só nasce da Hipótese.
+                            if direta && l.rotulo != "Hipótese" {
+                                continue;
+                            }
+                            if ui.small_button(rotulo).clicked() {
+                                decidir = Some((l.hash.clone(), acao, direta));
+                            }
+                        }
+                    }
+                });
+            }
+        });
+    if let Some(h) = abrir {
+        e.abrir_versao(&h);
+    }
+    if let Some((h, acao, direta)) = decidir {
+        // A recusa vira aviso na tela.
+        let _ = e.decidir_versao(&h, acao, direta);
+    }
+    if let Some(a) = e.aviso_de_versoes() {
+        ui.label(RichText::new(a).weak());
+    }
 }
 
 #[cfg(test)]
@@ -3524,5 +4146,307 @@ mod testes {
         let mut outro = EstadoPartitura::novo(None);
         outro.definir_preferencias(p);
         assert!(outro.alto_contraste);
+    }
+
+    // --- Ticket 21: Versões na tela --------------------------------------------------------
+
+    /// Oficina temporária com a partitura `ode` (Hipótese = a embutida) aberta na tela.
+    fn com_oficina() -> (tempfile::TempDir, EstadoPartitura, PathBuf) {
+        let d = tempfile::tempdir().expect("pasta");
+        let pasta = d.path().join("oficina/partituras");
+        std::fs::create_dir_all(&pasta).expect("cria");
+        let xml = pasta.join("ode.musicxml");
+        std::fs::write(&xml, EMBUTIDAS[3].1).expect("hipótese");
+        std::fs::write(pasta.join("ode.estado.toml"), "estado = \"hipotese\"\n").expect("toml");
+        let mut e = EstadoPartitura::novo(None);
+        e.abrir_caminho(&xml.to_string_lossy());
+        assert!(e.erro.is_none(), "{:?}", e.erro);
+        (d, e, xml)
+    }
+
+    fn editar_uma_nota(e: &mut EstadoPartitura) {
+        e.navegar(Comando::Seguinte);
+        assert!(
+            e.mudar_altura(UnidadeDeAltura::Semitom, SentidoDaAltura::Acima)
+                .is_some()
+        );
+    }
+
+    #[test]
+    fn arquivo_solto_desativa_salvar_versao_com_dica_e_a_oficina_ativa() {
+        let (mut som, ctx) = banco();
+        let mut solto = ode();
+        assert!(!solto.pode_salvar_versao());
+        assert!(
+            solto
+                .motivo_sem_salvar_versao()
+                .expect("dica")
+                .contains("solto")
+        );
+        assert!(solto.salvar_versao().is_err());
+        quadro(&ctx, &mut solto, &mut som);
+        let (_d, mut e, _) = com_oficina();
+        assert!(e.pode_salvar_versao());
+        assert!(e.motivo_sem_salvar_versao().is_none());
+        quadro(&ctx, &mut e, &mut som);
+    }
+
+    #[test]
+    fn salvar_versao_cria_a_lista_com_autor_data_nota_e_estado_e_marca_salvo() {
+        let (_d, mut e, xml) = com_oficina();
+        let antes = std::fs::read(&xml).expect("lê");
+        editar_uma_nota(&mut e);
+        assert!(e.documento.as_ref().expect("doc").modificado());
+        e.definir_nota_da_versao("subi um semitom");
+        let r = e.salvar_versao().expect("salva");
+        let ResultadoDoSalvar::Criada(v) = r else {
+            panic!("esperava Criada");
+        };
+        assert_eq!(v.nota.as_deref(), Some("subi um semitom"));
+        assert!(
+            !e.documento.as_ref().expect("doc").modificado(),
+            "marcou salvo"
+        );
+        assert_eq!(e.nota_da_versao(), "", "a nota é limpa depois de salvar");
+        let l = e.lista_de_versoes();
+        assert_eq!(l.len(), 2, "Hipótese e a correção");
+        assert_eq!(l[0].rotulo, "Hipótese");
+        assert_eq!(l[1].rotulo, "Versão 1");
+        let t = l[1].em_texto();
+        assert!(t.contains("Chico") && t.contains("Em revisão") && t.contains("subi um semitom"));
+        assert!(!l[1].em.is_empty());
+        assert_eq!(std::fs::read(&xml).expect("lê"), antes, "Hipótese intacta");
+        // Salvar de novo sem mudar: não cria Versão.
+        let r2 = e.salvar_versao().expect("ok");
+        assert!(matches!(r2, ResultadoDoSalvar::SemMudancas { .. }));
+        assert_eq!(e.lista_de_versoes().len(), 2);
+        assert!(e.alerta_de_originais().is_none());
+    }
+
+    #[test]
+    fn abrir_versao_antiga_e_somente_leitura_e_voltar_devolve_a_edicao() {
+        let (mut som, ctx) = banco();
+        let (_d, mut e, _) = com_oficina();
+        editar_uma_nota(&mut e);
+        e.salvar_versao().expect("salva");
+        editar_uma_nota(&mut e);
+        let editado = e.documento.as_ref().expect("doc").exportado().expect("x");
+        let hipotese = e.lista_de_versoes()[0].hash.clone();
+        e.abrir_versao(&hipotese);
+        assert_eq!(
+            e.versao_em_leitura().map(|v| v.hash.clone()),
+            Some(hipotese)
+        );
+        assert_eq!(e.documento.as_ref().expect("doc").xml(), EMBUTIDAS[3].1);
+        assert!(!e.pode_salvar_versao());
+        assert!(e.salvar_versao().is_err());
+        e.navegar(Comando::Seguinte);
+        let antes = e.documento.as_ref().expect("doc").exportado().expect("x");
+        assert!(
+            e.mudar_altura(UnidadeDeAltura::Semitom, SentidoDaAltura::Acima)
+                .is_none()
+        );
+        assert!(!e.desfazer());
+        assert_eq!(
+            e.documento.as_ref().expect("doc").exportado().expect("x"),
+            antes
+        );
+        assert!(e.ultima_edicao().expect("aviso").contains("leitura"));
+        quadro(&ctx, &mut e, &mut som);
+        e.voltar_da_leitura();
+        assert!(e.versao_em_leitura().is_none());
+        assert_eq!(
+            e.documento.as_ref().expect("doc").exportado().expect("x"),
+            editado
+        );
+        assert!(e.pode_salvar_versao());
+    }
+
+    #[test]
+    fn original_alterado_mostra_alerta_apos_a_acao_da_oficina() {
+        let (mut som, ctx) = banco();
+        let (_d, mut e, xml) = com_oficina();
+        assert!(e.alerta_de_originais().is_none());
+        // Abrir não escreve nada; o primeiro salvar registra os hashes dos originais.
+        assert!(!xml.with_file_name("ode.versoes").exists());
+        editar_uma_nota(&mut e);
+        e.salvar_versao().expect("salva");
+        assert!(e.alerta_de_originais().is_none());
+        std::fs::write(&xml, "adulterado").expect("escreve");
+        editar_uma_nota(&mut e);
+        let a = e.alerta_de_originais().expect("alerta");
+        assert!(a.contains("ALERTA"), "{a}");
+        quadro(&ctx, &mut e, &mut som);
+        // Também depois de desfazer.
+        std::fs::write(&xml, EMBUTIDAS[3].1).expect("restaura");
+        assert!(e.desfazer());
+        assert!(e.alerta_de_originais().is_none());
+    }
+
+    // --- Ticket 24: autosave e recuperação na tela -----------------------------------------
+
+    /// Roda o tick até a gravação em thread terminar (a interface não espera: só o teste).
+    fn tick_ate_gravar(e: &mut EstadoPartitura, agora_ms: u64) {
+        e.autosave_tick(agora_ms);
+        for _ in 0..400 {
+            if !e.gravando_rascunho() {
+                return;
+            }
+            std::thread::sleep(Duration::from_millis(5));
+            e.autosave_tick(agora_ms);
+        }
+        panic!("a gravação do rascunho não terminou");
+    }
+
+    fn arquivo_do_rascunho(xml: &Path) -> PathBuf {
+        xml.with_file_name("ode.recuperacao")
+            .join(crate::autosave::ARQUIVO_DO_RASCUNHO)
+    }
+
+    #[test]
+    fn autosave_nao_grava_sem_edicao_nem_antes_do_intervalo_e_nao_vira_versao() {
+        let (_d, mut e, xml) = com_oficina();
+        e.autosave_tick(0);
+        e.autosave_tick(10 * 60_000);
+        assert!(!e.gravando_rascunho());
+        assert!(!arquivo_do_rascunho(&xml).exists(), "sem edição não grava");
+        editar_uma_nota(&mut e);
+        e.autosave_tick(1_000_000);
+        assert!(!e.gravando_rascunho(), "antes do intervalo não grava");
+        let iv = e.config_autosave.intervalo_ms;
+        tick_ate_gravar(&mut e, 1_000_000 + iv);
+        assert!(arquivo_do_rascunho(&xml).is_file());
+        assert_eq!(
+            e.lista_de_versoes().len(),
+            0,
+            "autosave não cria Versão nem registra a origem"
+        );
+    }
+
+    #[test]
+    fn a7_queda_com_edicoes_oferece_recuperar_documento_modificado_e_igual_ao_autosave() {
+        let (_d, mut e, xml) = com_oficina();
+        editar_uma_nota(&mut e);
+        let editado = e.documento.as_ref().expect("doc").exportado().expect("x");
+        e.autosave_tick(0);
+        let iv = e.config_autosave.intervalo_ms;
+        tick_ate_gravar(&mut e, iv);
+        // Processo morto sem fechar: o estado em memória some; reabre pelo arquivo.
+        drop(e);
+        let mut novo = EstadoPartitura::novo(None);
+        novo.abrir_caminho(&xml.to_string_lossy());
+        let r = novo.rascunho_pendente().expect("oferece a recuperação");
+        assert!(!r.em.is_empty());
+        assert!(!novo.documento.as_ref().expect("doc").modificado());
+        // Enquanto a decisão pende, o tick não mexe em nada.
+        novo.autosave_tick(10 * 60_000);
+        assert!(arquivo_do_rascunho(&xml).is_file());
+        let (mut som, ctx) = banco();
+        quadro(&ctx, &mut novo, &mut som);
+        novo.recuperar_rascunho();
+        assert!(novo.rascunho_pendente().is_none());
+        let d = novo.documento.as_ref().expect("doc");
+        assert!(d.modificado(), "o recuperado conta como modificado");
+        assert_eq!(
+            d.exportado().expect("x"),
+            editado,
+            "igual ao último autosave"
+        );
+        assert!(novo.aviso_de_versoes().expect("aviso").contains("desfazer"));
+        assert!(
+            arquivo_do_rascunho(&xml).is_file(),
+            "fica até salvar Versão"
+        );
+        // Salvar Versão apaga o rascunho; a Hipótese segue intacta.
+        novo.salvar_versao().expect("salva");
+        assert!(!arquivo_do_rascunho(&xml).exists());
+        assert_eq!(std::fs::read_to_string(&xml).expect("lê"), EMBUTIDAS[3].1);
+    }
+
+    #[test]
+    fn descartar_o_rascunho_apaga_so_ele_e_voltar_ao_salvo_apaga_o_obsoleto() {
+        let (_d, mut e, xml) = com_oficina();
+        editar_uma_nota(&mut e);
+        e.autosave_tick(0);
+        let iv = e.config_autosave.intervalo_ms;
+        tick_ate_gravar(&mut e, iv);
+        assert!(arquivo_do_rascunho(&xml).is_file());
+        assert!(e.desfazer());
+        e.autosave_tick(e.config_autosave.intervalo_ms + 1);
+        assert!(
+            !arquivo_do_rascunho(&xml).exists(),
+            "rascunho obsoleto some"
+        );
+        editar_uma_nota(&mut e);
+        e.autosave_tick(0);
+        let iv = e.config_autosave.intervalo_ms;
+        tick_ate_gravar(&mut e, 2 * iv);
+        let mut outro = EstadoPartitura::novo(None);
+        outro.abrir_caminho(&xml.to_string_lossy());
+        assert!(outro.rascunho_pendente().is_some());
+        outro.descartar_rascunho();
+        assert!(outro.rascunho_pendente().is_none());
+        assert!(!arquivo_do_rascunho(&xml).exists());
+        assert!(xml.is_file(), "o original não é tocado");
+    }
+
+    // --- Ticket 23: aprovar, rejeitar e reabrir na lista de Versões ----------------------------
+
+    #[test]
+    fn decidir_versao_exige_motivo_recusa_transicao_invalida_e_registra_o_estado() {
+        let (_d, mut e, _) = com_oficina();
+        editar_uma_nota(&mut e);
+        e.salvar_versao().expect("salva");
+        let v1 = e.lista_de_versoes()[1].hash.clone();
+        // Sem motivo: recusa com mensagem e nada muda.
+        let r = e.decidir_versao(&v1, AcaoDeRevisao::Aprovar, false);
+        assert!(r.is_err());
+        assert!(e.aviso_de_versoes().expect("aviso").starts_with("Recusado"));
+        assert_eq!(
+            e.lista_de_versoes()[1].estado,
+            Some(crate::revisao::Estado::EmRevisao)
+        );
+        e.definir_motivo_da_decisao("conferi com o PDF");
+        e.decidir_versao(&v1, AcaoDeRevisao::Aprovar, false)
+            .expect("aprova");
+        assert_eq!(
+            e.lista_de_versoes()[1].estado,
+            Some(crate::revisao::Estado::Aprovada)
+        );
+        assert_eq!(e.motivo_da_decisao(), "", "motivo limpo depois de decidir");
+        // Transição inválida (Aprovada -> Rejeitada): recusada com a mensagem do módulo.
+        e.definir_motivo_da_decisao("mudei de ideia");
+        let err = e
+            .decidir_versao(&v1, AcaoDeRevisao::Rejeitar, false)
+            .expect_err("recusa");
+        assert!(err.starts_with("Recusado"), "{err}");
+        assert_eq!(
+            e.lista_de_versoes()[1].estado,
+            Some(crate::revisao::Estado::Aprovada)
+        );
+        // Reabrir volta a Em revisão.
+        e.decidir_versao(&v1, AcaoDeRevisao::Reabrir, false)
+            .expect("reabre");
+        assert_eq!(
+            e.lista_de_versoes()[1].estado,
+            Some(crate::revisao::Estado::EmRevisao)
+        );
+        // Motivo longo demais.
+        e.definir_motivo_da_decisao(&"x".repeat(281));
+        assert!(
+            e.decidir_versao(&v1, AcaoDeRevisao::Rejeitar, false)
+                .is_err()
+        );
+        // Aprovação direta da Hipótese, sem motivo escrito.
+        let h = e.lista_de_versoes()[0].hash.clone();
+        e.definir_motivo_da_decisao("");
+        e.decidir_versao(&h, AcaoDeRevisao::Aprovar, true)
+            .expect("direta");
+        assert_eq!(
+            e.lista_de_versoes()[0].estado,
+            Some(crate::revisao::Estado::Aprovada)
+        );
+        let (mut som, ctx) = banco();
+        quadro(&ctx, &mut e, &mut som);
     }
 }
