@@ -21,3 +21,5 @@
 - [ ] Desfazer e refazer cada uma das duas operações restaura o modelo (A5 em testes dedicados).
 - [ ] Exportação difere do original só no compasso editado; ornamentos e letra associados a uma nota removida são tratados com aviso explícito (letra/cifra/dedilhado órfãos viram lista de avisos e nunca somem em silêncio).
 - [ ] A posição de inserção usa as colunas do layout e o cursor de entrada; o teste usa a posição, não coordenadas de pixel.
+
+**Supervisor (2026-11-27):** quando o arquivo lateral de IdNota existir, trocar o pareamento do diff (`documento/diff.rs`, ticket 22) para usá-lo, com teste de inserção no meio de compasso sem `id` no MusicXML.

@@ -20,3 +20,5 @@
 - [x] Diff por IdNota detecta nota alterada, inserida e removida num compasso (três casos testados); letra, cifra e dedilhado alterados por edição indireta aparecem com marcação.
 - [ ] A Oficina mostra o diff em lista navegável com teclado; clicar numa linha leva ao compasso; sem diferenças, mostra mensagem clara. (PENDENTE: serviço pronto em `versoes_diff::linhas`/`MENSAGEM_SEM_DIFERENCAS`; tela da Oficina não ligada neste ticket.)
 - [x] O diff é calculado pelo serviço, sem janela, e é reutilizável por MCP (E06) sem mudança de contrato.
+
+**Supervisor (2026-11-27):** aceito o pareamento por `id` do MusicXML e por sequência comum como substituto provisório do IdNota, porque o IdNota ainda não é estável entre Versões. Quando o ticket 17 trouxer o arquivo lateral de IdNota, o diff deve parear por ele; isso ficou registrado no ticket 17. A lista na tela entra depois da ligação das Versões à tela. `#[allow(clippy::large_enum_variant)]` aceito.
