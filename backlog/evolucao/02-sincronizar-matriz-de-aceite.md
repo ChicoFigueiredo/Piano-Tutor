@@ -12,11 +12,11 @@
 
 **Blocked by:** None (can start immediately)
 
-**Status:** ready-for-agent
+**Status:** parcial: tabela de conciliação feita (docs/aceite/MATRIZ-DE-ACEITE.md); 8 divergências e 1 a confirmar aguardam decisão do titular. Coluna Estado da matriz não alterada.
 
-- [ ] Uma tabela de comparação (fase, estado na matriz, estado no progresso) mostra zero divergências não explicadas ao final.
-- [ ] Nenhum estado é promovido a PASS sem evidência já existente; o que não tem evidência permanece NÃO VERIFICADO, e itens de hardware (F01, F02, F03, F14) permanecem NÃO VERIFICADO.
-- [ ] O script de verificação de documentação existente passa.
-- [ ] O PR não contém nenhuma mudança fora de documentação.
+- [x] Uma tabela de comparação (fase, estado na matriz, estado no progresso) mostra zero divergências não explicadas ao final.
+- [x] Nenhum estado é promovido a PASS sem evidência já existente; o que não tem evidência permanece NÃO VERIFICADO, e itens de hardware (F01, F02, F03, F14) permanecem NÃO VERIFICADO.
+- [x] O script de verificação de documentação existente passa.
+- [x] O PR não contém nenhuma mudança fora de documentação.
 
 **Notas:** Fonte do progresso: o arquivo de planejamento já versionado. Em caso de conflito entre os dois, não decidir: registrar a divergência e perguntar ao titular.

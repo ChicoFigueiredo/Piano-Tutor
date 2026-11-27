@@ -32,3 +32,28 @@ Ordem de execução por marco ([plano](../planejamento/PLANO-DE-MARCOS.md), [ADR
 5. Pendências, riscos, regressões, licenças e aprovação explícita.
 
 Não declarar latência, precisão de IA ou compatibilidade de plataforma sem medição. Hipóteses de IA são revisadas antes de virar gabarito.
+
+## Conciliação com progresso.json
+
+Fonte do estado real: [`docs/planejamento/progresso.json`](../planejamento/progresso.json) (131 itens). Ele registra estado por **item** (`nao_iniciado`, `parcial`, `codigo`, `evidencia_nuvem`, `evidencia_hardware`), sem rótulo por fase. Por isso a tabela compara a matriz com a distribuição dos itens de cada fase. Nenhum estado foi alterado nesta conciliação e nenhuma fase está aceita: o aceite humano não está registrado em nenhum dos dois arquivos.
+
+| Fase | Estado na matriz | Estado no progresso (itens) | Situação | Explicação |
+|---|---|---|---|---|
+| F00 | Não iniciado | codigo 2, evidencia_nuvem 3, parcial 1 | Divergente, aguarda decisão | Progresso registra código e evidência de nuvem; a matriz diz não iniciado. |
+| F01 | Evidência offline; aceite pendente | evidencia_hardware 1, evidencia_nuvem 2, codigo 1, nao_iniciado 1 | Divergente, aguarda decisão | Progresso registra calibração no cerebro (2026-11-24, 61/61 teclas) como evidência de hardware, pendente de assinatura do titular; a matriz não menciona essa evidência. Hardware segue NÃO VERIFICADO. |
+| F02 | Não iniciado | evidencia_nuvem 3, parcial 2 | Divergente, aguarda decisão | Progresso registra evidência de nuvem; a matriz diz não iniciado. Medição de latência segue sem medição real. |
+| F03 | Não iniciado | evidencia_nuvem 6, codigo 1, parcial 1 | Divergente, aguarda decisão | Progresso registra evidência de nuvem em 6 itens; a matriz diz não iniciado. Latência e escuta seguem NÃO VERIFICADO. |
+| F04 | Evidência offline | evidencia_nuvem 8, codigo 1, nao_iniciado 1 | Compatível | O item não iniciado é a revisão e aprovação humana, ainda não registrada. |
+| F05 | Não iniciado | codigo 7, evidencia_nuvem 3, nao_iniciado 1 | Divergente, aguarda decisão | Progresso registra código e evidência de nuvem; existe `docs/aceite/F05/evidencia.md` com testes automatizados, não citado na matriz. |
+| F06 | Não iniciado | codigo 5, evidencia_nuvem 4, nao_iniciado 1 | Divergente, aguarda decisão | Progresso registra código e evidência de nuvem; a matriz diz não iniciado. |
+| F07 | Não iniciado | parcial 3, evidencia_nuvem 2, nao_iniciado 1 | Divergente, aguarda decisão | Progresso registra trabalho parcial e evidência de nuvem; a matriz diz não iniciado. |
+| F08 | Evidência offline | evidencia_nuvem 5, codigo 4, nao_iniciado 1 | Compatível | Render offline e medição real seguem NÃO VERIFICADO, como declara a matriz. |
+| F09 | Evidência offline; kit, samples, looper e choke não implementados | codigo 3, evidencia_nuvem 2, parcial 1 | Divergente em conteúdo, aguarda confirmação | Progresso marca como código os itens de pads, sequenciador e relógio comum; a matriz diz que kit, samples, looper e choke não estão implementados. Falta esclarecer o que é "looper" e "choke" no progresso. |
+| F10 | Não iniciado | nao_iniciado 11 | Compatível | Sem trabalho registrado. |
+| F11 | Não iniciado | nao_iniciado 8 | Compatível | Sem trabalho registrado. |
+| F12 | Não iniciado | nao_iniciado 7 | Compatível | Sem trabalho registrado. |
+| F13 | Não iniciado | nao_iniciado 14 | Compatível | Sem trabalho registrado. |
+| F14 | Não iniciado | parcial 1, codigo 1, nao_iniciado 12 | Divergente, aguarda decisão | Progresso registra migrações e `.deb` em andamento; a matriz diz não iniciado. |
+| Spike de notação (M3) | Não iniciado | fora do progresso.json | Não comparável | O progresso não registra o spike; a matriz é a única fonte para essa linha. |
+
+**Resumo:** 6 fases compatíveis (F04, F08, F10 a F13), 8 divergentes (F00, F01, F02, F03, F05, F06, F07, F14) e 1 a confirmar (F09). Nenhuma divergência está sem explicação. Para resolver, o titular precisa definir: (1) como um estado por fase é derivado dos estados por item do progresso; (2) se a evidência de hardware de F01 altera o rótulo da fase antes da assinatura; (3) o que F09 entende por "looper" e "choke". Até essa decisão, a coluna Estado da matriz não foi alterada.
