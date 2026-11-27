@@ -12,12 +12,12 @@
 
 **Blocked by:** 21 (Salvar como nova Versão, com nota de motivo, e listar as Versões)
 
-**Status:** feito, aguarda revisão (módulo `versoes.rs`; a UI de aprovar/rejeitar/reabrir entra com a ligação da tela, depois de 15 e 19)
+**Status:** em andamento — módulo pronto e revisado pelo supervisor; consumidores e UI pendentes (módulo `versoes.rs`; a UI de aprovar/rejeitar/reabrir entra com a ligação da tela, depois de 15 e 19)
 
 - [x] A9: dada uma Versão Aprovada, uma edição seguida de salvar cria uma Versão Em revisão com hash diferente; a aprovação da anterior não é herdada (teste de estado). (teste `a9_editar_versao_aprovada_...`)
 - [x] As transições válidas são as da máquina existente; transições inválidas são recusadas com mensagem (testes herdados continuam verdes). (teste `transicoes_invalidas_...` e `as_acoes_alcancam_exatamente_...`: as ações usam `transicao_valida` de `revisao`; erro `TransicaoInvalida` com mensagem em PT-BR)
 - [x] Aprovar, rejeitar e reabrir exigem um motivo (curto) e registram revisor, data e hash; aprovação direta, quando usada, é marcada como direta. (`aprovar`/`rejeitar`/`reabrir`/`aprovar_direto`; motivo obrigatório até 280 caracteres; `[[decisao]]` no índice com `direto = true` na direta)
-- [x] Qualquer consumidor (prática, Exercício) consulta a aprovação por hash, nunca por nome do arquivo (teste: alterar o arquivo muda o hash e a aprovação não vale). (`aprovacao_de(hash)`, `aprovacao_do_conteudo`, `aprovacao_do_arquivo`; o `estado.toml` da partitura segue sem mudança e os consumidores atuais ainda não migraram para a consulta por hash)
+- [ ] Qualquer consumidor (prática, Exercício) consulta a aprovação por hash, nunca por nome do arquivo (teste: alterar o arquivo muda o hash e a aprovação não vale). (`aprovacao_de(hash)`, `aprovacao_do_conteudo`, `aprovacao_do_arquivo`; o `estado.toml` da partitura segue sem mudança e os consumidores atuais ainda não migraram para a consulta por hash)
 - [x] A Hipótese original permanece intacta (hash) mesmo após aprovar uma Versão derivada (T8). (teste `t8_hipotese_original_...`)
 - [x] Nada aprova automaticamente: nenhuma saída de IA ou plugin promove conteúdo (só o humano). (`aprovacao_de` só vale com estado Aprovada **e** registro `[[decisao]]`; estado escrito à mão não vale; só chamadas explícitas do revisor mudam o estado)
 
@@ -28,3 +28,6 @@
 - Nova Versão filha de aprovada já nascia Em revisão (ticket 21); agora há teste. Salvar conteúdo igual ao de Versão existente não cria Versão, logo não re-aprova nem des-aprova.
 - Pendência do 21 resolvida: trava de arquivo entre processos (`indice.lock`, `File::lock` da biblioteca padrão, sem crate nova; `flock` no Unix e `LockFileEx` no Windows). Custo baixo: `registrar_origem`, `salvar` e as decisões rodam o ciclo ler-modificar-gravar sob a trava; leitura não trava. Em sistema de arquivos sem suporte (`Unsupported`) segue sem trava. Teste com 8 threads (cada uma com sua `Versoes`) salvando e aprovando: sem a trava o teste falha (corrida no temporário e no índice); com a trava nenhuma Versão ou decisão se perde. Não testado: dois processos de fato nem Windows/macOS (NÃO VERIFICADO).
 - Fora do escopo: tela (botões, campo de motivo) e migração dos consumidores atuais (prática, Exercício) para `aprovacao_de(hash)`.
+
+
+**Supervisor (2026-11-27):** reabri o critério dos consumidores. A consulta por hash já existe, mas a prática e o Exercício ainda leem o `estado.toml`. A migração entra no ticket 25 (praticar a Versão aprovada), e o critério só fecha quando o 25 fechar. Botões e campo de motivo na tela também ficam pendentes. A trava entre processos foi testada só com threads no Linux: NÃO VERIFICADO em dois processos reais, no Windows e no macOS.
