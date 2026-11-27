@@ -1,0 +1,21 @@
+{
+  "semente": 20261127,
+  "sha": "38c5db510224d9facdc4b08d741fc788cfb58ea8",
+  "criterios": "CC0 no metaTag; .mxl e .txt presentes; 12-40 compassos; <=250 kB; 3 pautas (voz+piano, 1 por compositor) + ate 2 de 2 pautas",
+  "pecas": [
+    "scores/Cornelius,_Peter/Weihnachtslieder,_Op.8/3a_Die_Könige/lc7011202.mscx",
+    "scores/Duchambge,_Pauline/_/Ronde_des_pauvres/lc6594151.mscx",
+    "scores/Schumann,_Clara/6_Lieder,_Op.13/4_Der_Mond_kommt_still_gegangen/lc5126921.mscx",
+    "scores/Wolf,_Hugo/Eichendorff-Lieder/15_Unfall/lc5057804.mscx",
+    "scores/Schumann,_Robert/Myrthen,_Op.25/02_Freisinn/lc6885263.mscx",
+    "scores/Beethoven,_Ludwig_van/6_Lieder,_Op.48/2_Die_Liebe_des_Nächsten/lc4946378.mscx",
+    "scores/Gonzaga,_Chiquinha/_/Dona_Adelaide/lc6610193.mscx",
+    "scores/Mendelssohn,_Felix/6_Gesänge,_Op.86/5_Der_Mond,_MWV_K_122/lc6995255.mscx",
+    "scores/Greger,_Luise/3_Lieder,_Opp.122-124/1_Dein/lc6173951.mscx",
+    "scores/Webern,_Anton/5_Lieder_nach_Gedichten_von_Stefan_George,_Op.4/4_So_ich_traurig_bin/lc6725890.mscx",
+    "scores/Brahms,_Johannes/7_Lieder,_Op.48/2_Der_Überläufer/lc5071622.mscx",
+    "scores/Chausson,_Ernest/Serres_chaudes,_Op.24/3_Lassitude/lc5057847.mscx",
+    "scores/Zumsteeg,_Emilie/5_Lieder/5_Sehnsucht_der_Liebe/lc6163298.mscx",
+    "scores/Farrenc,_Louise/_/Le_berger_fidèle/lc6598368.mscx"
+  ]
+}
