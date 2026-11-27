@@ -12,7 +12,7 @@
 
 **Blocked by:** None (can start immediately)
 
-**Status:** parcial: tabela de conciliação feita (docs/aceite/MATRIZ-DE-ACEITE.md); 8 divergências e 1 a confirmar aguardam decisão do titular. Coluna Estado da matriz não alterada.
+**Status:** feito, aguarda revisão. Matriz conciliada pela regra do supervisor (docs/aceite/MATRIZ-DE-ACEITE.md, seção "Conciliação com progresso.json"); nenhuma fase aceita, aceite humano pendente.
 
 - [x] Uma tabela de comparação (fase, estado na matriz, estado no progresso) mostra zero divergências não explicadas ao final.
 - [x] Nenhum estado é promovido a PASS sem evidência já existente; o que não tem evidência permanece NÃO VERIFICADO, e itens de hardware (F01, F02, F03, F14) permanecem NÃO VERIFICADO.
