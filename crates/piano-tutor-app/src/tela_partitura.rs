@@ -7,6 +7,7 @@
 //! `agora + ANTECEDENCIA`) e [`EstadoPartitura::tocando`] para saber se há reprodução.
 
 pub use crate::atalhos_partitura::{AcaoAtalho, Destino, MapaAtalhos};
+use crate::autosave::{Autosave, ConfigAutosave, ErroAutosave, Rascunho};
 use crate::documento_partitura::Musica;
 use crate::documento_partitura::{DocumentoPartitura, destino_de_exportacao};
 use crate::geometria::IdNota;
@@ -19,6 +20,7 @@ use crate::selecao_partitura::{Comando, EfeitoDoClique, Resultado, SelecaoPartit
 use crate::som::{EstadoSom, ServicoSom};
 use crate::versoes::{
     LinhaDaLista, ResultadoDoSalvar, SituacaoDoOriginal, Versao, Versoes, agora_utc, hash_curto,
+    hash_do_conteudo,
 };
 use bancada_casca::Atalho;
 use bancada_casca::egui::{self, Button, ComboBox, Event, Key, RichText, Slider, TextEdit, Ui};
@@ -314,6 +316,20 @@ pub struct EstadoPartitura {
     alerta_originais: Option<String>,
     /// Versão antiga aberta em modo leitura; guarda o documento em edição para voltar a ele.
     leitura: Option<LeituraDeVersao>,
+    /// Autosave da partitura da Oficina aberta (ticket 24).
+    autosave: Option<Autosave>,
+    /// Intervalo e pasta do autosave (padrão: 30 s, ao lado da partitura).
+    pub config_autosave: ConfigAutosave,
+    /// Rascunho de uma sessão anterior esperando a decisão do usuário (recuperar ou descartar).
+    rascunho_pendente: Option<Rascunho>,
+    /// Gravação do rascunho em andamento, numa thread (a interface não espera o disco).
+    gravacao_do_rascunho: Option<std::sync::mpsc::Receiver<Result<String, ErroAutosave>>>,
+    /// Hash do último texto entregue ao autosave (não regrava texto igual).
+    ultimo_hash_rascunho: Option<String>,
+    /// Há rascunho gravado por esta sessão.
+    rascunho_escrito: bool,
+    /// O trabalho atual veio de uma recuperação e ainda não virou Versão.
+    recuperado: bool,
 }
 
 /// Versão antiga aberta somente para leitura (ticket 21).
@@ -412,6 +428,13 @@ impl EstadoPartitura {
             aviso_versoes: None,
             alerta_originais: None,
             leitura: None,
+            autosave: None,
+            config_autosave: ConfigAutosave::default(),
+            rascunho_pendente: None,
+            gravacao_do_rascunho: None,
+            ultimo_hash_rascunho: None,
+            rascunho_escrito: false,
+            recuperado: false,
         };
         e.escolher(0);
         e
@@ -448,6 +471,12 @@ impl EstadoPartitura {
         self.aviso_versoes = None;
         self.alerta_originais = None;
         self.leitura = None;
+        self.autosave = None;
+        self.rascunho_pendente = None;
+        self.gravacao_do_rascunho = None;
+        self.ultimo_hash_rascunho = None;
+        self.rascunho_escrito = false;
+        self.recuperado = false;
         self.instalar_documento(d);
     }
 
@@ -826,7 +855,8 @@ impl EstadoPartitura {
 
     /// Liga o arquivo aberto a uma partitura da Oficina: `<oficina>/partituras/<id>.musicxml` com
     /// `<id>.estado.toml` ao lado (é como a Revisão do tutor abre um item). Qualquer outro
-    /// arquivo é "solto": sem Versões. Registra a origem (hashes) para a conferência.
+    /// arquivo é "solto": sem Versões. Abrir não escreve nada: a origem (hashes) é registrada
+    /// pelo primeiro `salvar`; até lá a conferência diz "não registrado", sem alerta.
     fn vincular_a_oficina(&mut self, caminho: &Path) {
         let Some(id) = caminho
             .file_name()
@@ -850,12 +880,130 @@ impl EstadoPartitura {
         };
         let item = crate::revisao::ItemPartitura::ler(&oficina, id);
         let v = Versoes::da_partitura(&item);
-        if let Err(e) = v.registrar_origem(crate::revisao::REVISOR, &agora_utc()) {
-            self.aviso_versoes = Some(format!("Versões indisponíveis: {e}"));
-        }
         self.versoes = Some(v);
         self.atualizar_lista_de_versoes();
         self.conferir_originais();
+        self.preparar_autosave(pasta, id);
+    }
+
+    // --- Autosave e recuperação (ticket 24) ---------------------------------------------------
+
+    fn preparar_autosave(&mut self, pasta: &Path, id: &str) {
+        match Autosave::em(pasta, id, &self.config_autosave) {
+            Ok(mut a) => {
+                match a.pendente() {
+                    Ok(r) => self.rascunho_pendente = r,
+                    Err(e) => self.aviso_versoes = Some(format!("Recuperação indisponível: {e}")),
+                }
+                self.autosave = Some(a);
+            }
+            Err(e) => self.aviso_versoes = Some(format!("Autosave desligado: {e}")),
+        }
+    }
+
+    /// Rascunho de uma sessão anterior esperando decisão.
+    pub fn rascunho_pendente(&self) -> Option<&Rascunho> {
+        self.rascunho_pendente.as_ref()
+    }
+
+    /// Aceita a recuperação: o documento passa a ser o do rascunho, tido como modificado, e o
+    /// histórico de desfazer começa vazio (aviso explícito).
+    pub fn recuperar_rascunho(&mut self) {
+        let nome = self.nome().to_owned();
+        let Some(a) = self.autosave.as_mut() else {
+            return;
+        };
+        match a.recuperar(&nome) {
+            Ok(r) => {
+                self.rascunho_pendente = None;
+                self.recuperado = true;
+                self.rascunho_escrito = true;
+                self.parar_sem_som();
+                self.instalar_documento(DocumentoPartitura::de_recuperado(nome, r.documento));
+                self.aviso_versoes = Some(r.aviso_undo.to_owned());
+            }
+            Err(e) => {
+                self.rascunho_pendente = None;
+                self.aviso_versoes = Some(format!("Não foi possível recuperar: {e}"));
+            }
+        }
+        self.conferir_originais();
+    }
+
+    /// Recusa a recuperação: apaga só o rascunho (original e Versões ficam).
+    pub fn descartar_rascunho(&mut self) {
+        if let Some(a) = self.autosave.as_mut()
+            && let Err(e) = a.descartar()
+        {
+            self.aviso_versoes = Some(format!("Não foi possível descartar o rascunho: {e}"));
+        }
+        self.rascunho_pendente = None;
+        self.recuperado = false;
+        self.rascunho_escrito = false;
+        self.ultimo_hash_rascunho = None;
+    }
+
+    /// Há gravação do rascunho em andamento fora da thread da interface?
+    pub fn gravando_rascunho(&self) -> bool {
+        self.gravacao_do_rascunho.is_some()
+    }
+
+    /// Chamado a cada quadro com um relógio monotônico em ms. Exporta o texto (barato) e entrega
+    /// a gravação a uma thread: a interface nunca espera o disco. Sem edição, não grava; com a
+    /// decisão de recuperação pendente, fica quieto.
+    pub fn autosave_tick(&mut self, agora_ms: u64) {
+        use std::sync::mpsc::TryRecvError;
+        if let Some(rx) = &self.gravacao_do_rascunho {
+            match rx.try_recv() {
+                Ok(Ok(hash)) => {
+                    if let Some(a) = self.autosave.as_mut() {
+                        a.gravado(hash.clone(), agora_ms);
+                    }
+                    self.ultimo_hash_rascunho = Some(hash);
+                    self.rascunho_escrito = true;
+                    self.gravacao_do_rascunho = None;
+                }
+                Ok(Err(e)) => {
+                    self.aviso_versoes = Some(format!("Autosave falhou: {e}"));
+                    self.gravacao_do_rascunho = None;
+                }
+                Err(TryRecvError::Empty) => return,
+                Err(TryRecvError::Disconnected) => self.gravacao_do_rascunho = None,
+            }
+        }
+        if self.leitura.is_some() || self.rascunho_pendente.is_some() {
+            return;
+        }
+        let (Some(a), Some(d)) = (self.autosave.as_mut(), self.documento.as_ref()) else {
+            return;
+        };
+        let modificado = d.modificado();
+        if !modificado && self.rascunho_escrito && !self.recuperado {
+            // Voltou ao estado salvo: o rascunho ficou obsoleto.
+            if a.descartar().is_ok() {
+                self.rascunho_escrito = false;
+                self.ultimo_hash_rascunho = None;
+            }
+            return;
+        }
+        if !a.devido(agora_ms, modificado) {
+            return;
+        }
+        let Ok(texto) = d.exportado() else {
+            return;
+        };
+        let hash = hash_do_conteudo(texto.as_bytes());
+        if self.ultimo_hash_rascunho.as_deref() == Some(hash.as_str()) {
+            a.gravado(hash, agora_ms);
+            return;
+        }
+        let gravador = a.gravador();
+        let em = agora_utc();
+        let (tx, rx) = std::sync::mpsc::channel();
+        self.gravacao_do_rascunho = Some(rx);
+        std::thread::spawn(move || {
+            let _ = tx.send(gravador.gravar(&texto, &em));
+        });
     }
 
     /// A partitura aberta é da Oficina (tem Versões)?
@@ -995,6 +1143,15 @@ impl EstadoPartitura {
                 "Esse conteúdo já é o de uma Versão: nada foi criado.".into()
             }
         });
+        // O trabalho virou Versão: o rascunho de recuperação não faz mais sentido.
+        if let Some(a) = self.autosave.as_mut()
+            && let Err(e) = a.ao_salvar_versao()
+        {
+            self.aviso_versoes = Some(format!("Versão salva, mas o rascunho ficou: {e}"));
+        }
+        self.recuperado = false;
+        self.rascunho_escrito = false;
+        self.ultimo_hash_rascunho = None;
         self.atualizar_lista_de_versoes();
         self.conferir_originais();
         Ok(r)
@@ -1575,6 +1732,7 @@ pub fn desenhar_corpo(
         desenhar_origem(ui, e);
     }
     e.atualizar_pratica(som.agora_ns());
+    e.autosave_tick(som.agora_ns() / 1_000_000);
     desenhar_transporte(ui, e, som);
     desenhar_pratica(ui, e, som);
     if opcoes.com_exportacao {
@@ -2275,6 +2433,26 @@ fn desenhar_versoes(ui: &mut Ui, e: &mut EstadoPartitura) {
             }
         }
     });
+    if e.rascunho_pendente().is_some() {
+        let em = e
+            .rascunho_pendente()
+            .map(|r| r.em.clone())
+            .unwrap_or_default();
+        ui.horizontal_wrapped(|ui| {
+            ui.label(
+                RichText::new(format!(
+                    "Há trabalho não salvo de uma sessão anterior ({em}). O desfazer não foi guardado."
+                ))
+                .strong(),
+            );
+            if ui.button("Recuperar").clicked() {
+                e.recuperar_rascunho();
+            }
+            if ui.button("Descartar").clicked() {
+                e.descartar_rascunho();
+            }
+        });
+    }
     if !e.tem_versoes() {
         if let Some(m) = e.motivo_sem_salvar_versao() {
             ui.label(RichText::new(m).weak());
@@ -4006,6 +4184,11 @@ mod testes {
         let (mut som, ctx) = banco();
         let (_d, mut e, xml) = com_oficina();
         assert!(e.alerta_de_originais().is_none());
+        // Abrir não escreve nada; o primeiro salvar registra os hashes dos originais.
+        assert!(!xml.with_file_name("ode.versoes").exists());
+        editar_uma_nota(&mut e);
+        e.salvar_versao().expect("salva");
+        assert!(e.alerta_de_originais().is_none());
         std::fs::write(&xml, "adulterado").expect("escreve");
         editar_uma_nota(&mut e);
         let a = e.alerta_de_originais().expect("alerta");
@@ -4015,5 +4198,112 @@ mod testes {
         std::fs::write(&xml, EMBUTIDAS[3].1).expect("restaura");
         assert!(e.desfazer());
         assert!(e.alerta_de_originais().is_none());
+    }
+
+    // --- Ticket 24: autosave e recuperação na tela -----------------------------------------
+
+    /// Roda o tick até a gravação em thread terminar (a interface não espera: só o teste).
+    fn tick_ate_gravar(e: &mut EstadoPartitura, agora_ms: u64) {
+        e.autosave_tick(agora_ms);
+        for _ in 0..400 {
+            if !e.gravando_rascunho() {
+                return;
+            }
+            std::thread::sleep(Duration::from_millis(5));
+            e.autosave_tick(agora_ms);
+        }
+        panic!("a gravação do rascunho não terminou");
+    }
+
+    fn arquivo_do_rascunho(xml: &Path) -> PathBuf {
+        xml.with_file_name("ode.recuperacao")
+            .join(crate::autosave::ARQUIVO_DO_RASCUNHO)
+    }
+
+    #[test]
+    fn autosave_nao_grava_sem_edicao_nem_antes_do_intervalo_e_nao_vira_versao() {
+        let (_d, mut e, xml) = com_oficina();
+        e.autosave_tick(0);
+        e.autosave_tick(10 * 60_000);
+        assert!(!e.gravando_rascunho());
+        assert!(!arquivo_do_rascunho(&xml).exists(), "sem edição não grava");
+        editar_uma_nota(&mut e);
+        e.autosave_tick(1_000_000);
+        assert!(!e.gravando_rascunho(), "antes do intervalo não grava");
+        let iv = e.config_autosave.intervalo_ms;
+        tick_ate_gravar(&mut e, 1_000_000 + iv);
+        assert!(arquivo_do_rascunho(&xml).is_file());
+        assert_eq!(
+            e.lista_de_versoes().len(),
+            1,
+            "só a Hipótese: autosave não é Versão"
+        );
+    }
+
+    #[test]
+    fn a7_queda_com_edicoes_oferece_recuperar_documento_modificado_e_igual_ao_autosave() {
+        let (_d, mut e, xml) = com_oficina();
+        editar_uma_nota(&mut e);
+        let editado = e.documento.as_ref().expect("doc").exportado().expect("x");
+        e.autosave_tick(0);
+        let iv = e.config_autosave.intervalo_ms;
+        tick_ate_gravar(&mut e, iv);
+        // Processo morto sem fechar: o estado em memória some; reabre pelo arquivo.
+        drop(e);
+        let mut novo = EstadoPartitura::novo(None);
+        novo.abrir_caminho(&xml.to_string_lossy());
+        let r = novo.rascunho_pendente().expect("oferece a recuperação");
+        assert!(!r.em.is_empty());
+        assert!(!novo.documento.as_ref().expect("doc").modificado());
+        // Enquanto a decisão pende, o tick não mexe em nada.
+        novo.autosave_tick(10 * 60_000);
+        assert!(arquivo_do_rascunho(&xml).is_file());
+        let (mut som, ctx) = banco();
+        quadro(&ctx, &mut novo, &mut som);
+        novo.recuperar_rascunho();
+        assert!(novo.rascunho_pendente().is_none());
+        let d = novo.documento.as_ref().expect("doc");
+        assert!(d.modificado(), "o recuperado conta como modificado");
+        assert_eq!(
+            d.exportado().expect("x"),
+            editado,
+            "igual ao último autosave"
+        );
+        assert!(novo.aviso_de_versoes().expect("aviso").contains("desfazer"));
+        assert!(
+            arquivo_do_rascunho(&xml).is_file(),
+            "fica até salvar Versão"
+        );
+        // Salvar Versão apaga o rascunho; a Hipótese segue intacta.
+        novo.salvar_versao().expect("salva");
+        assert!(!arquivo_do_rascunho(&xml).exists());
+        assert_eq!(std::fs::read_to_string(&xml).expect("lê"), EMBUTIDAS[3].1);
+    }
+
+    #[test]
+    fn descartar_o_rascunho_apaga_so_ele_e_voltar_ao_salvo_apaga_o_obsoleto() {
+        let (_d, mut e, xml) = com_oficina();
+        editar_uma_nota(&mut e);
+        e.autosave_tick(0);
+        let iv = e.config_autosave.intervalo_ms;
+        tick_ate_gravar(&mut e, iv);
+        assert!(arquivo_do_rascunho(&xml).is_file());
+        assert!(e.desfazer());
+        e.autosave_tick(e.config_autosave.intervalo_ms + 1);
+        assert!(
+            !arquivo_do_rascunho(&xml).exists(),
+            "rascunho obsoleto some"
+        );
+        editar_uma_nota(&mut e);
+        e.autosave_tick(0);
+        let iv = e.config_autosave.intervalo_ms;
+        tick_ate_gravar(&mut e, 2 * iv);
+        let mut outro = EstadoPartitura::novo(None);
+        outro.abrir_caminho(&xml.to_string_lossy());
+        assert!(outro.rascunho_pendente().is_some());
+        outro.descartar_rascunho();
+        assert!(outro.rascunho_pendente().is_none());
+        assert!(!arquivo_do_rascunho(&xml).exists());
+        assert!(xml.is_file(), "o original não é tocado");
     }
 }

@@ -171,6 +171,13 @@ impl DocumentoPartitura {
         }
     }
 
+    /// Documento recuperado do autosave: aberto a partir do rascunho e já tido como modificado
+    /// (difere do arquivo salvo), com o histórico de desfazer vazio.
+    pub fn de_recuperado(nome: String, mut aberto: DocumentoAberto) -> Self {
+        aberto.marcar_modificado();
+        Self::de_aberto(nome, aberto)
+    }
+
     /// Interpreta o texto MusicXML.
     pub fn de_texto(nome: String, texto: String) -> Result<Self, ErroServico> {
         let aberto = DocumentoAberto::abrir_texto(&nome, &texto)?;
