@@ -48,8 +48,8 @@ mod modelo;
 mod validacao;
 
 pub use aprovacao::{
-    ARQUIVO_DO_INDICE, DecisorPorHash, estado_do_conteudo_no_indice, hash_do_conteudo,
-    pasta_das_versoes,
+    ARQUIVO_DO_INDICE, DecisorPorHash, decisao_que_aprova, estado_do_conteudo_no_indice,
+    hash_do_conteudo, pasta_das_versoes,
 };
 pub use chaves::{
     CHAVES_EMBUTIDAS, ChavePrivada, ChavePublica, chaves_confiaveis, gerar_par, ler_chaves_da_pasta,

@@ -492,11 +492,14 @@ impl Indice {
     /// uma aprovação registrada. Estado escrito à mão, sem registro, não vale.
     pub fn aprovacao(&self, hash: &str) -> Option<Aprovacao> {
         let v = self.versao(hash)?;
-        if v.estado != Estado::Aprovada {
-            return None;
-        }
-        let d = self.decisoes.iter().rev().find(|d| d.hash == hash)?;
-        (d.para == Estado::Aprovada).then(|| d.aprovacao())
+        // Critério único, no crate do curso (o importador e a CLI usam a mesma função).
+        piano_tutor_curso::decisao_que_aprova(
+            estado_para_texto(v.estado),
+            hash,
+            &self.decisoes,
+            |d| (d.hash.as_str(), estado_para_texto(d.para)),
+        )
+        .map(Decisao::aprovacao)
     }
 }
 
@@ -2153,5 +2156,61 @@ mod testes {
         // Cada Versão reabre idêntica ao exportado na hora.
         assert_ne!(v.abrir(&v1.hash).expect("abre").conteudo, original);
         assert_eq!(v.abrir(&raiz.hash).expect("abre").conteudo, original);
+    }
+
+    /// Fonte única: o app (`Indice::aprovacao`) e o curso (importador/CLI) leem o mesmo índice e
+    /// têm de concordar em TODOS os casos (estado da Versão x histórico de decisões).
+    #[test]
+    fn app_e_curso_nao_divergem_na_regra_de_aprovacao() {
+        let d = tempfile::tempdir().expect("t");
+        let pasta = d.path().join("p.versoes");
+        fs::create_dir_all(&pasta).expect("cria");
+        let conteudo = b"<conteudo-da-versao/>";
+        let hash = hash_do_conteudo(conteudo);
+        let outro = hash_do_conteudo(b"outro");
+        let estados = ["hipotese", "em_revisao", "aprovada", "rejeitada"];
+        let para = ["hipotese", "em_revisao", "aprovada", "rejeitada"];
+        // Históricos: vazio; uma decisão; duas (a última manda); decisão só de outra Versão.
+        let mut historicos: Vec<Vec<(String, &str)>> = vec![vec![]];
+        for a in para {
+            historicos.push(vec![(hash.clone(), a)]);
+            historicos.push(vec![(outro.clone(), a)]);
+            for b in para {
+                historicos.push(vec![(hash.clone(), a), (hash.clone(), b)]);
+                historicos.push(vec![(hash.clone(), a), (outro.clone(), b)]);
+            }
+        }
+        let mut aprovados = 0;
+        for estado in estados {
+            for h in &historicos {
+                let mut t = format!(
+                    "formato = 1\npartitura = \"p\"\n[origem]\nhipotese = \"{hash}\"\n\
+                     [[versao]]\nhash = \"{hash}\"\ntipo = \"hipotese\"\nestado = \"{estado}\"\n\
+                     [[versao]]\nhash = \"{outro}\"\ntipo = \"correcao\"\npai = \"{hash}\"\nestado = \"hipotese\"\n"
+                );
+                for (hh, p) in h {
+                    t.push_str(&format!(
+                        "[[decisao]]\nhash = \"{hh}\"\nde = \"em_revisao\"\npara = \"{p}\"\n\
+                         revisor = \"r\"\nem = \"x\"\nmotivo = \"m\"\n"
+                    ));
+                }
+                fs::write(pasta.join(ARQUIVO_DO_INDICE), &t).expect("grava");
+                let v = Versoes::em(d.path(), "p", None);
+                let no_app = v
+                    .indice()
+                    .expect("app lê")
+                    .and_then(|i| i.aprovacao(&hash))
+                    .is_some();
+                let no_curso = piano_tutor_curso::estado_do_conteudo_no_indice(
+                    &pasta.join(ARQUIVO_DO_INDICE),
+                    conteudo,
+                )
+                .expect("curso lê")
+                    == Some(piano_tutor_curso::EstadoConteudo::Aprovada);
+                assert_eq!(no_app, no_curso, "estado {estado}, decisões {h:?}");
+                aprovados += usize::from(no_app);
+            }
+        }
+        assert!(aprovados > 0, "a matriz tem de incluir casos aprovados");
     }
 }
