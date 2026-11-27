@@ -233,9 +233,18 @@ impl AcaoAtalho {
         }
     }
 
+    /// Ação do histórico (ticket 15): desfazer e refazer chamam o serviço de documento.
+    pub fn historico(self) -> Option<Destino> {
+        match self {
+            Self::Desfazer => Some(Destino::Desfazer),
+            Self::Refazer => Some(Destino::Refazer),
+            _ => None,
+        }
+    }
+
     /// Ação com atalho mas ainda sem comando nenhum (nem de navegação, nem de edição).
     pub fn pendente(self) -> bool {
-        self.comando().is_none() && self.altura().is_none()
+        self.comando().is_none() && self.altura().is_none() && self.historico().is_none()
     }
 
     /// Comando de navegação ligado à ação; `None` = não é navegação (edição ou ainda pendente).
@@ -405,6 +414,10 @@ pub enum Destino {
     Comando(Comando),
     /// Mudar a altura da nota selecionada (ticket 14): vira o comando tipado do serviço.
     Altura(UnidadeDeAltura, SentidoDaAltura),
+    /// Desfazer a última edição (ticket 15): chama o histórico do serviço de documento.
+    Desfazer,
+    /// Refazer a edição desfeita (ticket 15).
+    Refazer,
     /// Ação do perfil sem comando ainda: a tela avisa.
     Pendente(AcaoAtalho),
 }
@@ -538,7 +551,7 @@ impl MapaAtalhos {
         Some(match (acao.comando(), acao.altura()) {
             (Some(c), _) => Destino::Comando(c),
             (None, Some((unidade, sentido))) => Destino::Altura(unidade, sentido),
-            (None, None) => Destino::Pendente(acao),
+            (None, None) => acao.historico().unwrap_or(Destino::Pendente(acao)),
         })
     }
 
@@ -716,10 +729,10 @@ mod testes {
     fn acoes_sem_comando_ficam_registradas_como_pendentes_e_roteiam_como_pendente() {
         let m = MapaAtalhos::padrao();
         let p = m.pendentes();
-        // Navegação (4) e altura (6) têm comando; o resto segue pendente.
-        assert_eq!(p.len(), ACOES.len() - 4 - 6);
+        // Navegação (4), altura (6) e histórico (2) têm comando; o resto segue pendente.
+        assert_eq!(p.len(), ACOES.len() - 4 - 6 - 2);
         for a in [
-            AcaoAtalho::Refazer,
+            AcaoAtalho::Apagar,
             AcaoAtalho::Cifra,
             AcaoAtalho::Duracao(3),
         ] {
@@ -727,9 +740,19 @@ mod testes {
         }
         assert!(!p.contains(&AcaoAtalho::NotaSeguinte));
         assert!(!p.contains(&AcaoAtalho::SemitomAcima));
+        assert!(!p.contains(&AcaoAtalho::Desfazer));
+        assert!(!p.contains(&AcaoAtalho::Refazer));
+        assert_eq!(
+            m.rotear(Key::Z, mods(true, false, false), true),
+            Some(Destino::Desfazer)
+        );
         assert_eq!(
             m.rotear(Key::Z, mods(true, false, true), true),
-            Some(Destino::Pendente(AcaoAtalho::Refazer))
+            Some(Destino::Refazer)
+        );
+        assert_eq!(
+            m.rotear(Key::Delete, Modifiers::NONE, true),
+            Some(Destino::Pendente(AcaoAtalho::Apagar))
         );
         assert_eq!(
             m.rotear(Key::Num4, Modifiers::NONE, true),

@@ -7,7 +7,7 @@
 use crate::selecao_partitura::IndiceLeitura;
 use piano_tutor_core::documento::{
     ComandoDeEdicao, DocumentoAberto, ErroDeEdicao, ErroServico, Formato, IdsPorNota,
-    ResultadoDaEdicao,
+    ResultadoDaEdicao, ResultadoDoHistorico,
 };
 use piano_tutor_core::mxl::MXL_TAMANHO_MAXIMO_BYTES;
 use piano_tutor_core::partitura::{
@@ -199,10 +199,45 @@ impl DocumentoPartitura {
     pub fn aplicar(&mut self, comando: ComandoDeEdicao) -> Result<ResultadoDaEdicao, ErroDeEdicao> {
         let r = self.aberto.aplicar(comando)?;
         if r.alterou {
-            self.musica = Musica::de(self.aberto.partitura());
-            self.leitura = IndiceLeitura::de(self.aberto.partitura(), self.aberto.ids());
+            self.recalcular();
         }
         Ok(r)
+    }
+
+    /// Desfaz a última edição (ou gesto) pelo histórico do serviço (ticket 15) e recalcula o que
+    /// deriva da partitura. `None` se não há o que desfazer.
+    pub fn desfazer(&mut self) -> Option<ResultadoDoHistorico> {
+        let r = self.aberto.desfazer()?;
+        self.recalcular();
+        Some(r)
+    }
+
+    /// Refaz a edição desfeita (ticket 15). `None` se não há o que refazer.
+    pub fn refazer(&mut self) -> Option<ResultadoDoHistorico> {
+        let r = self.aberto.refazer()?;
+        self.recalcular();
+        Some(r)
+    }
+
+    /// O documento difere do estado salvo? (volta a falso ao desfazer até ele)
+    pub fn modificado(&self) -> bool {
+        self.aberto.modificado()
+    }
+
+    /// Há o que desfazer?
+    pub fn pode_desfazer(&self) -> bool {
+        self.aberto.pode_desfazer()
+    }
+
+    /// Há o que refazer?
+    pub fn pode_refazer(&self) -> bool {
+        self.aberto.pode_refazer()
+    }
+
+    /// Dados musicais e ordem de leitura de novo, depois que o modelo mudou.
+    fn recalcular(&mut self) {
+        self.musica = Musica::de(self.aberto.partitura());
+        self.leitura = IndiceLeitura::de(self.aberto.partitura(), self.aberto.ids());
     }
 
     /// Há compasso editado (sujo)? Abrir e navegar nunca editam.

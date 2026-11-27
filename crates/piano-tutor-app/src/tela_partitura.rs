@@ -547,6 +547,80 @@ impl EstadoPartitura {
         }
     }
 
+    /// Desfaz a última edição pelo histórico do serviço de documento (ticket 15) e devolve a
+    /// seleção à nota do gesto desfeito (a mesma identidade). Recusa, com mensagem, durante a
+    /// reprodução ou a prática. `true` se desfez.
+    pub fn desfazer(&mut self) -> bool {
+        self.percorrer_historico(true)
+    }
+
+    /// Refaz a edição desfeita (ticket 15). `true` se refez.
+    pub fn refazer(&mut self) -> bool {
+        self.percorrer_historico(false)
+    }
+
+    fn percorrer_historico(&mut self, desfazendo: bool) -> bool {
+        if self.documento.is_none() {
+            return false;
+        }
+        let (verbo, nada) = if desfazendo {
+            ("Desfeito", "Nada para desfazer.")
+        } else {
+            ("Refeito", "Nada para refazer.")
+        };
+        if self.tocando() || self.praticando() {
+            self.ultima_edicao =
+                Some("Pare a reprodução ou a prática antes de desfazer ou refazer.".into());
+            return false;
+        }
+        let Some(d) = self.documento.as_mut() else {
+            return false;
+        };
+        let feito = if desfazendo {
+            d.desfazer()
+        } else {
+            d.refazer()
+        };
+        let Some(r) = feito else {
+            self.ultima_edicao = Some(nada.into());
+            return false;
+        };
+        // A seleção volta à nota do gesto; se ela não existe mais, a seleção é reancorada.
+        if let Some(foco) = r.foco {
+            self.selecao.selecionar(&d.leitura, foco);
+        }
+        self.selecao.reancorar(&d.leitura);
+        self.selecao.pedir_rolagem();
+        if let Some(c) = self
+            .selecao
+            .nota()
+            .and_then(|n| d.leitura.entrada(n))
+            .map(|e| e.compasso)
+        {
+            self.compasso_em_foco = Some(c);
+        }
+        let numeros: Vec<String> = r
+            .compassos_afetados
+            .iter()
+            .map(|p| {
+                if p.numero.is_empty() {
+                    (p.indice + 1).to_string()
+                } else {
+                    p.numero.clone()
+                }
+            })
+            .collect();
+        self.ultima_edicao = Some(format!(
+            "{verbo}: compasso{} {}.",
+            if numeros.len() == 1 { "" } else { "s" },
+            numeros.join(", ")
+        ));
+        // O que a prática e o desenho guardam é da música de antes.
+        self.pratica = None;
+        self.visual.invalidar();
+        true
+    }
+
     /// Texto do que a última edição de altura fez ou do motivo da recusa.
     pub fn ultima_edicao(&self) -> Option<&str> {
         self.ultima_edicao.as_deref()
@@ -1279,6 +1353,12 @@ pub fn desenhar_corpo(
                         }
                         Destino::Altura(u, s) => {
                             e.mudar_altura(u, s);
+                        }
+                        Destino::Desfazer => {
+                            e.desfazer();
+                        }
+                        Destino::Refazer => {
+                            e.refazer();
                         }
                         Destino::Pendente(a) => e.avisar_pendente(a),
                     }
@@ -2753,6 +2833,102 @@ mod testes {
                 .len(),
             1
         );
+    }
+
+    fn ctrl_shift() -> Modifiers {
+        Modifiers {
+            shift: true,
+            ..Modifiers::COMMAND
+        }
+    }
+
+    #[test]
+    fn ctrl_z_desfaz_e_ctrl_shift_z_refaz_pelo_servico_e_a_selecao_volta_a_nota_do_gesto() {
+        let (mut som, ctx) = banco();
+        let mut e = ode();
+        partitura_em_foco(&ctx, &mut e, &mut som);
+        for _ in 0..4 {
+            apertar(&ctx, &mut e, &mut som, Key::ArrowRight, Modifiers::NONE);
+        }
+        let sel = e.nota_selecionada().expect("selecionada");
+        let original = e.documento.as_ref().expect("doc").xml().to_owned();
+        // Duas edições na nota; depois a seleção anda para longe dela.
+        apertar(&ctx, &mut e, &mut som, Key::ArrowUp, Modifiers::NONE);
+        let depois_de_uma = e.documento.as_ref().expect("doc").exportado().expect("ok");
+        apertar(&ctx, &mut e, &mut som, Key::ArrowUp, Modifiers::NONE);
+        let depois_de_duas = e.documento.as_ref().expect("doc").exportado().expect("ok");
+        assert!(e.documento.as_ref().expect("doc").modificado());
+        for _ in 0..3 {
+            apertar(&ctx, &mut e, &mut som, Key::ArrowRight, Modifiers::NONE);
+        }
+        assert_ne!(e.nota_selecionada(), Some(sel));
+
+        // Ctrl+Z: volta uma edição e a seleção volta à nota editada.
+        apertar(&ctx, &mut e, &mut som, Key::Z, Modifiers::COMMAND);
+        let d = e.documento.as_ref().expect("doc");
+        assert_eq!(d.exportado().expect("ok"), depois_de_uma);
+        assert_eq!(e.nota_selecionada(), Some(sel));
+        assert!(e.ultima_edicao().expect("msg").starts_with("Desfeito"));
+        assert!(d.musica.duracao_q > 0.0 && d.leitura.contem(sel));
+        // Segundo Ctrl+Z: o arquivo original, byte a byte, e não modificado.
+        apertar(&ctx, &mut e, &mut som, Key::Z, Modifiers::COMMAND);
+        let d = e.documento.as_ref().expect("doc");
+        assert_eq!(d.exportado().expect("ok"), original);
+        assert!(!d.editado() && !d.modificado());
+        // Não há mais o que desfazer: avisa e nada muda.
+        apertar(&ctx, &mut e, &mut som, Key::Z, Modifiers::COMMAND);
+        assert_eq!(e.ultima_edicao(), Some("Nada para desfazer."));
+        assert_eq!(
+            e.documento.as_ref().expect("doc").exportado().expect("ok"),
+            original
+        );
+        // Ctrl+Shift+Z refaz, na ordem.
+        apertar(&ctx, &mut e, &mut som, Key::Z, ctrl_shift());
+        assert_eq!(
+            e.documento.as_ref().expect("doc").exportado().expect("ok"),
+            depois_de_uma
+        );
+        assert!(e.ultima_edicao().expect("msg").starts_with("Refeito"));
+        apertar(&ctx, &mut e, &mut som, Key::Z, ctrl_shift());
+        let d = e.documento.as_ref().expect("doc");
+        assert_eq!(d.exportado().expect("ok"), depois_de_duas);
+        assert_eq!(e.nota_selecionada(), Some(sel));
+        assert!(d.modificado());
+        // Os dados musicais acompanham: o modelo de tocar é o do texto exportado.
+        let relido = DocumentoPartitura::de_texto("r".into(), depois_de_duas).expect("abre");
+        assert_eq!(d.partitura(), relido.partitura());
+        assert_eq!(d.musica.eventos, relido.musica.eventos);
+        apertar(&ctx, &mut e, &mut som, Key::Z, ctrl_shift());
+        assert_eq!(e.ultima_edicao(), Some("Nada para refazer."));
+    }
+
+    #[test]
+    fn ctrl_z_respeita_o_perfil_de_atalhos_e_nao_desfaz_durante_a_reproducao() {
+        let (mut som, ctx) = banco();
+        let mut e = ode();
+        partitura_em_foco(&ctx, &mut e, &mut som);
+        apertar(&ctx, &mut e, &mut som, Key::ArrowRight, Modifiers::NONE);
+        apertar(&ctx, &mut e, &mut som, Key::ArrowUp, Modifiers::NONE);
+        // Desfazer remapeado para Ctrl+J: o Ctrl+Z antigo não faz mais nada.
+        e.remapear_atalho(AcaoAtalho::Desfazer, Atalho::ctrl(Key::J));
+        assert!(e.aviso_de_atalho().expect("aviso").contains("agora é"));
+        apertar(&ctx, &mut e, &mut som, Key::Z, Modifiers::COMMAND);
+        assert!(e.documento.as_ref().expect("doc").modificado());
+        // Durante a reprodução também não desfaz.
+        e.tocar(&mut som);
+        assert!(e.tocando());
+        apertar(&ctx, &mut e, &mut som, Key::J, Modifiers::COMMAND);
+        assert!(
+            e.ultima_edicao()
+                .expect("aviso")
+                .contains("Pare a reprodução")
+        );
+        assert!(e.documento.as_ref().expect("doc").modificado());
+        e.parar(&mut som);
+        apertar(&ctx, &mut e, &mut som, Key::J, Modifiers::COMMAND);
+        let d = e.documento.as_ref().expect("doc");
+        assert!(!d.modificado());
+        assert_eq!(d.exportado().expect("ok"), d.xml());
     }
 
     #[test]

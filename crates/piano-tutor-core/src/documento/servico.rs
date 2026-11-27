@@ -28,6 +28,7 @@
 //! DTD que expande elementos e estrutura de compasso inconsistente. Normalizar a codificação é
 //! decisão de importação posterior (a exportação passaria a valer sobre o derivado).
 
+use super::historico::Historico;
 use super::{Documento, ErroDocumento, IdNota, LimitesDeAltura};
 use crate::mxl::extrair_musicxml;
 use crate::partitura::{ErroPartitura, Partitura};
@@ -105,6 +106,22 @@ impl IdsPorNota {
         self.partes.get(parte)?.get(compasso)?.get(ordinal).copied()
     }
 
+    /// Identidades do compasso (vazio fora dos limites). Serve ao instantâneo do histórico.
+    pub(super) fn compasso(&self, parte: usize, compasso: usize) -> Vec<IdNota> {
+        self.partes
+            .get(parte)
+            .and_then(|p| p.get(compasso))
+            .cloned()
+            .unwrap_or_default()
+    }
+
+    /// Troca as identidades do compasso (histórico: desfazer e refazer).
+    pub(super) fn definir_compasso(&mut self, parte: usize, compasso: usize, ids: Vec<IdNota>) {
+        if let Some(c) = self.partes.get_mut(parte).and_then(|p| p.get_mut(compasso)) {
+            *c = ids;
+        }
+    }
+
     /// Quantas notas têm identidade.
     pub fn total(&self) -> usize {
         self.partes
@@ -125,6 +142,8 @@ pub struct DocumentoAberto {
     pub(super) ids: IdsPorNota,
     /// Limites de altura que os comandos de edição respeitam (ticket 14).
     pub(super) limites: LimitesDeAltura,
+    /// Pilhas de desfazer e refazer (ticket 15).
+    pub(super) historico: Historico,
 }
 
 impl DocumentoAberto {
@@ -161,6 +180,7 @@ impl DocumentoAberto {
             partitura,
             ids,
             limites: LimitesDeAltura::default(),
+            historico: Historico::default(),
         })
     }
 
