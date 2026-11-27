@@ -22,8 +22,11 @@ use crate::versoes::{
     AcaoDeRevisao, LinhaDaLista, ResultadoDoSalvar, SituacaoDoOriginal, Versao, Versoes, agora_utc,
     hash_curto, hash_do_conteudo,
 };
+use crate::versoes_diff::{DiffDeVersoes, diff_entre_versoes};
 use bancada_casca::Atalho;
-use bancada_casca::egui::{self, Button, ComboBox, Event, Key, RichText, Slider, TextEdit, Ui};
+use bancada_casca::egui::{
+    self, Button, ComboBox, Event, Key, Modifiers, RichText, Slider, TextEdit, Ui,
+};
 use piano_tutor_core::NotaMidi;
 use piano_tutor_core::comparador::EventoEsperado;
 use piano_tutor_core::documento::{
@@ -318,6 +321,8 @@ pub struct EstadoPartitura {
     alerta_originais: Option<String>,
     /// Versão antiga aberta em modo leitura; guarda o documento em edição para voltar a ele.
     leitura: Option<LeituraDeVersao>,
+    /// Comparação entre duas Versões na Oficina (ticket 22).
+    comparacao: Comparacao,
     /// Autosave da partitura da Oficina aberta (ticket 24).
     autosave: Option<Autosave>,
     /// Intervalo e pasta do autosave (padrão: 30 s, ao lado da partitura).
@@ -332,6 +337,16 @@ pub struct EstadoPartitura {
     rascunho_escrito: bool,
     /// O trabalho atual veio de uma recuperação e ainda não virou Versão.
     recuperado: bool,
+}
+
+/// Estado da comparação entre duas Versões (ticket 22): as duas escolhidas, o diff calculado pelo
+/// serviço `versoes_diff` e a linha ativa da lista de diferenças.
+#[derive(Default)]
+struct Comparacao {
+    antes: Option<String>,
+    depois: Option<String>,
+    resultado: Option<Result<DiffDeVersoes, String>>,
+    linha: usize,
 }
 
 /// Versão antiga aberta somente para leitura (ticket 21).
@@ -426,6 +441,7 @@ impl EstadoPartitura {
             pratica: None,
             versoes: None,
             lista_de_versoes: Vec::new(),
+            comparacao: Comparacao::default(),
             campo_nota_versao: String::new(),
             campo_motivo_decisao: String::new(),
             aviso_versoes: None,
@@ -471,6 +487,7 @@ impl EstadoPartitura {
         // Outro documento: o vínculo com a Oficina e a leitura de Versão não valem mais.
         self.versoes = None;
         self.lista_de_versoes.clear();
+        self.comparacao = Comparacao::default();
         self.aviso_versoes = None;
         self.alerta_originais = None;
         self.leitura = None;
@@ -1182,6 +1199,167 @@ impl EstadoPartitura {
     /// Versão antiga aberta em modo leitura, se houver.
     pub fn versao_em_leitura(&self) -> Option<&Versao> {
         self.leitura.as_ref().map(|l| &l.versao)
+    }
+
+    // --- Comparar Versões (ticket 22) -----------------------------------------------------------
+
+    /// Hashes `(antes, depois)` padrão da comparação: a Versão selecionada (a que está em leitura
+    /// ou, sem leitura, a mais recente da lista) contra a Versão-pai dela. `None` sem pai
+    /// (Hipótese) ou sem Versões.
+    pub fn comparacao_padrao(&self) -> Option<(String, String)> {
+        let sel = match &self.leitura {
+            Some(l) => self
+                .lista_de_versoes
+                .iter()
+                .find(|x| x.hash == l.versao.hash),
+            None => self.lista_de_versoes.iter().rev().find(|x| x.abrivel),
+        }?;
+        let pai = sel.pai.clone()?;
+        self.lista_de_versoes
+            .iter()
+            .any(|x| x.hash == pai && x.abrivel)
+            .then(|| (pai, sel.hash.clone()))
+    }
+
+    /// Escolhe as duas Versões a comparar (sem calcular).
+    pub fn escolher_comparacao(&mut self, antes: &str, depois: &str) {
+        self.comparacao.antes = Some(antes.to_owned());
+        self.comparacao.depois = Some(depois.to_owned());
+    }
+
+    /// As Versões escolhidas `(antes, depois)`.
+    pub fn comparacao_escolhida(&self) -> (Option<&str>, Option<&str>) {
+        (
+            self.comparacao.antes.as_deref(),
+            self.comparacao.depois.as_deref(),
+        )
+    }
+
+    /// Calcula o diff entre as Versões escolhidas (se nenhuma foi escolhida, usa o padrão).
+    /// Só lê: não altera a cadeia nem a partitura aberta.
+    pub fn comparar_versoes(&mut self) {
+        if (self.comparacao.antes.is_none() || self.comparacao.depois.is_none())
+            && let Some((a, d)) = self.comparacao_padrao()
+        {
+            self.escolher_comparacao(&a, &d);
+        }
+        let (Some(a), Some(d)) = (
+            self.comparacao.antes.clone(),
+            self.comparacao.depois.clone(),
+        ) else {
+            self.comparacao.resultado = Some(Err(
+                "Escolha duas Versões para comparar (a Hipótese não tem Versão-pai).".into(),
+            ));
+            return;
+        };
+        let Some(v) = &self.versoes else {
+            self.comparacao.resultado =
+                Some(Err("Esta partitura não tem Versões (arquivo solto).".into()));
+            return;
+        };
+        self.comparacao.resultado = Some(diff_entre_versoes(v, &a, &d).map_err(|e| e.to_string()));
+        self.comparacao.linha = 0;
+    }
+
+    /// Fecha a lista de diferenças.
+    pub fn limpar_comparacao(&mut self) {
+        self.comparacao.resultado = None;
+        self.comparacao.linha = 0;
+    }
+
+    /// Linhas da lista de diferenças (uma por compasso alterado); vazio sem comparação ou sem
+    /// diferenças.
+    pub fn linhas_do_diff(&self) -> Vec<String> {
+        match &self.comparacao.resultado {
+            Some(Ok(d)) => d.linhas(),
+            _ => Vec::new(),
+        }
+    }
+
+    /// Mensagem da comparação: o erro, ou a de "sem diferenças". `None` quando há linhas ou nada
+    /// foi comparado.
+    pub fn mensagem_do_diff(&self) -> Option<String> {
+        match &self.comparacao.resultado {
+            Some(Err(m)) => Some(m.clone()),
+            Some(Ok(d)) if d.diff.compassos.is_empty() => {
+                Some(DiffDeVersoes::MENSAGEM_SEM_DIFERENCAS.to_owned())
+            }
+            _ => None,
+        }
+    }
+
+    /// Linha ativa da lista de diferenças.
+    pub fn linha_ativa_do_diff(&self) -> usize {
+        self.comparacao.linha
+    }
+
+    /// Move a linha ativa (setas), sem passar dos extremos. Devolve a linha ativa.
+    pub fn mover_linha_do_diff(&mut self, passo: isize) -> usize {
+        let n = self.linhas_do_diff().len();
+        if n > 0 {
+            self.comparacao.linha = self
+                .comparacao
+                .linha
+                .saturating_add_signed(passo)
+                .min(n - 1);
+        }
+        self.comparacao.linha
+    }
+
+    /// Tecla da lista de diferenças: seta para baixo/cima move a linha ativa; Enter leva ao
+    /// compasso dela. Devolve se a tecla tem efeito na lista.
+    pub fn tecla_no_diff(&mut self, tecla: Key) -> bool {
+        match tecla {
+            Key::ArrowDown => {
+                self.mover_linha_do_diff(1);
+            }
+            Key::ArrowUp => {
+                self.mover_linha_do_diff(-1);
+            }
+            Key::Enter => {
+                self.ir_ao_compasso_do_diff(self.comparacao.linha);
+            }
+            _ => return false,
+        }
+        true
+    }
+
+    /// Torna ativa a linha `i` do diff e leva a seleção e a vista ao compasso dela (clique ou
+    /// Enter). Devolve o índice do compasso, ou `None` se a linha não existe.
+    pub fn ir_ao_compasso_do_diff(&mut self, i: usize) -> Option<usize> {
+        let indice = match &self.comparacao.resultado {
+            Some(Ok(d)) => d.diff.compassos.get(i)?.pos.indice,
+            _ => return None,
+        };
+        self.comparacao.linha = i;
+        self.ir_ao_compasso(indice);
+        Some(indice)
+    }
+
+    /// Seleciona a primeira nota do compasso `indice` (a partir de 0) da partitura aberta e pede
+    /// a rolagem até ela; sem nota com altura nele (compasso só de pausas ou que não existe na
+    /// Versão aberta), só marca o compasso em foco. Devolve se selecionou uma nota.
+    pub fn ir_ao_compasso(&mut self, indice: usize) -> bool {
+        let Some(d) = self.documento.as_ref() else {
+            return false;
+        };
+        let alvo = d
+            .leitura
+            .trilhas()
+            .iter()
+            .flat_map(|t| t.notas.iter())
+            .filter(|n| n.compasso == indice)
+            .min_by(|a, b| a.inicio_q.total_cmp(&b.inicio_q))
+            .map(|n| n.id);
+        self.compasso_em_foco = Some(indice);
+        match alvo {
+            Some(id) => {
+                self.selecao.selecionar(&d.leitura, id);
+                self.selecao.pedir_rolagem();
+                true
+            }
+            None => false,
+        }
     }
 
     fn atualizar_lista_de_versoes(&mut self) {
@@ -2639,6 +2817,7 @@ fn desenhar_versoes(ui: &mut Ui, e: &mut EstadoPartitura) {
                 });
             }
         });
+    desenhar_comparacao(ui, e);
     if let Some(h) = abrir {
         e.abrir_versao(&h);
     }
@@ -2651,12 +2830,110 @@ fn desenhar_versoes(ui: &mut Ui, e: &mut EstadoPartitura) {
     }
 }
 
+/// "Comparar" duas Versões e a lista navegável das diferenças (ticket 22): setas sobem e descem
+/// a linha ativa; Enter ou clique levam a seleção e a vista ao compasso.
+fn desenhar_comparacao(ui: &mut Ui, e: &mut EstadoPartitura) {
+    let opcoes: Vec<(String, String)> = e
+        .lista_de_versoes()
+        .iter()
+        .filter(|l| l.abrivel)
+        .map(|l| {
+            (
+                l.hash.clone(),
+                format!("{} ({})", l.rotulo, hash_curto(&l.hash)),
+            )
+        })
+        .collect();
+    if opcoes.len() < 2 {
+        return;
+    }
+    if e.comparacao_escolhida().0.is_none()
+        && let Some((a, d)) = e.comparacao_padrao()
+    {
+        e.escolher_comparacao(&a, &d);
+    }
+    let rotulo_de = |h: Option<&str>| {
+        h.and_then(|h| opcoes.iter().find(|(x, _)| x == h))
+            .map_or_else(|| "escolher".to_owned(), |(_, r)| r.clone())
+    };
+    let (antes, depois) = e.comparacao_escolhida();
+    let (mut novo_antes, mut novo_depois) = (antes.map(str::to_owned), depois.map(str::to_owned));
+    let (txt_antes, txt_depois) = (rotulo_de(antes), rotulo_de(depois));
+    let mut comparar = false;
+    ui.horizontal_wrapped(|ui| {
+        ui.label("Comparar:");
+        for (id, atual, texto, novo) in [
+            ("comparar-antes", "antes", txt_antes, &mut novo_antes),
+            ("comparar-depois", "depois", txt_depois, &mut novo_depois),
+        ] {
+            ui.label(atual);
+            ComboBox::from_id_salt(id)
+                .selected_text(texto)
+                .show_ui(ui, |ui| {
+                    for (h, r) in &opcoes {
+                        if ui.selectable_label(novo.as_deref() == Some(h), r).clicked() {
+                            *novo = Some(h.clone());
+                        }
+                    }
+                });
+        }
+        comparar = ui.button("Comparar").clicked();
+        if ui.small_button("Fechar comparação").clicked() {
+            e.limpar_comparacao();
+        }
+    });
+    if let (Some(a), Some(d)) = (&novo_antes, &novo_depois) {
+        e.escolher_comparacao(a, d);
+    }
+    if comparar {
+        e.comparar_versoes();
+    }
+    if let Some(m) = e.mensagem_do_diff() {
+        ui.label(RichText::new(m).strong());
+        return;
+    }
+    let linhas = e.linhas_do_diff();
+    if linhas.is_empty() {
+        return;
+    }
+    let ativa = e.linha_ativa_do_diff();
+    let mut ir = None;
+    let mut teclas: Vec<Key> = Vec::new();
+    egui::ScrollArea::vertical()
+        .id_salt("lista-do-diff")
+        .max_height(130.0)
+        .show(ui, |ui| {
+            for (i, t) in linhas.iter().enumerate() {
+                let r = ui.selectable_label(i == ativa, t);
+                if r.clicked() {
+                    r.request_focus();
+                    ir = Some(i);
+                }
+                if r.has_focus() {
+                    // Setas e Enter só valem com uma linha da lista em foco.
+                    teclas.extend(ui.input_mut(|inp| {
+                        [Key::ArrowDown, Key::ArrowUp, Key::Enter]
+                            .into_iter()
+                            .filter(|k| inp.consume_key(Modifiers::NONE, *k))
+                            .collect::<Vec<_>>()
+                    }));
+                }
+            }
+        });
+    for k in teclas {
+        e.tecla_no_diff(k);
+    }
+    if let Some(i) = ir {
+        e.ir_ao_compasso_do_diff(i);
+    }
+}
+
 #[cfg(test)]
 mod testes {
     use super::*;
     use crate::partitura_visual::Alvo;
     use crate::som::apoio_testes::servico_pronto;
-    use bancada_casca::egui::{Context, Modifiers, RawInput, Rect, pos2, vec2};
+    use bancada_casca::egui::{Context, RawInput, Rect, pos2, vec2};
     use piano_tutor_audio::RelogioManual;
     use piano_tutor_audio::sintetizador::RegistroFalso;
     use piano_tutor_core::mxl::empacotar_mxl;
@@ -4633,5 +4910,108 @@ mod testes {
         );
         let (mut som, ctx) = banco();
         quadro(&ctx, &mut e, &mut som);
+    }
+
+    // --- Ticket 22: Comparar Versões na tela ---------------------------------------------------
+
+    fn apertar_tecla_no_quadro(
+        ctx: &Context,
+        e: &mut EstadoPartitura,
+        som: &mut ServicoSom,
+        k: Key,
+    ) {
+        let entrada = RawInput {
+            screen_rect: Some(Rect::from_min_size(pos2(0.0, 0.0), vec2(1280.0, 800.0))),
+            events: vec![Event::Key {
+                key: k,
+                physical_key: Some(k),
+                pressed: true,
+                repeat: false,
+                modifiers: Modifiers::NONE,
+            }],
+            ..Default::default()
+        };
+        ctx.run_ui(entrada, |ui| desenhar_tela(ui, e, som))
+            .drop_without_applying_deltas();
+    }
+
+    #[test]
+    fn comparar_padrao_e_selecionada_contra_o_pai_e_lista_o_compasso_alterado() {
+        let (_d, mut e, _) = com_oficina();
+        assert!(e.comparacao_padrao().is_none(), "só a Hipótese: sem pai");
+        editar_uma_nota(&mut e);
+        e.salvar_versao().expect("salva");
+        let l = e.lista_de_versoes();
+        let (hip, v1) = (l[0].hash.clone(), l[1].hash.clone());
+        assert_eq!(e.comparacao_padrao(), Some((hip, v1)));
+        assert!(e.linhas_do_diff().is_empty() && e.mensagem_do_diff().is_none());
+        e.comparar_versoes();
+        let linhas = e.linhas_do_diff();
+        assert_eq!(linhas.len(), 1, "{linhas:?}");
+        assert!(linhas[0].starts_with("Compasso "), "{linhas:?}");
+        assert!(e.mensagem_do_diff().is_none());
+        // Clique/Enter: seleciona uma nota do compasso e o põe em foco.
+        let compasso = e.ir_ao_compasso_do_diff(0).expect("linha existe");
+        assert_eq!(e.compasso_em_foco(), Some(compasso));
+        let id = e.nota_selecionada().expect("nota selecionada");
+        let d = e.documento.as_ref().expect("doc");
+        assert_eq!(d.leitura.entrada(id).expect("entrada").compasso, compasso);
+        assert!(e.ir_ao_compasso_do_diff(9).is_none());
+    }
+
+    #[test]
+    fn comparar_sem_diferencas_mostra_a_mensagem_clara() {
+        let (_d, mut e, _) = com_oficina();
+        editar_uma_nota(&mut e);
+        e.salvar_versao().expect("salva");
+        let v1 = e.lista_de_versoes()[1].hash.clone();
+        e.escolher_comparacao(&v1, &v1);
+        e.comparar_versoes();
+        assert!(e.linhas_do_diff().is_empty());
+        assert_eq!(
+            e.mensagem_do_diff().as_deref(),
+            Some(DiffDeVersoes::MENSAGEM_SEM_DIFERENCAS)
+        );
+        e.limpar_comparacao();
+        assert!(e.mensagem_do_diff().is_none());
+    }
+
+    #[test]
+    fn lista_do_diff_navega_com_setas_e_enter_e_o_quadro_desenha_sem_janela() {
+        let (mut som, ctx) = banco();
+        let (_d, mut e, _) = com_oficina();
+        editar_uma_nota(&mut e);
+        e.salvar_versao().expect("salva");
+        // Duas notas editadas em compassos diferentes na Versão 2.
+        e.navegar(Comando::Seguinte);
+        e.navegar(Comando::Seguinte);
+        e.navegar(Comando::Seguinte);
+        e.navegar(Comando::Seguinte);
+        e.navegar(Comando::Seguinte);
+        e.navegar(Comando::Seguinte);
+        e.navegar(Comando::Seguinte);
+        e.navegar(Comando::Seguinte);
+        let _ = e.mudar_altura(UnidadeDeAltura::Semitom, SentidoDaAltura::Acima);
+        e.salvar_versao().expect("salva");
+        let hip = e.lista_de_versoes()[0].hash.clone();
+        let v2 = e.lista_de_versoes()[2].hash.clone();
+        e.escolher_comparacao(&hip, &v2);
+        e.comparar_versoes();
+        let n = e.linhas_do_diff().len();
+        assert!(n >= 1);
+        quadro(&ctx, &mut e, &mut som);
+        assert_eq!(e.mover_linha_do_diff(5), n - 1, "para no fim");
+        assert_eq!(e.mover_linha_do_diff(-9), 0, "para no começo");
+        assert!(e.tecla_no_diff(Key::ArrowDown));
+        assert_eq!(e.linha_ativa_do_diff(), 1.min(n - 1));
+        assert!(e.tecla_no_diff(Key::ArrowUp));
+        assert_eq!(e.linha_ativa_do_diff(), 0);
+        e.compasso_em_foco = None;
+        assert!(e.tecla_no_diff(Key::Enter));
+        assert!(e.compasso_em_foco().is_some(), "Enter leva ao compasso");
+        assert!(!e.tecla_no_diff(Key::A));
+        // Teclas na lista só agem com uma linha da lista em foco: sem foco, nada muda.
+        apertar_tecla_no_quadro(&ctx, &mut e, &mut som, Key::ArrowDown);
+        assert_eq!(e.linha_ativa_do_diff(), 0);
     }
 }
