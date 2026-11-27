@@ -39,3 +39,5 @@
 **Supervisor (2026-11-27, revisão do 25):** o critério dos consumidores continua aberto porque a CLI `piano-tutor-curso importar` ainda usa o decisor legado. Ele fecha quando a CLI também decidir por hash.
 
 **CLI (2026-11-27):** `piano-tutor-curso importar` decide por hash (mesma regra do app, em `piano-tutor-curso::aprovacao`). Escrita do índice continua só no app. Dois processos reais, Windows e macOS: NÃO VERIFICADO.
+
+**Supervisor (2026-11-28):** critério fechado e aceito, com duas dívidas registradas. (1) A regra de aprovação existe em dois lugares: `curso::aprovacao` e `Indice::aprovacao` no app. O app deve passar a delegar ao curso, que é a fonte única. (2) Migração: aprovações antigas que só existem no `estado.toml` agora viram Hipótese. Antes do gate da E01 (ticket 27), é preciso um passo único que transforme as aprovações antigas do `estado.toml` em Versão com `[[decisao]]` (revisor "migração", direto = true), com aviso ao titular.
