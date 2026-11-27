@@ -4,6 +4,7 @@
 //! Partitura só o usa. Abrir e exportar passam **somente** pelo serviço (`piano_tutor_core::
 //! documento`); aqui ficam apenas a leitura e a gravação de arquivos, com os limites de tamanho.
 
+use crate::selecao_partitura::IndiceLeitura;
 use piano_tutor_core::documento::{DocumentoAberto, ErroServico, Formato, IdsPorNota};
 use piano_tutor_core::mxl::MXL_TAMANHO_MAXIMO_BYTES;
 use piano_tutor_core::partitura::{
@@ -145,15 +146,19 @@ pub struct DocumentoPartitura {
     pub nome: String,
     aberto: DocumentoAberto,
     pub musica: Musica,
+    /// Ordem de leitura das notas para a seleção e a navegação (ticket 12).
+    pub leitura: IndiceLeitura,
 }
 
 impl DocumentoPartitura {
     fn de_aberto(nome: String, aberto: DocumentoAberto) -> Self {
         let musica = Musica::de(aberto.partitura());
+        let leitura = IndiceLeitura::de(aberto.partitura(), aberto.ids());
         Self {
             nome,
             aberto,
             musica,
+            leitura,
         }
     }
 
@@ -183,6 +188,11 @@ impl DocumentoPartitura {
     /// Identidade de cada nota do modelo, para o layout.
     pub fn ids(&self) -> &IdsPorNota {
         self.aberto.ids()
+    }
+
+    /// Há compasso editado (sujo)? Abrir e navegar nunca editam.
+    pub fn editado(&self) -> bool {
+        self.aberto.editado()
     }
 
     /// O texto MusicXML original, que a exportação sem edição devolve idêntico.

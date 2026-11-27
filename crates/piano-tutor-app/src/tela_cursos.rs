@@ -698,6 +698,7 @@ fn desenhar_exercicio(
             com_titulo: false,
             com_origem: false,
             com_exportacao: false,
+            com_selecao: false,
             cursor_externo: cursor,
         },
     );
