@@ -52,10 +52,56 @@
 //! - Material comprado nunca sai da pasta de dados do usuário: a pasta de Versões é derivada do
 //!   `estado.toml` da própria partitura da Oficina, e o PDF é só lido para o hash (nunca copiado).
 //! - A aprovação por hash (ticket 23) e o diff (ticket 22) usam `hash` e `pai` deste índice.
+//!
+//! # Aprovar, rejeitar e reabrir por hash (ticket 23, A9)
+//!
+//! A aprovação é **atributo da Versão (hash)**, nunca do arquivo em edição nem do nome dele.
+//! [`Versoes::aprovar`], [`Versoes::rejeitar`], [`Versoes::reabrir`] e [`Versoes::aprovar_direto`]
+//! só trocam o `estado` da `[[versao]]` no índice e acrescentam um registro `[[decisao]]`
+//! (`hash`, `de`, `para`, `revisor`, `em`, `motivo`, `direto`); o **objeto nunca é tocado**, nem a
+//! Hipótese. As duas mudanças saem na mesma gravação atômica do índice.
+//!
+//! ```toml
+//! [[decisao]]                       # registro append-only, em ordem
+//! hash = "<sha256 da Versão decidida>"
+//! de = "em_revisao"
+//! para = "aprovada"
+//! revisor = "Chico"
+//! em = "2026-11-28T09:30:00Z"
+//! motivo = "conferi com o PDF"      # obrigatório, até `MAX_MOTIVO` caracteres
+//! direto = true                     # só na aprovação direta (Hipótese → Aprovada)
+//! ```
+//!
+//! Decisões registradas (ticket 23):
+//! - As transições são **só** as de [`transicao_valida`] (a máquina de `revisao`): Aprovar =
+//!   Em revisão → Aprovada; Rejeitar = Hipótese ou Em revisão → Rejeitada; Reabrir =
+//!   Hipótese, Aprovada ou Rejeitada → Em revisão (de Hipótese é "iniciar a revisão"). Fora
+//!   disso, [`ErroVersoes::TransicaoInvalida`], sem registro e sem mudar nada.
+//! - A **aprovação direta** vale só a partir de Hipótese, fica marcada (`direto = true`) e, sem
+//!   motivo escrito, usa a nota padrão "aprovação direta" (um clique). Não altera a máquina.
+//! - Aprovar/rejeitar/reabrir **exigem motivo** (não vazio, até [`MAX_MOTIVO`]); um motivo
+//!   longo é recusado, nunca truncado em silêncio. O revisor também é obrigatório.
+//! - Uma Versão filha de uma aprovada nasce **Em revisão** (já era a regra do `salvar`): a
+//!   aprovação não é herdada. Salvar conteúdo igual ao de uma Versão existente não cria Versão
+//!   (então não "re-aprova" nem "des-aprova" ninguém).
+//! - Consumidores (prática, Exercício, Gabarito) perguntam por **hash**: [`Versoes::aprovacao_de`],
+//!   [`Versoes::aprovacao_do_conteudo`] e [`Versoes::aprovacao_do_arquivo`] (que hasheia o
+//!   conteúdo lido: alterar o arquivo muda o hash e a aprovação não vale). `estado = "aprovada"`
+//!   escrito à mão no índice, **sem** registro `[[decisao]]` correspondente, não vale: só decisão
+//!   registrada de um revisor aprova (nada aprova sozinho, nem IA nem plugin).
+//!
+//! # Trava entre processos
+//!
+//! Toda mutação do índice (`registrar_origem`, `salvar`, decisões) é um ciclo ler-modificar-gravar
+//! e, sem trava, dois processos (ou duas janelas) perderiam a atualização um do outro. Agora o
+//! ciclo roda sob uma trava **exclusiva de arquivo** (`indice.lock`, `File::lock` da biblioteca
+//! padrão: `flock` no Unix e `LockFileEx` no Windows; sem crate nova). A leitura não trava (o
+//! índice é trocado por `rename` atômico). A trava é liberada ao fim do ciclo (ou se o processo
+//! cair). Em sistema de arquivos que não suporta trava (`Unsupported`), segue sem ela.
 
 use crate::revisao::{
-    Estado, ItemPartitura, estado_de_texto, estado_para_texto, gravar_atomico, rotulo_do_estado,
-    transicao_valida,
+    Estado, ItemPartitura, NOTA_DA_APROVACAO_DIRETA, aprovacao_direta_valida, estado_de_texto,
+    estado_para_texto, gravar_atomico, rotulo_do_estado, transicao_valida,
 };
 use serde::Deserialize;
 use sha2::{Digest, Sha256};
@@ -73,6 +119,10 @@ pub const ARQUIVO_DO_INDICE: &str = "indice.toml";
 pub const PASTA_DOS_OBJETOS: &str = "objetos";
 /// Tamanho máximo da nota de motivo, em caracteres.
 pub const MAX_NOTA: usize = 500;
+/// Tamanho máximo do motivo de uma decisão (aprovar, rejeitar, reabrir), em caracteres.
+pub const MAX_MOTIVO: usize = 280;
+/// Arquivo de trava (exclusiva, entre processos) ao lado do índice.
+pub const ARQUIVO_DA_TRAVA: &str = "indice.lock";
 /// Tamanho máximo de um conteúdo de Versão.
 pub const MAX_BYTES_DA_VERSAO: usize = 64 * 1024 * 1024;
 
@@ -130,6 +180,19 @@ pub enum ErroVersoes {
     SemHipotese,
     /// Conteúdo vazio ou grande demais.
     ConteudoInvalido(String),
+    /// A máquina de estados não permite `de` → `para`.
+    TransicaoInvalida {
+        de: Estado,
+        para: Estado,
+    },
+    /// A aprovação direta só vale a partir de Hipótese (este é o estado atual da Versão).
+    AprovacaoDiretaInvalida(Estado),
+    /// Aprovar, rejeitar e reabrir exigem um motivo.
+    MotivoObrigatorio,
+    /// O motivo passou do máximo (em caracteres).
+    MotivoLongo(usize),
+    /// A decisão precisa de revisor.
+    RevisorObrigatorio,
 }
 
 impl fmt::Display for ErroVersoes {
@@ -146,6 +209,21 @@ impl fmt::Display for ErroVersoes {
             ),
             Self::SemHipotese => write!(f, "a Hipótese (MusicXML) da partitura não foi encontrada"),
             Self::ConteudoInvalido(e) => write!(f, "conteúdo inválido: {e}"),
+            Self::TransicaoInvalida { de, para } => write!(
+                f,
+                "não dá para ir de {} para {}: o fluxo é Hipótese → Em revisão → Aprovada ou \
+                 Rejeitada, e Aprovada ou Rejeitada voltam por Em revisão",
+                rotulo_do_estado(*de),
+                rotulo_do_estado(*para)
+            ),
+            Self::AprovacaoDiretaInvalida(de) => write!(
+                f,
+                "a aprovação direta só vale a partir de Hipótese; esta Versão está {}",
+                rotulo_do_estado(*de)
+            ),
+            Self::MotivoObrigatorio => write!(f, "escreva o motivo da decisão"),
+            Self::MotivoLongo(max) => write!(f, "o motivo passou de {max} caracteres"),
+            Self::RevisorObrigatorio => write!(f, "falta o nome do revisor"),
         }
     }
 }
@@ -193,6 +271,62 @@ pub struct Versao {
 pub struct Origem {
     pub hipotese: Hash,
     pub pdf: Option<Hash>,
+}
+
+/// O que o revisor faz com uma Versão (cada ação leva a um estado-alvo).
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum AcaoDeRevisao {
+    Aprovar,
+    Rejeitar,
+    /// Volta a Em revisão (de Aprovada ou Rejeitada; de Hipótese é iniciar a revisão).
+    Reabrir,
+}
+
+impl AcaoDeRevisao {
+    /// O estado a que a ação leva.
+    pub const fn alvo(self) -> Estado {
+        match self {
+            Self::Aprovar => Estado::Aprovada,
+            Self::Rejeitar => Estado::Rejeitada,
+            Self::Reabrir => Estado::EmRevisao,
+        }
+    }
+}
+
+/// Um registro de decisão do revisor sobre uma Versão (hash).
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct Decisao {
+    pub hash: Hash,
+    pub de: Estado,
+    pub para: Estado,
+    pub revisor: String,
+    pub em: String,
+    pub motivo: String,
+    /// `true` na aprovação direta (Hipótese → Aprovada num clique).
+    pub direto: bool,
+}
+
+impl Decisao {
+    /// Esta decisão vista como aprovação (vale se `para` é Aprovada).
+    pub fn aprovacao(&self) -> Aprovacao {
+        Aprovacao {
+            hash: self.hash.clone(),
+            revisor: self.revisor.clone(),
+            em: self.em.clone(),
+            motivo: self.motivo.clone(),
+            direto: self.direto,
+        }
+    }
+}
+
+/// A aprovação vigente de uma Versão: quem, quando, por quê e se foi direta.
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct Aprovacao {
+    pub hash: Hash,
+    pub revisor: String,
+    pub em: String,
+    pub motivo: String,
+    pub direto: bool,
 }
 
 /// Resultado de [`Versoes::salvar`].
@@ -298,6 +432,21 @@ struct IndiceToml {
     origem: Option<OrigemToml>,
     #[serde(default)]
     versao: Vec<VersaoToml>,
+    #[serde(default)]
+    decisao: Vec<DecisaoToml>,
+}
+
+#[derive(Debug, Deserialize)]
+struct DecisaoToml {
+    hash: String,
+    de: String,
+    para: String,
+    revisor: String,
+    #[serde(default)]
+    em: String,
+    motivo: String,
+    #[serde(default)]
+    direto: bool,
 }
 
 #[derive(Debug, Deserialize)]
@@ -330,11 +479,24 @@ pub struct Indice {
     pub origem: Origem,
     /// Em ordem de criação; a primeira é a Hipótese.
     pub versoes: Vec<Versao>,
+    /// Decisões do revisor, em ordem (registro append-only).
+    pub decisoes: Vec<Decisao>,
 }
 
 impl Indice {
     fn versao(&self, hash: &str) -> Option<&Versao> {
         self.versoes.iter().find(|v| v.hash == hash)
+    }
+
+    /// A aprovação vigente do `hash`: a Versão está Aprovada **e** a última decisão sobre ela é
+    /// uma aprovação registrada. Estado escrito à mão, sem registro, não vale.
+    pub fn aprovacao(&self, hash: &str) -> Option<Aprovacao> {
+        let v = self.versao(hash)?;
+        if v.estado != Estado::Aprovada {
+            return None;
+        }
+        let d = self.decisoes.iter().rev().find(|d| d.hash == hash)?;
+        (d.para == Estado::Aprovada).then(|| d.aprovacao())
     }
 }
 
@@ -398,13 +560,53 @@ fn converter(t: IndiceToml) -> Result<Indice, ErroVersoes> {
             bytes: v.bytes,
         });
     }
+    let mut decisoes = Vec::with_capacity(t.decisao.len());
+    for d in t.decisao {
+        if !hash_valido(&d.hash) || !versoes.iter().any(|v| v.hash == d.hash) {
+            return Err(ErroVersoes::Formato(format!(
+                "decisão sobre a Versão {}, que não existe",
+                hash_curto(&d.hash)
+            )));
+        }
+        let estado = |t: &str| {
+            estado_de_texto(t)
+                .ok_or_else(|| ErroVersoes::Formato(format!("estado desconhecido: \"{t}\"")))
+        };
+        decisoes.push(Decisao {
+            de: estado(&d.de)?,
+            para: estado(&d.para)?,
+            hash: d.hash,
+            revisor: d.revisor,
+            em: d.em,
+            motivo: d.motivo,
+            direto: d.direto,
+        });
+    }
     Ok(Indice {
         origem: Origem {
             hipotese: o.hipotese,
             pdf: o.pdf,
         },
         versoes,
+        decisoes,
     })
+}
+
+/// Motivo limpo: controles viram espaço, extremos aparados; vazio e longo são recusados.
+fn limpar_motivo(motivo: Option<&str>) -> Result<String, ErroVersoes> {
+    let m: String = motivo
+        .unwrap_or_default()
+        .chars()
+        .map(|c| if c.is_control() { ' ' } else { c })
+        .collect();
+    let m = m.trim();
+    if m.is_empty() {
+        return Err(ErroVersoes::MotivoObrigatorio);
+    }
+    if m.chars().count() > MAX_MOTIVO {
+        return Err(ErroVersoes::MotivoLongo(MAX_MOTIVO));
+    }
+    Ok(m.to_owned())
 }
 
 fn limpar_nota(nota: Option<&str>) -> Option<String> {
@@ -521,7 +723,29 @@ impl Versoes {
     /// Idempotente: se o índice já existe, não muda nada. O `salvar` chama isto sozinho, mas a
     /// tela pode chamá-lo ao abrir a partitura, para fixar os hashes cedo.
     pub fn registrar_origem(&self, autor: &str, em: &str) -> Result<Indice, ErroVersoes> {
-        self.registrar_origem_com(autor, em, Queda::Nenhuma)
+        self.com_trava(|| self.registrar_origem_com(autor, em, Queda::Nenhuma))
+    }
+
+    /// Roda `f` com a trava exclusiva do índice (entre processos); veja o módulo. Não reentrante:
+    /// `f` não pode chamar outro método público que trave.
+    fn com_trava<T>(&self, f: impl FnOnce() -> Result<T, ErroVersoes>) -> Result<T, ErroVersoes> {
+        fs::create_dir_all(&self.pasta).map_err(|e| disco(&self.pasta, &e))?;
+        let caminho = self.pasta.join(ARQUIVO_DA_TRAVA);
+        let arquivo = fs::OpenOptions::new()
+            .create(true)
+            .truncate(false)
+            .write(true)
+            .open(&caminho)
+            .map_err(|e| disco(&caminho, &e))?;
+        // Sistema de arquivos sem trava (`Unsupported`): segue como antes (atômico, sem exclusão).
+        if let Err(e) = arquivo.lock()
+            && e.kind() != std::io::ErrorKind::Unsupported
+        {
+            return Err(disco(&caminho, &e));
+        }
+        let r = f();
+        let _ = arquivo.unlock();
+        r
     }
 
     fn registrar_origem_com(
@@ -571,6 +795,7 @@ impl Versoes {
                 pdf,
             },
             versoes: vec![raiz],
+            decisoes: Vec::new(),
         })
     }
 
@@ -589,6 +814,18 @@ impl Versoes {
     }
 
     pub(crate) fn salvar_com(
+        &self,
+        pai: Option<&str>,
+        conteudo: &str,
+        nota: Option<&str>,
+        autor: &str,
+        em: &str,
+        queda: Queda,
+    ) -> Result<ResultadoDoSalvar, ErroVersoes> {
+        self.com_trava(|| self.salvar_sem_trava(pai, conteudo, nota, autor, em, queda))
+    }
+
+    fn salvar_sem_trava(
         &self,
         pai: Option<&str>,
         conteudo: &str,
@@ -651,6 +888,194 @@ impl Versoes {
         }
         self.gravar_indice(&doc.to_string(), queda)?;
         Ok(ResultadoDoSalvar::Criada(nova))
+    }
+
+    /// Aprova a Versão `hash` (Em revisão → Aprovada) com motivo. Só muda o estado no índice e
+    /// registra revisor, data e hash; o conteúdo da Versão não é tocado.
+    pub fn aprovar(
+        &self,
+        hash: &str,
+        motivo: Option<&str>,
+        revisor: &str,
+        em: &str,
+    ) -> Result<Decisao, ErroVersoes> {
+        self.decidir(hash, AcaoDeRevisao::Aprovar, motivo, revisor, em)
+    }
+
+    /// Rejeita a Versão `hash` (Em revisão ou Hipótese → Rejeitada) com motivo.
+    pub fn rejeitar(
+        &self,
+        hash: &str,
+        motivo: Option<&str>,
+        revisor: &str,
+        em: &str,
+    ) -> Result<Decisao, ErroVersoes> {
+        self.decidir(hash, AcaoDeRevisao::Rejeitar, motivo, revisor, em)
+    }
+
+    /// Reabre a Versão `hash` (Aprovada ou Rejeitada → Em revisão; de Hipótese, inicia a
+    /// revisão) com motivo. A aprovação deixa de valer.
+    pub fn reabrir(
+        &self,
+        hash: &str,
+        motivo: Option<&str>,
+        revisor: &str,
+        em: &str,
+    ) -> Result<Decisao, ErroVersoes> {
+        self.decidir(hash, AcaoDeRevisao::Reabrir, motivo, revisor, em)
+    }
+
+    /// Faz a ação de revisão sobre a Versão `hash`, pela máquina de `revisao`.
+    pub fn decidir(
+        &self,
+        hash: &str,
+        acao: AcaoDeRevisao,
+        motivo: Option<&str>,
+        revisor: &str,
+        em: &str,
+    ) -> Result<Decisao, ErroVersoes> {
+        self.decidir_com(hash, acao, motivo, revisor, em, Queda::Nenhuma)
+    }
+
+    pub(crate) fn decidir_com(
+        &self,
+        hash: &str,
+        acao: AcaoDeRevisao,
+        motivo: Option<&str>,
+        revisor: &str,
+        em: &str,
+        queda: Queda,
+    ) -> Result<Decisao, ErroVersoes> {
+        let motivo = limpar_motivo(motivo)?;
+        self.registrar_decisao(hash, acao.alvo(), false, motivo, revisor, em, queda)
+    }
+
+    /// Aprovação direta: Hipótese → Aprovada num passo, **só a partir de Hipótese**, marcada
+    /// como direta. Sem motivo escrito, usa a nota "aprovação direta".
+    pub fn aprovar_direto(
+        &self,
+        hash: &str,
+        motivo: Option<&str>,
+        revisor: &str,
+        em: &str,
+    ) -> Result<Decisao, ErroVersoes> {
+        let motivo = match limpar_motivo(motivo) {
+            Err(ErroVersoes::MotivoObrigatorio) => NOTA_DA_APROVACAO_DIRETA.to_owned(),
+            outro => outro?,
+        };
+        self.registrar_decisao(
+            hash,
+            Estado::Aprovada,
+            true,
+            motivo,
+            revisor,
+            em,
+            Queda::Nenhuma,
+        )
+    }
+
+    #[allow(clippy::too_many_arguments)]
+    fn registrar_decisao(
+        &self,
+        hash: &str,
+        para: Estado,
+        direto: bool,
+        motivo: String,
+        revisor: &str,
+        em: &str,
+        queda: Queda,
+    ) -> Result<Decisao, ErroVersoes> {
+        let revisor = revisor.trim();
+        if revisor.is_empty() {
+            return Err(ErroVersoes::RevisorObrigatorio);
+        }
+        if !hash_valido(hash) {
+            return Err(ErroVersoes::Inexistente(hash.to_owned()));
+        }
+        // Sem índice não há o que decidir (e não cria pasta nem trava à toa).
+        let arquivo = self.arquivo_do_indice();
+        if !arquivo.exists() {
+            return Err(ErroVersoes::Inexistente(hash.to_owned()));
+        }
+        self.com_trava(|| {
+            // Lê o índice já sob a trava: o estado que vale é o de agora.
+            let indice = self
+                .indice()?
+                .ok_or_else(|| ErroVersoes::Inexistente(hash.to_owned()))?;
+            let de = indice
+                .versao(hash)
+                .ok_or_else(|| ErroVersoes::Inexistente(hash.to_owned()))?
+                .estado;
+            if direto {
+                if !aprovacao_direta_valida(de) {
+                    return Err(ErroVersoes::AprovacaoDiretaInvalida(de));
+                }
+            } else if !transicao_de_versao_valida(de, para) {
+                return Err(ErroVersoes::TransicaoInvalida { de, para });
+            }
+            let decisao = Decisao {
+                hash: hash.to_owned(),
+                de,
+                para,
+                revisor: revisor.to_owned(),
+                em: em.to_owned(),
+                motivo,
+                direto,
+            };
+            let texto = fs::read_to_string(&arquivo).map_err(|e| disco(&arquivo, &e))?;
+            let mut doc = texto
+                .parse::<DocumentMut>()
+                .map_err(|e| ErroVersoes::Formato(format!("{}: {e}", arquivo.display())))?;
+            let Some(Item::ArrayOfTables(versoes)) = doc.get_mut("versao") else {
+                return Err(ErroVersoes::Formato(
+                    "`versao` não é uma lista de tabelas".into(),
+                ));
+            };
+            let tabela = versoes
+                .iter_mut()
+                .find(|t| t.get("hash").and_then(Item::as_str) == Some(hash))
+                .ok_or_else(|| ErroVersoes::Inexistente(hash.to_owned()))?;
+            tabela["estado"] = value(estado_para_texto(para));
+            let nova = tabela_da_decisao(&decisao);
+            match doc.get_mut("decisao") {
+                Some(Item::ArrayOfTables(a)) => a.push(nova),
+                None => {
+                    let mut a = ArrayOfTables::new();
+                    a.push(nova);
+                    doc["decisao"] = Item::ArrayOfTables(a);
+                }
+                Some(_) => {
+                    return Err(ErroVersoes::Formato(
+                        "`decisao` não é uma lista de tabelas".into(),
+                    ));
+                }
+            }
+            self.gravar_indice(&doc.to_string(), queda)?;
+            Ok(decisao)
+        })
+    }
+
+    /// A aprovação vigente da Versão `hash` (`None` se não está aprovada, não existe ou o hash é
+    /// malformado). É por aqui, por hash, que a prática e os Exercícios devem perguntar.
+    pub fn aprovacao_de(&self, hash: &str) -> Result<Option<Aprovacao>, ErroVersoes> {
+        if !hash_valido(hash) {
+            return Ok(None);
+        }
+        Ok(self.indice()?.and_then(|i| i.aprovacao(hash)))
+    }
+
+    /// A aprovação do `conteudo` informado (calcula o SHA-256 e consulta por hash).
+    pub fn aprovacao_do_conteudo(&self, conteudo: &[u8]) -> Result<Option<Aprovacao>, ErroVersoes> {
+        self.aprovacao_de(&hash_do_conteudo(conteudo))
+    }
+
+    /// A aprovação do conteúdo atual de um arquivo (o nome não importa, só o hash do que está
+    /// lá): arquivo alterado, outro hash, sem aprovação. Arquivo ilegível: sem aprovação.
+    pub fn aprovacao_do_arquivo(&self, caminho: &Path) -> Result<Option<Aprovacao>, ErroVersoes> {
+        match hash_do_arquivo(caminho) {
+            Some(h) => self.aprovacao_de(&h),
+            None => Ok(None),
+        }
     }
 
     /// Grava o objeto uma única vez: nunca troca um arquivo existente (que, se existir, tem de
@@ -807,6 +1232,20 @@ fn tabela_da_versao(v: &Versao) -> Table {
     }
     t["estado"] = value(estado_para_texto(v.estado));
     t["bytes"] = value(i64::try_from(v.bytes).unwrap_or(i64::MAX));
+    t
+}
+
+fn tabela_da_decisao(d: &Decisao) -> Table {
+    let mut t = Table::new();
+    t["hash"] = value(d.hash.as_str());
+    t["de"] = value(estado_para_texto(d.de));
+    t["para"] = value(estado_para_texto(d.para));
+    t["revisor"] = value(d.revisor.as_str());
+    t["em"] = value(d.em.as_str());
+    t["motivo"] = value(d.motivo.as_str());
+    if d.direto {
+        t["direto"] = value(true);
+    }
     t
 }
 
@@ -1191,6 +1630,418 @@ mod testes {
             Estado::Hipotese,
             Estado::Aprovada
         ));
+    }
+
+    // --- Ticket 23: aprovar, rejeitar e reabrir por hash ---------------------------------
+
+    const REV: &str = "Chico";
+    const EM2: &str = "2026-11-28T09:30:00Z";
+
+    fn salvar_correcao(c: &Cenario, pai: Option<&str>, conteudo: &str) -> Versao {
+        criada(
+            c.v.salvar(pai, conteudo, Some("ajuste"), "Chico", EM)
+                .expect("salva"),
+        )
+    }
+
+    fn estado_de(c: &Cenario, hash: &str) -> Estado {
+        c.v.listar()
+            .expect("l")
+            .into_iter()
+            .find(|v| v.hash == hash)
+            .expect("existe")
+            .estado
+    }
+
+    fn hash_da_hipotese(c: &Cenario) -> Hash {
+        c.v.registrar_origem(REV, EM).expect("origem").versoes[0]
+            .hash
+            .clone()
+    }
+
+    #[test]
+    fn a9_editar_versao_aprovada_cria_versao_em_revisao_sem_herdar_a_aprovacao() {
+        let c = cenario();
+        let v1 = salvar_correcao(&c, None, CORRECAO_1);
+        c.v.aprovar(&v1.hash, Some("conferi com o PDF"), REV, EM2)
+            .expect("aprova");
+        assert_eq!(estado_de(&c, &v1.hash), Estado::Aprovada);
+        // Edição a partir da Versão aprovada, seguida de salvar.
+        let v2 = salvar_correcao(&c, Some(&v1.hash), CORRECAO_2);
+        assert_ne!(v2.hash, v1.hash);
+        assert_eq!(v2.pai.as_deref(), Some(v1.hash.as_str()));
+        assert_eq!(v2.estado, Estado::EmRevisao);
+        assert_eq!(estado_de(&c, &v2.hash), Estado::EmRevisao);
+        assert!(c.v.aprovacao_de(&v2.hash).expect("l").is_none());
+        // A aprovação da anterior continua valendo para ela, e só para ela.
+        assert!(c.v.aprovacao_de(&v1.hash).expect("l").is_some());
+        assert_eq!(estado_de(&c, &v1.hash), Estado::Aprovada);
+    }
+
+    #[test]
+    fn aprovar_rejeitar_e_reabrir_registram_revisor_data_hash_e_motivo() {
+        let c = cenario();
+        let v1 = salvar_correcao(&c, None, CORRECAO_1);
+        let a =
+            c.v.aprovar(&v1.hash, Some("  conferi o compasso 3 "), REV, EM2)
+                .expect("aprova");
+        assert_eq!(a.hash, v1.hash);
+        assert_eq!(a.revisor, REV);
+        assert_eq!(a.em, EM2);
+        assert_eq!(a.motivo, "conferi o compasso 3");
+        assert!(!a.direto);
+        assert_eq!(c.v.aprovacao_de(&v1.hash).expect("l"), Some(a.aprovacao()));
+
+        let d =
+            c.v.reabrir(&v1.hash, Some("achei um erro de oitava"), REV, EM2)
+                .expect("reabre");
+        assert_eq!((d.de, d.para), (Estado::Aprovada, Estado::EmRevisao));
+        assert!(c.v.aprovacao_de(&v1.hash).expect("l").is_none());
+
+        let r =
+            c.v.rejeitar(&v1.hash, Some("transcrição errada"), REV, EM2)
+                .expect("rejeita");
+        assert_eq!((r.de, r.para), (Estado::EmRevisao, Estado::Rejeitada));
+        assert_eq!(estado_de(&c, &v1.hash), Estado::Rejeitada);
+        assert!(c.v.aprovacao_de(&v1.hash).expect("l").is_none());
+
+        // O registro fica no índice, em ordem, com revisor, data, hash e motivo.
+        let reg = c.v.indice().expect("l").expect("há").decisoes;
+        assert_eq!(reg.len(), 3);
+        assert!(reg.iter().all(|d| d.hash == v1.hash && d.revisor == REV));
+        assert!(reg.iter().all(|d| d.em == EM2 && !d.direto));
+        assert_eq!(reg[1].motivo, "achei um erro de oitava");
+        assert_eq!(reg[2].para, Estado::Rejeitada);
+        // Reabrir a rejeitada também é válido.
+        c.v.reabrir(&v1.hash, Some("revi"), REV, EM2)
+            .expect("reabre");
+        assert_eq!(estado_de(&c, &v1.hash), Estado::EmRevisao);
+    }
+
+    #[test]
+    fn transicoes_invalidas_sao_recusadas_com_mensagem_e_nada_muda() {
+        let c = cenario();
+        let v1 = salvar_correcao(&c, None, CORRECAO_1);
+        let raiz = c.v.listar().expect("l")[0].hash.clone();
+        // Hipótese não vira Aprovada por `aprovar` (só pela aprovação direta).
+        let e = c.v.aprovar(&raiz, Some("m"), REV, EM2).expect_err("recusa");
+        assert_eq!(
+            e,
+            ErroVersoes::TransicaoInvalida {
+                de: Estado::Hipotese,
+                para: Estado::Aprovada
+            }
+        );
+        let msg = e.to_string();
+        assert!(
+            msg.contains("Hipótese") && msg.contains("Aprovada"),
+            "{msg}"
+        );
+        // Em revisão não "reabre"; Aprovada não aprova nem rejeita; Rejeitada não aprova.
+        assert!(matches!(
+            c.v.reabrir(&v1.hash, Some("m"), REV, EM2),
+            Err(ErroVersoes::TransicaoInvalida { .. })
+        ));
+        c.v.aprovar(&v1.hash, Some("m"), REV, EM2).expect("aprova");
+        assert!(matches!(
+            c.v.aprovar(&v1.hash, Some("m"), REV, EM2),
+            Err(ErroVersoes::TransicaoInvalida { .. })
+        ));
+        assert!(matches!(
+            c.v.rejeitar(&v1.hash, Some("m"), REV, EM2),
+            Err(ErroVersoes::TransicaoInvalida { .. })
+        ));
+        c.v.reabrir(&v1.hash, Some("m"), REV, EM2).expect("reabre");
+        c.v.rejeitar(&v1.hash, Some("m"), REV, EM2)
+            .expect("rejeita");
+        assert!(matches!(
+            c.v.aprovar(&v1.hash, Some("m"), REV, EM2),
+            Err(ErroVersoes::TransicaoInvalida { .. })
+        ));
+        // As recusas não deixaram registro: só as 3 decisões válidas.
+        assert_eq!(c.v.indice().expect("l").expect("há").decisoes.len(), 3);
+        assert_eq!(estado_de(&c, &raiz), Estado::Hipotese);
+    }
+
+    #[test]
+    fn as_acoes_alcancam_exatamente_o_que_a_maquina_de_revisao_permite() {
+        for de in crate::revisao::ESTADOS {
+            for (acao, para) in [
+                (AcaoDeRevisao::Aprovar, Estado::Aprovada),
+                (AcaoDeRevisao::Rejeitar, Estado::Rejeitada),
+                (AcaoDeRevisao::Reabrir, Estado::EmRevisao),
+            ] {
+                assert_eq!(acao.alvo(), para);
+                assert_eq!(
+                    transicao_de_versao_valida(de, acao.alvo()),
+                    transicao_valida(de, para)
+                );
+            }
+        }
+    }
+
+    #[test]
+    fn hipotese_pode_ser_rejeitada_ou_ir_para_revisao_como_manda_a_maquina() {
+        let c = cenario();
+        let raiz = hash_da_hipotese(&c);
+        c.v.reabrir(&raiz, Some("começo a revisar"), REV, EM2)
+            .expect("Hipótese → Em revisão");
+        assert_eq!(estado_de(&c, &raiz), Estado::EmRevisao);
+        let c2 = cenario();
+        let raiz2 = hash_da_hipotese(&c2);
+        c2.v.rejeitar(&raiz2, Some("transcrição lixo"), REV, EM2)
+            .expect("Hipótese → Rejeitada");
+        assert_eq!(estado_de(&c2, &raiz2), Estado::Rejeitada);
+    }
+
+    #[test]
+    fn aprovar_rejeitar_e_reabrir_exigem_motivo_curto() {
+        let c = cenario();
+        let v1 = salvar_correcao(&c, None, CORRECAO_1);
+        for motivo in [None, Some(""), Some("   "), Some("\t\n ")] {
+            assert_eq!(
+                c.v.aprovar(&v1.hash, motivo, REV, EM2),
+                Err(ErroVersoes::MotivoObrigatorio)
+            );
+            assert_eq!(
+                c.v.rejeitar(&v1.hash, motivo, REV, EM2),
+                Err(ErroVersoes::MotivoObrigatorio)
+            );
+            assert_eq!(
+                c.v.reabrir(&v1.hash, motivo, REV, EM2),
+                Err(ErroVersoes::MotivoObrigatorio)
+            );
+        }
+        let longo = "x".repeat(MAX_MOTIVO + 1);
+        let e =
+            c.v.aprovar(&v1.hash, Some(&longo), REV, EM2)
+                .expect_err("longo");
+        assert_eq!(e, ErroVersoes::MotivoLongo(MAX_MOTIVO));
+        assert!(e.to_string().contains(&MAX_MOTIVO.to_string()));
+        assert_eq!(
+            c.v.aprovar(&v1.hash, Some("ok"), "  ", EM2),
+            Err(ErroVersoes::RevisorObrigatorio)
+        );
+        // Motivo no limite passa, e nada foi registrado pelas recusas.
+        let no_limite = "x".repeat(MAX_MOTIVO);
+        c.v.aprovar(&v1.hash, Some(&no_limite), REV, EM2)
+            .expect("ok");
+        assert_eq!(c.v.indice().expect("l").expect("há").decisoes.len(), 1);
+    }
+
+    #[test]
+    fn aprovacao_direta_so_de_hipotese_e_fica_marcada_como_direta() {
+        let c = cenario();
+        let raiz = hash_da_hipotese(&c);
+        let a = c.v.aprovar_direto(&raiz, None, REV, EM2).expect("direta");
+        assert!(a.direto);
+        assert_eq!(a.motivo, crate::revisao::NOTA_DA_APROVACAO_DIRETA);
+        assert_eq!(c.v.aprovacao_de(&raiz).expect("l"), Some(a.aprovacao()));
+        let d = &c.v.indice().expect("l").expect("há").decisoes[0];
+        assert!(d.direto);
+        assert_eq!((d.de, d.para), (Estado::Hipotese, Estado::Aprovada));
+        let texto = fs::read_to_string(c.v.pasta().join(ARQUIVO_DO_INDICE)).expect("lê");
+        assert!(texto.contains("direto = true"), "{texto}");
+        // A aprovação normal não marca `direto`.
+        let v1 = salvar_correcao(&c, Some(&raiz), CORRECAO_1);
+        c.v.aprovar(&v1.hash, Some("ok"), REV, EM2).expect("aprova");
+        let reg = c.v.indice().expect("l").expect("há").decisoes;
+        assert!(!reg[1].direto);
+        // Direta só a partir de Hipótese: de Em revisão ou Aprovada é recusada.
+        let v2 = salvar_correcao(&c, Some(&v1.hash), CORRECAO_2);
+        for h in [&v2.hash, &v1.hash] {
+            let e = c.v.aprovar_direto(h, None, REV, EM2).expect_err("recusa");
+            assert!(matches!(e, ErroVersoes::AprovacaoDiretaInvalida(_)), "{e}");
+            assert!(e.to_string().contains("Hipótese"), "{e}");
+        }
+        // Motivo escrito na direta vale (e continua marcada).
+        let c2 = cenario();
+        let r2 = hash_da_hipotese(&c2);
+        let a2 =
+            c2.v.aprovar_direto(&r2, Some("é a transcrição fiel"), REV, EM2)
+                .expect("direta");
+        assert!(a2.direto);
+        assert_eq!(a2.motivo, "é a transcrição fiel");
+    }
+
+    #[test]
+    fn consumidor_consulta_por_hash_e_alterar_o_arquivo_invalida_a_aprovacao() {
+        let c = cenario();
+        let v1 = salvar_correcao(&c, None, CORRECAO_1);
+        c.v.aprovar(&v1.hash, Some("ok"), REV, EM2).expect("aprova");
+        // O mesmo conteúdo, de qualquer arquivo/nome, é a Versão aprovada.
+        assert!(
+            c.v.aprovacao_do_conteudo(CORRECAO_1.as_bytes())
+                .expect("l")
+                .is_some()
+        );
+        // Um arquivo exportado e depois alterado muda o hash: a aprovação não vale.
+        let exportado = c.partituras.join("ode-aprovada.musicxml");
+        fs::write(&exportado, CORRECAO_1).expect("exporta");
+        assert!(c.v.aprovacao_do_arquivo(&exportado).expect("l").is_some());
+        fs::write(&exportado, format!("{CORRECAO_1}<!-- mexi -->")).expect("altera");
+        assert!(c.v.aprovacao_do_arquivo(&exportado).expect("l").is_none());
+        // Arquivo inexistente: sem aprovação (nunca "aprovado por padrão").
+        assert!(
+            c.v.aprovacao_do_arquivo(&c.partituras.join("nao-existe.musicxml"))
+                .expect("l")
+                .is_none()
+        );
+        // Hash desconhecido ou malformado: sem aprovação.
+        assert!(c.v.aprovacao_de(&"0".repeat(64)).expect("l").is_none());
+        assert!(c.v.aprovacao_de("../../x").expect("l").is_none());
+    }
+
+    #[test]
+    fn t8_hipotese_original_fica_intacta_apos_aprovar_uma_versao_derivada() {
+        let c = cenario();
+        let raiz = hash_da_hipotese(&c);
+        let obj =
+            c.v.pasta()
+                .join(PASTA_DOS_OBJETOS)
+                .join(format!("{raiz}.musicxml"));
+        let arquivo = c.partituras.join("ode.musicxml");
+        let arquivo_antes = fs::read(&arquivo).expect("lê");
+        let obj_antes = fs::read(&obj).expect("lê");
+        let v1 = salvar_correcao(&c, None, CORRECAO_1);
+        c.v.aprovar(&v1.hash, Some("ok"), REV, EM2).expect("aprova");
+        assert_eq!(fs::read(&arquivo).expect("lê"), arquivo_antes);
+        assert_eq!(fs::read(&obj).expect("lê"), obj_antes);
+        assert_eq!(hash_do_arquivo_de(&c), raiz);
+        assert_eq!(estado_de(&c, &raiz), Estado::Hipotese);
+        assert!(c.v.aprovacao_de(&raiz).expect("l").is_none());
+        assert!(c.v.verificar_originais().expect("v").integro());
+    }
+
+    #[test]
+    fn aprovacao_so_muda_o_estado_no_indice_nunca_o_objeto() {
+        let c = cenario();
+        let v1 = salvar_correcao(&c, None, CORRECAO_1);
+        let obj =
+            c.v.pasta()
+                .join(PASTA_DOS_OBJETOS)
+                .join(format!("{}.musicxml", v1.hash));
+        let antes = fs::read(&obj).expect("lê");
+        c.v.aprovar(&v1.hash, Some("ok"), REV, EM2).expect("aprova");
+        c.v.reabrir(&v1.hash, Some("revi"), REV, EM2)
+            .expect("reabre");
+        c.v.rejeitar(&v1.hash, Some("não"), REV, EM2)
+            .expect("rejeita");
+        assert_eq!(fs::read(&obj).expect("lê"), antes);
+        assert_eq!(c.v.abrir(&v1.hash).expect("abre").conteudo, CORRECAO_1);
+        assert!(c.v.verificar_originais().expect("v").integro());
+    }
+
+    #[test]
+    fn decidir_hash_inexistente_ou_malformado_e_erro() {
+        let c = cenario();
+        salvar_correcao(&c, None, CORRECAO_1);
+        assert!(matches!(
+            c.v.aprovar(&"a".repeat(64), Some("m"), REV, EM2),
+            Err(ErroVersoes::Inexistente(_))
+        ));
+        assert!(matches!(
+            c.v.aprovar("../../etc", Some("m"), REV, EM2),
+            Err(ErroVersoes::Inexistente(_))
+        ));
+        // Sem índice nenhum também é "inexistente", e não cria nada.
+        let vazio = cenario();
+        assert!(matches!(
+            vazio.v.aprovar(&"a".repeat(64), Some("m"), REV, EM2),
+            Err(ErroVersoes::Inexistente(_))
+        ));
+        assert!(!vazio.v.pasta().join(ARQUIVO_DO_INDICE).exists());
+    }
+
+    #[test]
+    fn estado_aprovada_escrito_a_mao_sem_registro_nao_vale_como_aprovacao() {
+        let c = cenario();
+        let v1 = salvar_correcao(&c, None, CORRECAO_1);
+        let caminho = c.v.pasta().join(ARQUIVO_DO_INDICE);
+        let texto = fs::read_to_string(&caminho).expect("lê");
+        let adulterado = texto.replacen("estado = \"em_revisao\"", "estado = \"aprovada\"", 1);
+        assert_ne!(texto, adulterado);
+        fs::write(&caminho, adulterado).expect("grava");
+        assert_eq!(estado_de(&c, &v1.hash), Estado::Aprovada);
+        assert!(c.v.aprovacao_de(&v1.hash).expect("l").is_none());
+    }
+
+    #[test]
+    fn decisao_preserva_campos_desconhecidos_e_resiste_a_queda() {
+        let c = cenario();
+        let v1 = salvar_correcao(&c, None, CORRECAO_1);
+        let caminho = c.v.pasta().join(ARQUIVO_DO_INDICE);
+        let texto = fs::read_to_string(&caminho).expect("lê");
+        // Campo desconhecido no nível da Versão (o `[[versao]]` é a última tabela do arquivo).
+        fs::write(
+            &caminho,
+            format!("# comentário do futuro\n{texto}futuro = \"fica\"\n"),
+        )
+        .expect("grava");
+        // Queda no meio da gravação do índice: o estado anterior continua íntegro.
+        let e = c.v.decidir_com(
+            &v1.hash,
+            AcaoDeRevisao::Aprovar,
+            Some("ok"),
+            REV,
+            EM2,
+            Queda::NoMeioDoIndice,
+        );
+        assert!(e.is_err());
+        assert_eq!(estado_de(&c, &v1.hash), Estado::EmRevisao);
+        assert!(c.v.indice().expect("l").expect("há").decisoes.is_empty());
+        c.v.aprovar(&v1.hash, Some("ok"), REV, EM2).expect("aprova");
+        let depois = fs::read_to_string(&caminho).expect("lê");
+        assert!(depois.contains("# comentário do futuro"), "{depois}");
+        assert!(depois.contains("futuro = \"fica\""), "{depois}");
+        assert!(depois.contains("[[decisao]]"), "{depois}");
+    }
+
+    #[test]
+    fn indice_com_decisao_de_hash_desconhecido_e_erro_de_formato() {
+        let c = cenario();
+        let v1 = salvar_correcao(&c, None, CORRECAO_1);
+        c.v.aprovar(&v1.hash, Some("ok"), REV, EM2).expect("aprova");
+        let caminho = c.v.pasta().join(ARQUIVO_DO_INDICE);
+        let texto = fs::read_to_string(&caminho).expect("lê");
+        let alvo = format!("[[decisao]]\nhash = \"{}\"", v1.hash);
+        assert!(texto.contains(&alvo), "{texto}");
+        let falso = format!("[[decisao]]\nhash = \"{}\"", "b".repeat(64));
+        fs::write(&caminho, texto.replace(&alvo, &falso)).expect("grava");
+        assert!(matches!(c.v.indice(), Err(ErroVersoes::Formato(_))));
+    }
+
+    #[test]
+    fn varios_gravadores_ao_mesmo_tempo_nao_perdem_atualizacoes() {
+        // Vários "processos" (threads, cada uma com a sua Versoes) salvam e decidem no mesmo índice.
+        let c = cenario();
+        let base = salvar_correcao(&c, None, CORRECAO_1);
+        let mut juntas = Vec::new();
+        for i in 0..8 {
+            let v = c.v.clone();
+            let pai = base.hash.clone();
+            juntas.push(std::thread::spawn(move || {
+                let conteudo = format!("<score-partwise><!-- ramo {i} --></score-partwise>");
+                let nova = match v.salvar(Some(&pai), &conteudo, Some("ramo"), "Chico", EM) {
+                    Ok(ResultadoDoSalvar::Criada(n)) => n,
+                    outro => panic!("salvar falhou: {outro:?}"),
+                };
+                v.aprovar(&nova.hash, Some("ok"), REV, EM2).expect("aprova");
+                nova.hash
+            }));
+        }
+        let hashes: Vec<Hash> = juntas
+            .into_iter()
+            .map(|j| j.join().expect("thread"))
+            .collect();
+        let lista = c.v.listar().expect("l");
+        assert_eq!(lista.len(), 1 + 1 + 8, "nenhuma Versão se perdeu");
+        for h in &hashes {
+            assert_eq!(estado_de(&c, h), Estado::Aprovada, "decisão perdida");
+        }
+        assert_eq!(c.v.indice().expect("l").expect("há").decisoes.len(), 8);
+        // A trava é um arquivo ao lado do índice.
+        assert!(c.v.pasta().join(ARQUIVO_DA_TRAVA).exists());
     }
 
     #[test]
