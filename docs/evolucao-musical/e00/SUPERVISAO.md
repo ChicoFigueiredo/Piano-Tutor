@@ -24,3 +24,4 @@
 - Corpus: scans IMSLP só com checagem por edição; redistribuir apenas métricas e scripts; engraving próprio de peças PT em domínio público para cobrir letras.
 - ADR-0009 duplicado: anotar, não renomear (links). Próxima ADR = 0015. MATRIZ-DE-ACEITE sincronizada com progresso.json em PR separado. cargo deny na CI antes de rmcp/providers/OMR.
 - Material comprado do titular: só testes locais no cerebro, nunca git/CI; envio à nuvem só com consentimento por lote (decisão do titular, prevalece sobre a recomendação mais restritiva das pesquisas 02/04).
+- Ticket 08: arquivo lateral de IdNota amarrado por impressão digital do texto, só a partir do ticket 17 (edição estrutural); até lá ids pela ordem do documento. Mudança de divisions: recusar por padrão (redeclarar no compasso fica para avaliar no ticket 16).
