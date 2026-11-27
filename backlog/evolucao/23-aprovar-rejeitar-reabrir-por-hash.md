@@ -17,7 +17,7 @@
 - [x] A9: dada uma Versão Aprovada, uma edição seguida de salvar cria uma Versão Em revisão com hash diferente; a aprovação da anterior não é herdada (teste de estado). (teste `a9_editar_versao_aprovada_...`)
 - [x] As transições válidas são as da máquina existente; transições inválidas são recusadas com mensagem (testes herdados continuam verdes). (teste `transicoes_invalidas_...` e `as_acoes_alcancam_exatamente_...`: as ações usam `transicao_valida` de `revisao`; erro `TransicaoInvalida` com mensagem em PT-BR)
 - [x] Aprovar, rejeitar e reabrir exigem um motivo (curto) e registram revisor, data e hash; aprovação direta, quando usada, é marcada como direta. (`aprovar`/`rejeitar`/`reabrir`/`aprovar_direto`; motivo obrigatório até 280 caracteres; `[[decisao]]` no índice com `direto = true` na direta)
-- [ ] Qualquer consumidor (prática, Exercício) consulta a aprovação por hash, nunca por nome do arquivo (teste: alterar o arquivo muda o hash e a aprovação não vale). (`aprovacao_de(hash)`, `aprovacao_do_conteudo`, `aprovacao_do_arquivo`; o `estado.toml` da partitura segue sem mudança e os consumidores atuais ainda não migraram para a consulta por hash)
+- [x] Qualquer consumidor (prática, Exercício) consulta a aprovação por hash, nunca por nome do arquivo (teste: alterar o arquivo muda o hash e a aprovação não vale). (fechado no ticket 25: `pratica_versao::PraticaDaVersao` pergunta `aprovacao_de(hash)` ao abrir e a cada conferência; `DecisorPorHash` decide o estado do Exercício na importação (`importar_com`) pelo hash do conteúdo, e o `estado.toml` deixa de ser a autoridade da aprovação. Testes: `exercicio_consulta_a_aprovacao_por_hash_e_nao_pelo_estado_toml`, `importar_curso_com_o_decisor_por_hash`, `aprovada_so_com_registro_...`. Resíduo: a CLI `piano-tutor-curso importar` continua com `importar`, que usa o decisor legado do `estado.toml`; só o app deve chamar `importar_com` com o `DecisorPorHash`.)
 - [x] A Hipótese original permanece intacta (hash) mesmo após aprovar uma Versão derivada (T8). (teste `t8_hipotese_original_...`)
 - [x] Nada aprova automaticamente: nenhuma saída de IA ou plugin promove conteúdo (só o humano). (`aprovacao_de` só vale com estado Aprovada **e** registro `[[decisao]]`; estado escrito à mão não vale; só chamadas explícitas do revisor mudam o estado)
 
@@ -31,3 +31,6 @@
 
 
 **Supervisor (2026-11-27):** reabri o critério dos consumidores. A consulta por hash já existe, mas a prática e o Exercício ainda leem o `estado.toml`. A migração entra no ticket 25 (praticar a Versão aprovada), e o critério só fecha quando o 25 fechar. Botões e campo de motivo na tela também ficam pendentes. A trava entre processos foi testada só com threads no Linux: NÃO VERIFICADO em dois processos reais, no Windows e no macOS.
+
+
+**Ticket 25 (2026-11-28):** critério dos consumidores fechado, com o resíduo da CLI acima. Botões e campo de motivo na tela seguem pendentes.

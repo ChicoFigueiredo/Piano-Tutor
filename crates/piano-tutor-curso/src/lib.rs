@@ -51,7 +51,7 @@ pub use chaves::{
 };
 pub use empacotamento::empacotar;
 pub use erro::ErroPacote;
-pub use importacao::{Resumo, importar};
+pub use importacao::{DecideEstado, EstadoDoArquivo, Resumo, importar, importar_com};
 pub use instalacao::{CursoInstalado, cursos_instalados, instalar};
 pub use leitura::{Confianca, PacoteVerificado, ler_pacote, ler_pacote_de_arquivo};
 pub use modelo::{

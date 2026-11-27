@@ -41,6 +41,7 @@ pub mod partitura_visual;
 pub mod pdf_sincronizado;
 pub mod perfis;
 pub mod player_aula;
+pub mod pratica_versao;
 pub mod preferencias;
 pub mod professor;
 pub mod professor_falante;
