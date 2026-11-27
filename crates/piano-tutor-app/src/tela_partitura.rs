@@ -15,7 +15,9 @@ use crate::partitura_visual::{
     Acerto, Destaque, EstadoVisual, Mao, MapaResultados, MarcaSelecao, Marcas, ModoRolagem,
     OpcoesVisuais, ResultadoNota, ZOOM_MAX, ZOOM_MIN, desenhar_partitura,
 };
+use crate::pratica_versao::{ErroDaPratica, PraticaDaVersao, ouvir_compasso};
 use crate::preferencias::PreferenciasPartitura;
+use crate::revisao::Estado as EstadoDeRevisao;
 use crate::selecao_partitura::{Comando, EfeitoDoClique, Resultado, SelecaoPartitura, descrever};
 use crate::som::{EstadoSom, ServicoSom};
 use crate::versoes::{
@@ -337,6 +339,28 @@ pub struct EstadoPartitura {
     rascunho_escrito: bool,
     /// O trabalho atual veio de uma recuperação e ainda não virou Versão.
     recuperado: bool,
+    /// Prática de uma Versão aberta pela lista (ticket 25); a sessão guarda o hash.
+    pratica_versao: Option<PraticaDaVersao>,
+    /// Versão não aprovada esperando a confirmação explícita de prática como Hipótese.
+    pedido_hipotese: Option<String>,
+    /// Aviso na tela: recusa ou sessão de prática de Versão invalidada.
+    aviso_pratica_versao: Option<String>,
+}
+
+/// O vínculo com a Oficina, guardado enquanto o serviço de prática troca o documento aberto
+/// (a abertura genérica de texto o zeraria).
+struct VinculoDaOficina {
+    lista_de_versoes: Vec<LinhaDaLista>,
+    comparacao: Comparacao,
+    aviso_versoes: Option<String>,
+    alerta_originais: Option<String>,
+    leitura: Option<LeituraDeVersao>,
+    autosave: Option<Autosave>,
+    rascunho_pendente: Option<Rascunho>,
+    gravacao_do_rascunho: Option<std::sync::mpsc::Receiver<Result<String, ErroAutosave>>>,
+    ultimo_hash_rascunho: Option<String>,
+    rascunho_escrito: bool,
+    recuperado: bool,
 }
 
 /// Estado da comparação entre duas Versões (ticket 22): as duas escolhidas, o diff calculado pelo
@@ -454,6 +478,9 @@ impl EstadoPartitura {
             ultimo_hash_rascunho: None,
             rascunho_escrito: false,
             recuperado: false,
+            pratica_versao: None,
+            pedido_hipotese: None,
+            aviso_pratica_versao: None,
         };
         e.escolher(0);
         e
@@ -1460,6 +1487,187 @@ impl EstadoPartitura {
         Ok(r)
     }
 
+    // --- Praticar a Versão e ouvir o compasso (ticket 25) ----------------------------------------
+
+    /// Prática da Versão aberta pela lista, se houver (modo, rótulo e selo para a tela).
+    pub const fn pratica_da_versao(&self) -> Option<&PraticaDaVersao> {
+        self.pratica_versao.as_ref()
+    }
+
+    /// Versão não aprovada esperando a confirmação de prática como Hipótese.
+    pub fn pedido_de_hipotese(&self) -> Option<&str> {
+        self.pedido_hipotese.as_deref()
+    }
+
+    /// Aviso de recusa ou de sessão invalidada da prática de Versão.
+    pub fn aviso_da_pratica_da_versao(&self) -> Option<&str> {
+        self.aviso_pratica_versao.as_deref()
+    }
+
+    /// Fecha o aviso da prática de Versão.
+    pub fn dispensar_aviso_da_pratica_da_versao(&mut self) {
+        self.aviso_pratica_versao = None;
+    }
+
+    /// Cancela o pedido de prática como Hipótese.
+    pub fn cancelar_pedido_de_hipotese(&mut self) {
+        self.pedido_hipotese = None;
+    }
+
+    /// "Praticar esta Versão": Aprovada vira Gabarito e a prática começa; não aprovada **não**
+    /// abre, só registra o pedido (a tela pede a confirmação explícita); Rejeitada é recusada.
+    pub fn pedir_pratica_da_versao(&mut self, hash: &str, som: &mut ServicoSom) {
+        self.pedido_hipotese = None;
+        match self.praticar_versao(hash, false, som) {
+            Ok(()) => {}
+            Err(ErroDaPratica::NaoAprovada(_)) => {
+                self.pedido_hipotese = Some(hash.to_owned());
+                self.aviso_pratica_versao = None;
+            }
+            Err(e) => self.aviso_pratica_versao = Some(format!("Não foi possível praticar: {e}")),
+        }
+    }
+
+    /// Confirmação explícita: pratica a Versão pedida como Hipótese (sempre sinalizada).
+    pub fn confirmar_pratica_como_hipotese(&mut self, som: &mut ServicoSom) {
+        let Some(h) = self.pedido_hipotese.take() else {
+            return;
+        };
+        if let Err(e) = self.praticar_versao(&h, true, som) {
+            self.aviso_pratica_versao = Some(format!("Não foi possível praticar: {e}"));
+        }
+    }
+
+    /// Abre a Versão `hash` pelo serviço de prática e começa a praticar. O documento em edição
+    /// fica guardado (como na leitura de Versão): "Voltar à edição" o devolve. Em erro, nada muda.
+    fn praticar_versao(
+        &mut self,
+        hash: &str,
+        permitir_hipotese: bool,
+        som: &mut ServicoSom,
+    ) -> Result<(), ErroDaPratica> {
+        let Some(versoes) = self.versoes.take() else {
+            return Err(ErroDaPratica::Invalidada(
+                "esta partitura não tem Versões (arquivo solto)".into(),
+            ));
+        };
+        let versao = match versoes.abrir(hash) {
+            Ok(a) => a.versao,
+            Err(e) => {
+                self.versoes = Some(versoes);
+                return Err(e.into());
+            }
+        };
+        self.parar_sem_som();
+        let vinculo = self.guardar_vinculo();
+        let antigo = self.documento.take();
+        match PraticaDaVersao::abrir(&versoes, hash, permitir_hipotese, self) {
+            Ok(pv) => {
+                self.restaurar_vinculo(vinculo);
+                let guardado = match self.leitura.take() {
+                    Some(l) => l.guardado,
+                    None => antigo,
+                };
+                self.leitura = Some(LeituraDeVersao { versao, guardado });
+                som.panico();
+                let r = pv.iniciar(&versoes, self, som.agora_ns());
+                self.versoes = Some(versoes);
+                self.aviso_pratica_versao = None;
+                self.aviso_versoes = Some(format!("Praticando: {}.", pv.rotulo()));
+                self.pratica_versao = Some(pv);
+                r
+            }
+            Err(e) => {
+                self.documento = antigo;
+                self.restaurar_vinculo(vinculo);
+                self.versoes = Some(versoes);
+                Err(e)
+            }
+        }
+    }
+
+    fn guardar_vinculo(&mut self) -> VinculoDaOficina {
+        VinculoDaOficina {
+            lista_de_versoes: std::mem::take(&mut self.lista_de_versoes),
+            comparacao: std::mem::take(&mut self.comparacao),
+            aviso_versoes: self.aviso_versoes.take(),
+            alerta_originais: self.alerta_originais.take(),
+            leitura: self.leitura.take(),
+            autosave: self.autosave.take(),
+            rascunho_pendente: self.rascunho_pendente.take(),
+            gravacao_do_rascunho: self.gravacao_do_rascunho.take(),
+            ultimo_hash_rascunho: self.ultimo_hash_rascunho.take(),
+            rascunho_escrito: self.rascunho_escrito,
+            recuperado: self.recuperado,
+        }
+    }
+
+    fn restaurar_vinculo(&mut self, v: VinculoDaOficina) {
+        self.lista_de_versoes = v.lista_de_versoes;
+        self.comparacao = v.comparacao;
+        self.aviso_versoes = v.aviso_versoes;
+        self.alerta_originais = v.alerta_originais;
+        self.leitura = v.leitura;
+        self.autosave = v.autosave;
+        self.rascunho_pendente = v.rascunho_pendente;
+        self.gravacao_do_rascunho = v.gravacao_do_rascunho;
+        self.ultimo_hash_rascunho = v.ultimo_hash_rascunho;
+        self.rascunho_escrito = v.rascunho_escrito;
+        self.recuperado = v.recuperado;
+    }
+
+    /// Confere a sessão de prática da Versão (a tela chama a cada quadro enquanto ela existe).
+    /// Se deixou de valer (outra Versão ou arquivo aberto, partitura mexida, Versão adulterada,
+    /// aprovação reaberta ou rejeitada), encerra a prática e deixa o aviso na tela.
+    pub fn sincronizar_pratica_da_versao(&mut self) {
+        let Some(pv) = self.pratica_versao.take() else {
+            return;
+        };
+        let r = match self.versoes.take() {
+            Some(v) => {
+                let r = pv.sincronizar(&v, self);
+                self.versoes = Some(v);
+                r
+            }
+            None => {
+                self.limpar_pratica();
+                Err(ErroDaPratica::Invalidada(
+                    "a partitura da Oficina não está mais aberta".into(),
+                ))
+            }
+        };
+        match r {
+            Ok(()) => self.pratica_versao = Some(pv),
+            Err(e) => self.aviso_pratica_versao = Some(format!("Prática encerrada: {e}")),
+        }
+    }
+
+    /// "Ouvir compasso": toca o compasso em foco (nota selecionada ou compasso clicado) pelo
+    /// serviço de som existente. A recusa vira aviso. Som real: NÃO VERIFICADO.
+    pub fn ouvir_compasso_em_foco(&mut self, som: &mut ServicoSom) {
+        let Some(c) = self.compasso_em_foco else {
+            self.aviso = Some("Escolha um compasso (clique nele ou selecione uma nota).".into());
+            return;
+        };
+        match ouvir_compasso(self, som, c) {
+            Ok(n) => self.aviso = Some(format!("Ouvindo o compasso {} ({n} notas).", c + 1)),
+            Err(m) => self.aviso = Some(m),
+        }
+    }
+
+    /// Por que "Ouvir compasso" está indisponível, ou `None` se pode tocar.
+    pub fn motivo_sem_ouvir_compasso(&self) -> Option<&'static str> {
+        if self.documento.is_none() {
+            Some("Nenhuma partitura aberta.")
+        } else if self.compasso_em_foco.is_none() {
+            Some("Clique num compasso ou selecione uma nota para escolher o compasso.")
+        } else if self.tocando() || self.praticando() {
+            Some("Pare a reprodução ou a prática antes de ouvir o compasso.")
+        } else {
+            None
+        }
+    }
+
     /// Abre uma Versão antiga em modo leitura (sem editar nem salvar). O documento em edição fica
     /// guardado até [`Self::voltar_da_leitura`].
     pub fn abrir_versao(&mut self, hash: &str) {
@@ -1474,6 +1682,8 @@ impl EstadoPartitura {
                 return;
             }
         };
+        self.pratica_versao = None;
+        self.pedido_hipotese = None;
         let nome = format!("{} (leitura)", self.nome().trim_end_matches(" (leitura)"));
         match DocumentoPartitura::de_texto(nome, aberta.conteudo) {
             Ok(d) => {
@@ -1504,6 +1714,7 @@ impl EstadoPartitura {
         let Some(l) = self.leitura.take() else {
             return;
         };
+        self.pratica_versao = None;
         if let Some(d) = l.guardado {
             self.instalar_documento(d);
         }
@@ -2037,10 +2248,12 @@ pub fn desenhar_corpo(
     e.atualizar_pratica(som.agora_ns());
     e.autosave_tick(som.agora_ns() / 1_000_000);
     desenhar_transporte(ui, e, som);
+    e.sincronizar_pratica_da_versao();
     desenhar_pratica(ui, e, som);
+    desenhar_selo_da_pratica_da_versao(ui, e);
     if opcoes.com_exportacao {
         desenhar_exportacao(ui, e);
-        desenhar_versoes(ui, e);
+        desenhar_versoes(ui, e, som);
     }
     if let Some(msg) = &e.alerta_originais {
         ui.label(
@@ -2725,7 +2938,42 @@ fn desenhar_exportacao(ui: &mut Ui, e: &mut EstadoPartitura) {
 }
 
 /// Salvar como Versão, nota de motivo, lista de Versões e abertura em modo leitura (ticket 21).
-fn desenhar_versoes(ui: &mut Ui, e: &mut EstadoPartitura) {
+/// Selo da Versão em prática (nunca chama a Hipótese de Gabarito) e o aviso de sessão invalidada.
+fn desenhar_selo_da_pratica_da_versao(ui: &mut Ui, e: &mut EstadoPartitura) {
+    if let Some(pv) = e.pratica_da_versao() {
+        let t = if pv.gabarito_oficial() {
+            RichText::new(format!(
+                "Praticando a Versão {}: {}",
+                hash_curto(pv.hash()),
+                pv.rotulo()
+            ))
+            .strong()
+        } else {
+            RichText::new(format!(
+                "HIPÓTESE — não é o Gabarito oficial · Versão {}: {}",
+                hash_curto(pv.hash()),
+                pv.rotulo()
+            ))
+            .strong()
+            .color(egui::Color32::from_rgb(232, 112, 106))
+        };
+        ui.label(t);
+    }
+    if let Some(a) = e.aviso_da_pratica_da_versao().map(str::to_owned) {
+        ui.horizontal_wrapped(|ui| {
+            ui.label(
+                RichText::new(a)
+                    .strong()
+                    .color(egui::Color32::from_rgb(232, 112, 106)),
+            );
+            if ui.small_button("Ok").clicked() {
+                e.dispensar_aviso_da_pratica_da_versao();
+            }
+        });
+    }
+}
+
+fn desenhar_versoes(ui: &mut Ui, e: &mut EstadoPartitura, som: &mut ServicoSom) {
     ui.horizontal_wrapped(|ui| {
         ui.label("Versões:");
         ui.add_enabled(
@@ -2744,6 +2992,17 @@ fn desenhar_versoes(ui: &mut Ui, e: &mut EstadoPartitura) {
         if salvar.clicked() {
             // O resultado (ou o erro) já vira aviso na tela.
             let _ = e.salvar_versao();
+        }
+        let ouvir = ui.add_enabled(
+            e.motivo_sem_ouvir_compasso().is_none(),
+            Button::new("Ouvir compasso"),
+        );
+        let ouvir = match e.motivo_sem_ouvir_compasso() {
+            Some(m) => ouvir.on_disabled_hover_text(m),
+            None => ouvir.on_hover_text("Toca só o compasso em foco, para conferir de ouvido"),
+        };
+        if ouvir.clicked() {
+            e.ouvir_compasso_em_foco(som);
         }
         if let Some(v) = e.versao_em_leitura() {
             ui.label(RichText::new(format!("Lendo {} (somente leitura)", hash_curto(&v.hash))).strong());
@@ -2787,6 +3046,7 @@ fn desenhar_versoes(ui: &mut Ui, e: &mut EstadoPartitura) {
         );
     });
     let mut abrir = None;
+    let mut praticar = None;
     let mut decidir: Option<(String, AcaoDeRevisao, bool)> = None;
     egui::ScrollArea::vertical()
         .id_salt("lista-de-versoes")
@@ -2797,6 +3057,26 @@ fn desenhar_versoes(ui: &mut Ui, e: &mut EstadoPartitura) {
                     ui.label(l.em_texto());
                     if l.abrivel && ui.small_button("Abrir").clicked() {
                         abrir = Some(l.hash.clone());
+                    }
+                    if l.abrivel {
+                        let rejeitada = l.estado == Some(EstadoDeRevisao::Rejeitada);
+                        let b =
+                            ui.add_enabled(!rejeitada, Button::new("Praticar esta Versão").small());
+                        let b = if rejeitada {
+                            b.on_disabled_hover_text(
+                                "Versão rejeitada na revisão: não pode ser praticada. Reabra-a \
+                                 para revisar.",
+                            )
+                        } else if l.estado == Some(EstadoDeRevisao::Aprovada) {
+                            b.on_hover_text("Versão aprovada: pratica como Gabarito")
+                        } else {
+                            b.on_hover_text(
+                                "Versão não aprovada: só pratica com confirmação, como Hipótese",
+                            )
+                        };
+                        if b.clicked() {
+                            praticar = Some(l.hash.clone());
+                        }
                     }
                     if l.abrivel && l.estado.is_some() {
                         for (rotulo, acao, direta) in [
@@ -2817,7 +3097,27 @@ fn desenhar_versoes(ui: &mut Ui, e: &mut EstadoPartitura) {
                 });
             }
         });
+    if let Some(h) = e.pedido_de_hipotese().map(|h| hash_curto(h).to_owned()) {
+        ui.horizontal_wrapped(|ui| {
+            ui.label(
+                RichText::new(format!(
+                    "HIPÓTESE — não é o Gabarito oficial: a Versão {h} não foi aprovada."
+                ))
+                .strong()
+                .color(egui::Color32::from_rgb(232, 112, 106)),
+            );
+            if ui.button("Praticar como Hipótese").clicked() {
+                e.confirmar_pratica_como_hipotese(som);
+            }
+            if ui.button("Cancelar").clicked() {
+                e.cancelar_pedido_de_hipotese();
+            }
+        });
+    }
     desenhar_comparacao(ui, e);
+    if let Some(h) = praticar {
+        e.pedir_pratica_da_versao(&h, som);
+    }
     if let Some(h) = abrir {
         e.abrir_versao(&h);
     }
@@ -5013,5 +5313,174 @@ mod testes {
         // Teclas na lista só agem com uma linha da lista em foco: sem foco, nada muda.
         apertar_tecla_no_quadro(&ctx, &mut e, &mut som, Key::ArrowDown);
         assert_eq!(e.linha_ativa_do_diff(), 0);
+    }
+
+    // --- Ticket 25: Praticar a Versão e ouvir o compasso na tela ---------------------------------
+
+    /// Oficina com a Hipótese e a Versão 1 (a primeira nota subiu um semitom), em revisão.
+    fn com_versao_um() -> (tempfile::TempDir, EstadoPartitura, String, String) {
+        let (d, mut e, _) = com_oficina();
+        editar_uma_nota(&mut e);
+        e.salvar_versao().expect("salva");
+        let hipotese = e.lista_de_versoes()[0].hash.clone();
+        let v1 = e.lista_de_versoes()[1].hash.clone();
+        (d, e, hipotese, v1)
+    }
+
+    fn aprovar(e: &mut EstadoPartitura, hash: &str) {
+        e.definir_motivo_da_decisao("conferi com o PDF");
+        e.decidir_versao(hash, AcaoDeRevisao::Aprovar, false)
+            .expect("aprova");
+    }
+
+    #[test]
+    fn praticar_versao_aprovada_e_gabarito_e_a_oficina_continua_ligada() {
+        let (mut som, ctx) = banco();
+        let (_d, mut e, _hip, v1) = com_versao_um();
+        let editado = e.documento.as_ref().expect("doc").exportado().expect("x");
+        aprovar(&mut e, &v1);
+        e.pedir_pratica_da_versao(&v1, &mut som);
+        let pv = e.pratica_da_versao().expect("praticando a Versão");
+        assert!(pv.gabarito_oficial());
+        assert!(pv.rotulo().starts_with("Gabarito"), "{}", pv.rotulo());
+        assert!(e.praticando());
+        assert!(e.pedido_de_hipotese().is_none());
+        assert!(e.aviso_da_pratica_da_versao().is_none());
+        // A lista de Versões e o vínculo com a Oficina seguem de pé.
+        assert!(e.tem_versoes());
+        assert_eq!(e.lista_de_versoes().len(), 2);
+        quadro(&ctx, &mut e, &mut som);
+        assert!(e.pratica_da_versao().is_some(), "o quadro não invalida");
+        // Voltar à edição devolve o documento que estava aberto.
+        e.voltar_da_leitura();
+        assert!(e.pratica_da_versao().is_none());
+        assert_eq!(
+            e.documento.as_ref().expect("doc").exportado().expect("x"),
+            editado
+        );
+    }
+
+    #[test]
+    fn nao_aprovada_so_pratica_com_confirmacao_e_com_selo_de_hipotese() {
+        let (mut som, ctx) = banco();
+        let (_d, mut e, hipotese, v1) = com_versao_um();
+        let nome = e.nome().to_owned();
+        for h in [&v1, &hipotese] {
+            e.pedir_pratica_da_versao(h, &mut som);
+            assert_eq!(e.pedido_de_hipotese(), Some(h.as_str()));
+            assert!(e.pratica_da_versao().is_none(), "sem confirmação não abre");
+            assert!(!e.praticando());
+            assert_eq!(e.nome(), nome, "o documento não muda sem confirmar");
+            quadro(&ctx, &mut e, &mut som);
+            e.cancelar_pedido_de_hipotese();
+            assert!(e.pedido_de_hipotese().is_none());
+        }
+        e.pedir_pratica_da_versao(&v1, &mut som);
+        e.confirmar_pratica_como_hipotese(&mut som);
+        let pv = e.pratica_da_versao().expect("praticando como Hipótese");
+        assert!(!pv.gabarito_oficial());
+        let r = pv.rotulo();
+        assert!(
+            r.contains("HIPÓTESE") && r.contains("não é o Gabarito oficial"),
+            "{r}"
+        );
+        assert!(e.praticando());
+        assert!(e.nome().contains("HIPÓTESE"), "{}", e.nome());
+        quadro(&ctx, &mut e, &mut som);
+        assert!(e.pratica_da_versao().is_some());
+    }
+
+    #[test]
+    fn versao_rejeitada_nao_pratica_e_avisa() {
+        let (mut som, ctx) = banco();
+        let (_d, mut e, _hip, v1) = com_versao_um();
+        e.definir_motivo_da_decisao("nota errada");
+        e.decidir_versao(&v1, AcaoDeRevisao::Rejeitar, false)
+            .expect("rejeita");
+        let nome = e.nome().to_owned();
+        e.pedir_pratica_da_versao(&v1, &mut som);
+        assert!(e.pratica_da_versao().is_none());
+        assert!(
+            e.pedido_de_hipotese().is_none(),
+            "rejeitada nem pede confirmação"
+        );
+        assert!(!e.praticando());
+        assert_eq!(e.nome(), nome);
+        let a = e.aviso_da_pratica_da_versao().expect("aviso");
+        assert!(a.contains("rejeitada"), "{a}");
+        quadro(&ctx, &mut e, &mut som);
+    }
+
+    #[test]
+    fn sessao_invalidada_aparece_como_aviso_e_encerra_a_pratica() {
+        let (mut som, ctx) = banco();
+        let (_d, mut e, _hip, v1) = com_versao_um();
+        aprovar(&mut e, &v1);
+        e.pedir_pratica_da_versao(&v1, &mut som);
+        assert!(e.praticando());
+        // Reabrir a aprovação muda a Versão: a sessão deixa de valer no próximo quadro.
+        e.definir_motivo_da_decisao("achei um erro");
+        e.decidir_versao(&v1, AcaoDeRevisao::Reabrir, false)
+            .expect("reabre");
+        quadro(&ctx, &mut e, &mut som);
+        assert!(e.pratica_da_versao().is_none());
+        assert!(!e.praticando(), "a prática anterior foi limpa");
+        assert!(e.resumo_pratica().is_none());
+        let a = e.aviso_da_pratica_da_versao().expect("aviso");
+        assert!(a.contains("Prática encerrada"), "{a}");
+        e.dispensar_aviso_da_pratica_da_versao();
+        assert!(e.aviso_da_pratica_da_versao().is_none());
+    }
+
+    #[test]
+    fn mexer_na_partitura_depois_de_abrir_a_versao_invalida_a_sessao() {
+        let (mut som, ctx) = banco();
+        let (_d, mut e, _hip, v1) = com_versao_um();
+        aprovar(&mut e, &v1);
+        e.pedir_pratica_da_versao(&v1, &mut som);
+        e.parar_pratica();
+        let _ = e.mudar_altura(UnidadeDeAltura::Semitom, SentidoDaAltura::Acima);
+        quadro(&ctx, &mut e, &mut som);
+        assert!(e.pratica_da_versao().is_none());
+        assert!(e.aviso_da_pratica_da_versao().is_some());
+    }
+
+    #[test]
+    fn arquivo_solto_recusa_praticar_versao_sem_trocar_o_documento() {
+        let (mut som, _ctx) = banco();
+        let mut solto = ode();
+        let nome = solto.nome().to_owned();
+        solto.pedir_pratica_da_versao(&"a".repeat(64), &mut som);
+        assert!(solto.pratica_da_versao().is_none());
+        assert_eq!(solto.nome(), nome);
+        assert!(solto.aviso_da_pratica_da_versao().is_some());
+    }
+
+    #[test]
+    fn ouvir_compasso_toca_o_compasso_em_foco_e_explica_quando_nao_pode() {
+        let (mut som, ctx) = banco();
+        let (_d, mut e, _hip, _v1) = com_versao_um();
+        e.compasso_em_foco = None;
+        assert!(
+            e.motivo_sem_ouvir_compasso()
+                .expect("dica")
+                .contains("compasso"),
+            "sem compasso em foco o botão fica desativado com dica"
+        );
+        e.ouvir_compasso_em_foco(&mut som);
+        assert!(e.aviso.as_deref().expect("aviso").contains("Escolha"));
+        e.compasso_em_foco = Some(0);
+        assert!(e.motivo_sem_ouvir_compasso().is_none());
+        e.ouvir_compasso_em_foco(&mut som);
+        let a = e.aviso.clone().expect("aviso");
+        assert!(a.starts_with("Ouvindo o compasso 1"), "{a}");
+        quadro(&ctx, &mut e, &mut som);
+        // Durante a prática o botão se desativa.
+        e.iniciar_pratica(som.agora_ns());
+        assert!(
+            e.motivo_sem_ouvir_compasso()
+                .expect("dica")
+                .contains("Pare")
+        );
     }
 }
