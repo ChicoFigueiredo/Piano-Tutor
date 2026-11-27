@@ -61,6 +61,10 @@ pub const FRACAO_CURSOR_FITA: f32 = 1.0 / 3.0;
 pub mod adaptador_egui;
 pub use adaptador_egui::*;
 
+// Spike do ticket 09 (ADR-0018): protótipo de render com a Bravura, só em testes.
+#[cfg(test)]
+mod spike_bravura;
+
 // --- Primitivas ----------------------------------------------------------------------------
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
