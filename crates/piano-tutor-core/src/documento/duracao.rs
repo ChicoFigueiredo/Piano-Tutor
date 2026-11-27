@@ -1,7 +1,7 @@
 //! Durações exatas: `divisions` é o MMC dos denominadores; o que não couber vira erro explícito.
 
 use super::erro::ErroDocumento;
-use piano_tutor_core::partitura::Fracao;
+use crate::partitura::Fracao;
 
 fn mdc(mut a: i128, mut b: i128) -> i128 {
     while b != 0 {

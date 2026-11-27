@@ -1,13 +1,16 @@
-//! Spike do ticket 08 (E01): modelo híbrido de documento MusicXML.
+//! Modelo de documento híbrido do núcleo (ADR-0017): texto original imutável, modelo semântico
+//! com [`IdNota`] estável, **faixa de bytes de origem** de cada parte, compasso, nota e altura, e
+//! **bit sujo** por compasso.
 //!
-//! Hipótese: um modelo semântico com [`IdNota`] estável, mais a **faixa de bytes de origem** de cada
-//! parte, compasso, nota e altura, mais um **bit sujo** por compasso, permite exportar copiando
-//! byte a byte tudo que não foi editado e regenerando só o compasso sujo (reaproveitando os filhos
-//! desconhecidos). O texto original nunca muda: as faixas só valem para ele (`exportar` produz um
-//! texto novo aplicando os patches uma única vez, de trás para frente).
+//! Exportar copia byte a byte tudo que não está sujo e regenera só os compassos sujos (peças:
+//! texto original por faixa mais filhos desconhecidos preservados). O texto original nunca muda:
+//! as faixas só valem para ele, e `exportar` produz um texto novo aplicando os patches uma única
+//! vez, de trás para frente.
 //!
-//! Este módulo vive no crate de fixtures (só para testes) de propósito: o ADR-0017 decide se o
-//! código sobe para o núcleo no ticket 10. Nada aqui é UI.
+//! A porta de entrada para telas e ferramentas é o [`servico`] ([`DocumentoAberto`]): abre
+//! MusicXML ou MXL, entrega o [`Documento`], a [`crate::partitura::Partitura`] derivada e as
+//! identidades de nota do layout, e exporta. Sem janela, áudio, rede nem disco: quem grava
+//! arquivos é o chamador. Nada aqui é interface (seam S1).
 
 mod duracao;
 mod edicao;
@@ -15,18 +18,57 @@ mod erro;
 mod exportar;
 mod ids;
 mod leitura;
+pub mod servico;
 mod texto;
 
 pub use duracao::mmc_dos_denominadores;
 pub use erro::ErroDocumento;
 pub use exportar::{Impressao, Patch, Patches, impressao_de};
 pub use ids::{ChaveNota, TabelaIds};
+pub use servico::{DocumentoAberto, ErroServico, Formato, IdsPorNota};
 
-use crate::harness::PosCompasso;
-use piano_tutor_core::partitura::Fracao;
+use crate::partitura::Fracao;
 use std::collections::HashMap;
+use std::fmt;
 use std::ops::Range;
 use texto::No;
+
+/// Posição de um compasso: parte (id) e índice (0 = primeiro compasso da parte).
+///
+/// A igualdade considera só `parte` e `indice`; `numero` (o rótulo impresso) serve para mensagens.
+#[derive(Debug, Clone, Eq)]
+pub struct PosCompasso {
+    pub parte: String,
+    pub indice: usize,
+    pub numero: String,
+}
+
+impl PosCompasso {
+    /// Posição para listas de compassos editáveis (sem rótulo).
+    pub fn nova(parte: &str, indice: usize) -> Self {
+        Self {
+            parte: parte.to_owned(),
+            indice,
+            numero: String::new(),
+        }
+    }
+}
+
+impl PartialEq for PosCompasso {
+    fn eq(&self, o: &Self) -> bool {
+        self.parte == o.parte && self.indice == o.indice
+    }
+}
+
+impl fmt::Display for PosCompasso {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "{}#{}", self.parte, self.indice)?;
+        if !self.numero.is_empty() {
+            write!(f, " (compasso {})", self.numero)?;
+        }
+        Ok(())
+    }
+}
 
 /// Identidade estável de uma nota: monotônica por documento, atribuída na leitura, nunca
 /// reutilizada (o contador só cresce) e nunca derivada do índice.

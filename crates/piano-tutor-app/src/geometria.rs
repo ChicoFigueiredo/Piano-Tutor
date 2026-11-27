@@ -6,11 +6,11 @@
 
 use std::ops::{Add, AddAssign, Mul, Neg, Sub};
 
-/// Identidade estável de uma nota. Hoje é só um espaço reservado: quem a preenche é o serviço
-/// de documento (ticket 10); até lá nenhuma primitiva a carrega (`None`) e valem os
-/// comportamentos antigos por compasso.
-#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, PartialOrd, Ord)]
-pub struct IdNota(pub u64);
+/// Identidade estável de uma nota: o mesmo tipo do documento do núcleo (ticket 10). Quem a
+/// atribui é o serviço de documento; o layout a carrega nas primitivas da nota quando recebe as
+/// identidades (`partitura_visual::calcular_layout_com_ids`). Sem elas, nenhuma primitiva a
+/// carrega (`None`) e valem os comportamentos por compasso.
+pub use piano_tutor_core::documento::IdNota;
 
 #[derive(Clone, Copy, Debug, Default, PartialEq)]
 pub struct Ponto {

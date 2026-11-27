@@ -17,6 +17,7 @@
 #![allow(clippy::needless_range_loop)]
 
 use crate::geometria::{Ancora, IdNota, Ponto, Retangulo, ponto, vetor};
+use piano_tutor_core::documento::IdsPorNota;
 use piano_tutor_core::partitura::{
     Acidente, Altura, Armadura, Barra, Clave, Compasso, DirecaoHaste, EstadoViga, Figura, Fracao,
     InfoCompasso, MarcaLigadura, Nota, Partitura, SimboloForma, SinalClave,
@@ -322,7 +323,7 @@ impl Layout {
 
 #[derive(Clone, Debug)]
 struct NotaL {
-    /// Reservado para o documento (ticket 10).
+    /// Identidade da nota no documento (`None` quando o layout é calculado sem identidades).
     id: Option<IdNota>,
     /// Meios espaços acima da linha inferior (0 = linha inferior, 8 = superior).
     s: i32,
@@ -411,9 +412,15 @@ fn analisar_pauta(
     pauta: u8,
     clave_ini: Clave,
     trocas: &[(Fracao, Clave)],
+    ids: &dyn Fn(usize) -> Option<IdNota>,
 ) -> AnalisePauta {
-    let notas: Vec<&Nota> = comp.notas.iter().filter(|n| n.pauta == pauta).collect();
-    let mut vozes: Vec<u8> = notas.iter().map(|n| n.voz).collect();
+    let notas: Vec<(usize, &Nota)> = comp
+        .notas
+        .iter()
+        .enumerate()
+        .filter(|(_, n)| n.pauta == pauta)
+        .collect();
+    let mut vozes: Vec<u8> = notas.iter().map(|(_, n)| n.voz).collect();
     vozes.sort_unstable();
     vozes.dedup();
     let n_vozes = vozes.len();
@@ -423,10 +430,10 @@ fn analisar_pauta(
     };
     for (rank, voz) in vozes.iter().enumerate() {
         let primeiro_idx = a.eventos.len();
-        for n in notas.iter().filter(|n| n.voz == *voz) {
+        for &(ordinal, n) in notas.iter().filter(|(_, n)| n.voz == *voz) {
             let clave = clave_em(clave_ini, trocas, n.posicao);
             let nl = n.altura.map(|alt| NotaL {
-                id: None,
+                id: ids(ordinal),
                 s: s_de(alt, clave),
                 acc: n.acidente,
                 acc_col: 0,
@@ -1702,19 +1709,37 @@ struct SistemaTrabalho {
     esticar: f32,
 }
 
-/// Diagrama a partitura para uma largura disponível, em sp, quebrando em sistemas.
+/// Diagrama a partitura para uma largura disponível, em sp, quebrando em sistemas. Sem
+/// identidades de nota: as primitivas da nota não carregam [`IdNota`] (`Item::nota` é `None`).
 pub fn calcular_layout(p: &Partitura, largura_sp: f32) -> Layout {
-    calcular_layout_com(p, largura_sp, false)
+    calcular_layout_com(p, None, largura_sp, false)
+}
+
+/// Como [`calcular_layout`], mas as primitivas de cada nota (cabeça, pontos de aumento e
+/// acidente) carregam a identidade que o serviço de documento atribuiu a ela (ticket 10). A
+/// geometria é a mesma: só `Item::nota` muda.
+pub fn calcular_layout_com_ids(p: &Partitura, ids: &IdsPorNota, largura_sp: f32) -> Layout {
+    calcular_layout_com(p, Some(ids), largura_sp, false)
 }
 
 /// Diagrama a partitura como **fita contínua**: um único sistema sem quebras de linha, na
 /// largura natural dos compassos (sem esticar). Clave e armadura só aparecem no início e onde
 /// mudam. `Layout::largura` é a largura total da fita, em sp.
 pub fn calcular_layout_fita(p: &Partitura) -> Layout {
-    calcular_layout_com(p, LARGURA_MINIMA, true)
+    calcular_layout_com(p, None, LARGURA_MINIMA, true)
 }
 
-fn calcular_layout_com(p: &Partitura, largura_sp: f32, fita: bool) -> Layout {
+/// A fita contínua com as identidades de nota (ver [`calcular_layout_com_ids`]).
+pub fn calcular_layout_fita_com_ids(p: &Partitura, ids: &IdsPorNota) -> Layout {
+    calcular_layout_com(p, Some(ids), LARGURA_MINIMA, true)
+}
+
+fn calcular_layout_com(
+    p: &Partitura,
+    ids: Option<&IdsPorNota>,
+    largura_sp: f32,
+    fita: bool,
+) -> Layout {
     let largura = largura_sp.max(LARGURA_MINIMA);
     let n_comp = p.compassos.len();
     let pautas: Vec<PautaGlobal> = p
@@ -1739,6 +1764,7 @@ fn calcular_layout_com(p: &Partitura, largura_sp: f32, fita: bool) -> Layout {
                         g.pauta,
                         claves[i].inicio[m],
                         &claves[i].internas[m],
+                        &|ordinal| ids.and_then(|t| t.id(g.parte, m, ordinal)),
                     )
                 })
                 .collect()
@@ -3223,6 +3249,74 @@ mod testes {
         let y = l.sistemas[0].y_topo + 2.0;
         assert_eq!(l.nota_em(ponto(20.2, y), 0.5), Some(IdNota(7)));
         assert_eq!(l.nota_em(ponto(21.0, y), 0.5), Some(IdNota(8)));
+    }
+
+    #[test]
+    fn layout_com_ids_carrega_a_identidade_de_cada_cabeca_de_nota() {
+        use piano_tutor_core::documento::DocumentoAberto;
+        let fontes = [
+            MINIMA,
+            arq(0),
+            arq(1),
+            arq(2),
+            include_str!("../../../assets/partituras/beethoven-ode-a-alegria-tema.musicxml"),
+            include_str!(
+                "../../../assets/partituras/tradicional-brilha-brilha-estrelinha.musicxml"
+            ),
+        ];
+        for (i, f) in fontes.iter().enumerate() {
+            let d = DocumentoAberto::abrir_texto("t", f).expect("abre");
+            for fita in [false, true] {
+                let l = if fita {
+                    calcular_layout_fita_com_ids(d.partitura(), d.ids())
+                } else {
+                    calcular_layout_com_ids(d.partitura(), d.ids(), 100.0)
+                };
+                let mut das_cabecas: Vec<IdNota> = Vec::new();
+                for it in l.sistemas.iter().flat_map(|s| &s.itens) {
+                    if matches!(it.forma, Forma::Cabeca { .. }) {
+                        das_cabecas.push(it.nota.expect("toda cabeça carrega a identidade"));
+                    }
+                }
+                let mut esperadas: Vec<IdNota> = Vec::new();
+                for (pi, parte) in d.partitura().partes.iter().enumerate() {
+                    for (ci, c) in parte.compassos.iter().enumerate() {
+                        for (oi, n) in c.notas.iter().enumerate() {
+                            if n.altura.is_some() {
+                                esperadas.push(d.ids().id(pi, ci, oi).expect("id"));
+                            }
+                        }
+                    }
+                }
+                das_cabecas.sort();
+                esperadas.sort();
+                assert_eq!(das_cabecas, esperadas, "fonte {i} fita {fita}");
+                // O hit test devolve a identidade da cabeça sob o ponto.
+                let cab = l
+                    .sistemas
+                    .iter()
+                    .flat_map(|s| &s.itens)
+                    .find_map(|it| match it.forma {
+                        Forma::Cabeca { centro, .. } => Some((centro, it.nota)),
+                        _ => None,
+                    })
+                    .expect("há cabeça");
+                assert_eq!(l.nota_em(cab.0, 0.0), cab.1, "fonte {i}");
+            }
+        }
+    }
+
+    #[test]
+    fn layout_com_ids_so_acrescenta_a_identidade_sem_mudar_a_geometria() {
+        use piano_tutor_core::documento::DocumentoAberto;
+        for f in [MINIMA, arq(0), arq(2)] {
+            let d = DocumentoAberto::abrir_texto("t", f).expect("abre");
+            let sem = calcular_layout(d.partitura(), 100.0);
+            let com = calcular_layout_com_ids(d.partitura(), d.ids(), 100.0);
+            assert_eq!(assinatura_layout(&sem), assinatura_layout(&com));
+            assert_eq!(sem.largura, com.largura);
+            assert_eq!(sem.altura, com.altura);
+        }
     }
 
     #[test]

@@ -6,7 +6,7 @@ use super::exportar::impressao_de;
 use super::ids::{ChaveNota, TabelaIds};
 use super::texto::{Abertura, No, Peca, Texto, fim_da_abertura};
 use super::{Altura, Compasso, Documento, IdNota, Nota, Parte};
-use piano_tutor_core::partitura::Fracao;
+use crate::partitura::Fracao;
 use roxmltree::{Document, Node, ParsingOptions};
 use std::collections::{BTreeSet, HashMap};
 

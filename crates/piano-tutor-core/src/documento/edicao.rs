@@ -6,7 +6,7 @@ use super::duracao::{mmc, mmc_dos_denominadores, para_divisions};
 use super::erro::ErroDocumento;
 use super::texto::{No, Peca};
 use super::{Altura, Documento, IdNota};
-use piano_tutor_core::partitura::Fracao;
+use crate::partitura::Fracao;
 
 /// Posto de cada filho de `<pitch>` no esquema MusicXML.
 fn posto_pitch(nome: &str) -> Option<u32> {
@@ -203,6 +203,10 @@ impl Documento {
         Ok(())
     }
 
+    /// Mudar `divisions` é **recusado por padrão** (decisão do supervisor): o caminho normal é
+    /// [`Documento::definir_duracao`]. Esta variante só deve ser chamada depois de a interface
+    /// propor a mudança e o usuário confirmar (ticket 16), porque suja a parte inteira.
+    ///
     /// Como [`Documento::definir_duracao`], mas, se o valor não couber, eleva `divisions` da parte
     /// ao MMC dos denominadores de todas as durações (e reescala todos os compassos da parte, que
     /// ficam sujos). Atômico: em erro o documento fica como estava.

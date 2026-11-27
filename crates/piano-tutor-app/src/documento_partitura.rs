@@ -1,10 +1,13 @@
-//! Documento da partitura fora da interface: o texto MusicXML carregado, a [`Partitura`]
-//! derivada, os dados musicais ([`Musica`]) e a exportação. Não depende de egui, áudio nem
-//! janela (seam S1): a tela de Partitura só o usa.
+//! Documento da partitura fora da interface: o [`DocumentoAberto`] do serviço de documento do
+//! núcleo (texto original, [`Partitura`] derivada e identidade de cada nota), os dados musicais
+//! ([`Musica`]) e a exportação. Não depende de egui, áudio nem janela (seam S1): a tela de
+//! Partitura só o usa. Abrir e exportar passam **somente** pelo serviço (`piano_tutor_core::
+//! documento`); aqui ficam apenas a leitura e a gravação de arquivos, com os limites de tamanho.
 
-use piano_tutor_core::mxl::{MXL_TAMANHO_MAXIMO_BYTES, extrair_musicxml};
+use piano_tutor_core::documento::{DocumentoAberto, ErroServico, Formato, IdsPorNota};
+use piano_tutor_core::mxl::MXL_TAMANHO_MAXIMO_BYTES;
 use piano_tutor_core::partitura::{
-    ErroPartitura, EventoReproducao, MapaAndamento, Partitura, TAMANHO_MAXIMO_BYTES,
+    EventoReproducao, MapaAndamento, Partitura, TAMANHO_MAXIMO_BYTES,
 };
 use std::path::{Path, PathBuf};
 
@@ -56,37 +59,30 @@ impl Musica {
     }
 }
 
-/// Lê um `.musicxml`, `.xml` ou `.mxl` (com os limites de tamanho) e devolve o texto XML.
-pub fn ler_arquivo(caminho: &Path) -> Result<String, String> {
-    let ext = caminho
+/// Lê os bytes de um `.musicxml`, `.xml` ou `.mxl` (com os limites de tamanho) e diz o formato.
+/// Quem interpreta os bytes é o serviço de documento.
+pub fn ler_arquivo(caminho: &Path) -> Result<(Vec<u8>, Formato), String> {
+    let formato = caminho
         .extension()
         .and_then(|e| e.to_str())
-        .map(str::to_lowercase)
-        .unwrap_or_default();
-    if ext != "musicxml" && ext != "xml" && ext != "mxl" {
-        return Err("use um arquivo .musicxml, .xml ou .mxl".into());
-    }
+        .and_then(Formato::de_extensao)
+        .ok_or_else(|| "use um arquivo .musicxml, .xml ou .mxl".to_owned())?;
     let meta = std::fs::metadata(caminho).map_err(|e| format!("{}: {e}", caminho.display()))?;
     if !meta.is_file() {
         return Err(format!("{} não é um arquivo", caminho.display()));
     }
-    if ext == "mxl" {
-        if meta.len() > MXL_TAMANHO_MAXIMO_BYTES as u64 {
-            return Err(format!(
-                "arquivo grande demais ({} bytes; máximo {MXL_TAMANHO_MAXIMO_BYTES})",
-                meta.len()
-            ));
-        }
-        let bytes = std::fs::read(caminho).map_err(|e| format!("{}: {e}", caminho.display()))?;
-        return extrair_musicxml(&bytes).map_err(|e| e.to_string());
-    }
-    if meta.len() > TAMANHO_MAXIMO_BYTES as u64 {
+    let maximo = match formato {
+        Formato::Mxl => MXL_TAMANHO_MAXIMO_BYTES,
+        Formato::MusicXml => TAMANHO_MAXIMO_BYTES,
+    };
+    if meta.len() > maximo as u64 {
         return Err(format!(
-            "arquivo grande demais ({} bytes; máximo {TAMANHO_MAXIMO_BYTES})",
+            "arquivo grande demais ({} bytes; máximo {maximo})",
             meta.len()
         ));
     }
-    std::fs::read_to_string(caminho).map_err(|e| format!("{}: {e}", caminho.display()))
+    let bytes = std::fs::read(caminho).map_err(|e| format!("{}: {e}", caminho.display()))?;
+    Ok((bytes, formato))
 }
 
 /// Valida o caminho de destino da exportação (acrescenta `.musicxml` se faltar extensão).
@@ -110,44 +106,61 @@ pub fn destino_de_exportacao(caminho: &str) -> Result<PathBuf, String> {
     Ok(c)
 }
 
-/// Partitura carregada: nome, texto XML original (nada é descartado), modelo e dados musicais.
+/// Partitura carregada: nome, documento aberto pelo serviço (texto original, modelo e
+/// identidades de nota) e dados musicais.
 #[derive(Clone, Debug)]
 pub struct DocumentoPartitura {
     pub nome: String,
-    /// Texto XML carregado, gravado de volta na exportação.
-    pub xml: String,
-    pub partitura: Partitura,
+    aberto: DocumentoAberto,
     pub musica: Musica,
 }
 
 impl DocumentoPartitura {
-    /// Interpreta o texto MusicXML.
-    pub fn de_texto(nome: String, texto: String) -> Result<Self, ErroPartitura> {
-        let partitura = Partitura::de_musicxml(&texto)?;
-        let musica = Musica::de(&partitura);
-        Ok(Self {
+    fn de_aberto(nome: String, aberto: DocumentoAberto) -> Self {
+        let musica = Musica::de(aberto.partitura());
+        Self {
             nome,
-            xml: texto,
-            partitura,
+            aberto,
             musica,
-        })
+        }
+    }
+
+    /// Interpreta o texto MusicXML.
+    pub fn de_texto(nome: String, texto: String) -> Result<Self, ErroServico> {
+        let aberto = DocumentoAberto::abrir_texto(&nome, &texto)?;
+        Ok(Self::de_aberto(nome, aberto))
     }
 
     /// Abre um arquivo `.musicxml`, `.xml` ou `.mxl`; o nome é o do arquivo.
     pub fn de_arquivo(caminho: &Path, nome_se_faltar: &str) -> Result<Self, String> {
-        let texto = ler_arquivo(caminho)?;
+        let (bytes, formato) = ler_arquivo(caminho)?;
         let nome = caminho
             .file_name()
             .map(|n| n.to_string_lossy().into_owned())
             .unwrap_or_else(|| nome_se_faltar.to_owned());
-        Self::de_texto(nome, texto).map_err(|e| e.to_string())
+        let aberto =
+            DocumentoAberto::abrir_bytes(&nome, &bytes, formato).map_err(|e| e.to_string())?;
+        Ok(Self::de_aberto(nome, aberto))
     }
 
-    /// Grava o texto original em `destino` e confere relendo o arquivo.
+    /// O modelo para tocar e desenhar.
+    pub fn partitura(&self) -> &Partitura {
+        self.aberto.partitura()
+    }
+
+    /// Identidade de cada nota do modelo, para o layout.
+    pub fn ids(&self) -> &IdsPorNota {
+        self.aberto.ids()
+    }
+
+    /// O texto MusicXML original, que a exportação sem edição devolve idêntico.
+    pub fn xml(&self) -> &str {
+        self.aberto.texto_original()
+    }
+
+    /// Grava o MusicXML exportado pelo serviço em `destino` e confere relendo o arquivo.
     pub fn gravar(&self, destino: &Path, sobrescrever: bool) -> Result<(), String> {
-        if self.xml.is_empty() {
-            return Err("nenhuma partitura carregada".into());
-        }
+        let texto = self.aberto.exportar().map_err(|e| e.to_string())?;
         let mut aberto = std::fs::OpenOptions::new();
         aberto.write(true);
         if sobrescrever {
@@ -162,16 +175,14 @@ impl DocumentoPartitura {
                 destino.display()
             )
         })?;
-        f.write_all(self.xml.as_bytes())
+        f.write_all(texto.as_bytes())
             .map_err(|e| format!("{}: {e}", destino.display()))?;
         drop(f);
         let lido =
             std::fs::read_to_string(destino).map_err(|e| format!("{}: {e}", destino.display()))?;
-        let relido = Partitura::de_musicxml(&lido).map_err(|e| e.to_string())?;
-        if relido != self.partitura {
-            return Err("a releitura do arquivo exportado difere da partitura carregada".into());
-        }
-        Ok(())
+        self.aberto
+            .conferir_exportacao(&lido)
+            .map_err(|e| e.to_string())
     }
 }
 
@@ -192,11 +203,11 @@ mod testes {
         let d = DocumentoPartitura::de_texto("Ode".into(), EMBUTIDAS[3].1.to_owned())
             .expect("fixture válida");
         assert_eq!(d.nome, "Ode");
-        assert_eq!(d.xml, EMBUTIDAS[3].1, "o texto original é guardado");
-        assert_eq!(d.partitura.compassos.len(), 16);
+        assert_eq!(d.xml(), EMBUTIDAS[3].1, "o texto original é guardado");
+        assert_eq!(d.partitura().compassos.len(), 16);
         assert_eq!(
             d.musica.eventos.len(),
-            d.partitura.eventos_sem_unissono().len()
+            d.partitura().eventos_sem_unissono().len()
         );
         assert!(d.musica.duracao_q > 0.0);
         assert_eq!(d.musica.compasso_em(0.0).map(|(c, _)| c), Some(0));
@@ -224,13 +235,81 @@ mod testes {
             "não sobrescreve sem pedir"
         );
         assert!(d.gravar(&destino, true).is_ok());
-        // A releitura de conferência detecta um modelo que difere do arquivo gravado.
+    }
+
+    #[test]
+    fn exportar_confere_a_releitura_pelo_servico() {
+        // Se o arquivo gravado deixasse de ser o documento aberto, a conferência do serviço
+        // recusaria (cobertura do caminho de erro no teste do núcleo e aqui pelo mesmo contrato).
+        let d = DocumentoPartitura::de_texto("Ode".into(), EMBUTIDAS[3].1.to_owned()).expect("ok");
         let outro =
             DocumentoPartitura::de_texto("B".into(), EMBUTIDAS[0].1.to_owned()).expect("ok");
-        let mut trocado = d.clone();
-        trocado.partitura = outro.partitura;
-        let e = trocado.gravar(&destino, true).expect_err("difere");
-        assert!(e.contains("releitura"), "{e}");
+        let e = d
+            .aberto
+            .conferir_exportacao(outro.xml())
+            .expect_err("difere");
+        assert!(e.to_string().contains("releitura"), "{e}");
+    }
+
+    #[test]
+    fn abrir_sem_editar_nao_grava_nada_em_disco() {
+        let dir = pasta("sem-gravar");
+        let xml = dir.join("ode.musicxml");
+        std::fs::write(&xml, EMBUTIDAS[3].1).expect("grava");
+        let mxl = dir.join("ode.mxl");
+        std::fs::write(
+            &mxl,
+            empacotar_mxl("ode.musicxml", EMBUTIDAS[3].1).expect("zip"),
+        )
+        .expect("grava");
+        let instantaneo = || {
+            let mut v: Vec<_> = std::fs::read_dir(&dir)
+                .expect("lê")
+                .map(|e| {
+                    let e = e.expect("entrada");
+                    let m = e.metadata().expect("meta");
+                    (e.file_name(), m.len(), m.modified().expect("mtime"))
+                })
+                .collect();
+            v.sort();
+            v
+        };
+        let antes = instantaneo();
+        for c in [&xml, &mxl] {
+            let d = DocumentoPartitura::de_arquivo(c, "?").expect("abre");
+            assert!(!d.aberto.editado());
+            // Exportar devolve o texto, sem tocar o disco (quem grava é `gravar`).
+            let _ = d.aberto.exportar().expect("exporta");
+        }
+        assert_eq!(instantaneo(), antes, "nenhum arquivo criado nem alterado");
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn a_rota_de_abrir_e_exportar_so_usa_o_servico_sem_parse_direto() {
+        // Ticket 10: nenhum parse direto de MusicXML/MXL na rota da tela (só o serviço do núcleo).
+        for (nome, fonte) in [
+            (
+                "documento_partitura.rs",
+                include_str!("documento_partitura.rs"),
+            ),
+            ("tela_partitura.rs", include_str!("tela_partitura.rs")),
+        ] {
+            let producao = fonte
+                .split("#[cfg(test)]\nmod testes")
+                .next()
+                .unwrap_or_default();
+            for proibido in ["de_musicxml", "extrair_musicxml", "de_mxl", "roxmltree"] {
+                assert!(!producao.contains(proibido), "{nome} usa {proibido}");
+            }
+        }
+    }
+
+    #[test]
+    fn identidade_de_cada_nota_chega_do_servico() {
+        let d = DocumentoPartitura::de_texto("Ode".into(), EMBUTIDAS[3].1.to_owned()).expect("ok");
+        assert_eq!(d.ids().total(), d.partitura().total_de_notas());
+        assert!(d.ids().id(0, 0, 0).is_some());
     }
 
     #[test]
@@ -252,7 +331,7 @@ mod testes {
         std::fs::write(&xml, EMBUTIDAS[3].1).expect("grava");
         let d = DocumentoPartitura::de_arquivo(&xml, "?").expect("abre xml");
         assert_eq!(d.nome, "ode.musicxml");
-        assert_eq!(d.xml, EMBUTIDAS[3].1);
+        assert_eq!(d.xml(), EMBUTIDAS[3].1);
 
         let mxl = dir.join("ode.mxl");
         std::fs::write(
@@ -261,8 +340,8 @@ mod testes {
         )
         .expect("grava");
         let m = DocumentoPartitura::de_arquivo(&mxl, "?").expect("abre mxl");
-        assert_eq!(m.xml, EMBUTIDAS[3].1, "o .mxl entrega o mesmo XML");
-        assert_eq!(m.partitura, d.partitura);
+        assert_eq!(m.xml(), EMBUTIDAS[3].1, "o .mxl entrega o mesmo XML");
+        assert_eq!(m.partitura(), d.partitura());
 
         let ruim = dir.join("a.txt");
         std::fs::write(&ruim, "x").expect("grava");
