@@ -14,8 +14,8 @@
 //!     que o serviço devolve como `aplicado` e como `inverso`.
 //! - **Reversível.** Todo resultado traz o `inverso`: aplicá-lo devolve a nota à altura e ao
 //!   acidente de antes (o texto volta idêntico quando a edição só mexeu em `step`, `octave`,
-//!   `alter` e `accidental` sem atributos). O desfazer (ticket 15) usa esse valor e o instantâneo
-//!   do compasso; este ticket não o implementa.
+//!   `alter` e `accidental` sem atributos). O desfazer e o refazer (ticket 15, módulo
+//!   `historico`) não dependem desse valor: voltam o compasso inteiro pelo instantâneo.
 //! - **Validação antes de tocar em qualquer coisa.** Nota inexistente, sem altura (pausa) ou
 //!   altura fora dos limites ([`LimitesDeAltura`]: MIDI 0 a 127, a oitava 0 a 9 do MusicXML e o
 //!   teclado de referência) são recusadas com [`ErroDeEdicao`] e **nada muda**: o documento, o
@@ -190,6 +190,9 @@ pub enum AvisoDeEdicao {
     /// Esta nota, mais adiante no compasso, dependia de um acidente da nota editada e agora
     /// seria lida com outra alteração: falta um sinal nela.
     AcidenteDeNotaSeguinteMudou { nota: IdNota },
+    /// O histórico passou do limite de memória: as `quantas` edições mais antigas saíram da pilha
+    /// de desfazer (não dá mais para voltar até elas; nada foi corrompido).
+    EdicaoMaisAntigaDescartada { quantas: usize },
 }
 
 impl AvisoDeEdicao {
@@ -206,6 +209,10 @@ impl AvisoDeEdicao {
                  sinal devido. Confira o compasso."
                     .to_owned()
             }
+            Self::EdicaoMaisAntigaDescartada { quantas } => format!(
+                "O histórico de desfazer está cheio: {quantas} edição(ões) mais antiga(s) não \
+                 poderá(ão) mais ser desfeita(s)."
+            ),
         }
     }
 }
@@ -257,9 +264,13 @@ impl DocumentoAberto {
         self.limites = limites;
     }
 
-    /// Aplica o comando. Em erro, nada muda; em sucesso, o documento (compasso sujo), o modelo
-    /// de tocar e o texto exportável já refletem a edição. Ver o contrato do módulo.
-    pub fn aplicar(&mut self, comando: ComandoDeEdicao) -> Result<ResultadoDaEdicao, ErroDeEdicao> {
+    /// Aplica o comando sem registrar no histórico (quem registra é `aplicar`, em `historico`).
+    /// Em erro, nada muda; em sucesso, o documento (compasso sujo), o modelo de tocar e o texto
+    /// exportável já refletem a edição. Ver o contrato do módulo.
+    pub(super) fn aplicar_sem_historico(
+        &mut self,
+        comando: ComandoDeEdicao,
+    ) -> Result<ResultadoDaEdicao, ErroDeEdicao> {
         let id = comando.nota();
         let local = self.local_da_nota(id)?;
         let antes_altura = self

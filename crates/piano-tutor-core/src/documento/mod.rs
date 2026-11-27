@@ -18,6 +18,7 @@ mod edicao;
 mod erro;
 mod exportar;
 mod grafia;
+mod historico;
 mod ids;
 mod leitura;
 pub mod servico;
@@ -31,6 +32,7 @@ pub use duracao::mmc_dos_denominadores;
 pub use erro::ErroDocumento;
 pub use exportar::{Impressao, Patch, Patches, impressao_de};
 pub use grafia::{nome_da_altura, nome_do_midi};
+pub use historico::{LIMITE_PADRAO_DO_HISTORICO, ResultadoDoHistorico};
 pub use ids::{ChaveNota, TabelaIds};
 pub use servico::{DocumentoAberto, ErroServico, Formato, IdsPorNota};
 
