@@ -3019,6 +3019,17 @@ dependencies = [
 ]
 
 [[package]]
+name = "piano-tutor-fixtures"
+version = "0.1.0"
+dependencies = [
+ "flate2",
+ "piano-tutor-core",
+ "roxmltree",
+ "sha2 0.11.1",
+ "zip",
+]
+
+[[package]]
 name = "piano-tutor-midi"
 version = "0.1.0"
 dependencies = [

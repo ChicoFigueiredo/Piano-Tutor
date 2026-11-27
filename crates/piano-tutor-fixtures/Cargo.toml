@@ -1,0 +1,23 @@
+[package]
+name = "piano-tutor-fixtures"
+description = "Corpus de fixtures MusicXML (licença verificada) e harness de golden/comparação semântica, só para testes (E01, ticket 07)"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+rust-version.workspace = true
+publish = false
+
+[lints]
+workspace = true
+
+[dependencies]
+# Leitura do modelo atual (relatório de descartes) e empacotador de .mxl de teste.
+piano-tutor-core = { path = "../piano-tutor-core" }
+# Árvore XML somente leitura (mesma versão do core): MIT OR Apache-2.0.
+roxmltree = "=0.21.2"
+# Contêiner zip dos MXL gerados por script (mesma configuração do core), MIT.
+zip = { version = "=9.8.1", default-features = false, features = ["deflate-flate2"] }
+# Backend único do flate2: miniz_oxide, Rust puro, MIT OR Zlib OR Apache-2.0.
+flate2 = { version = "=1.1.11", default-features = false, features = ["rust_backend"] }
+# SHA-256 do índice de licenças (mesma versão do curso): MIT OR Apache-2.0.
+sha2 = "=0.11.1"
