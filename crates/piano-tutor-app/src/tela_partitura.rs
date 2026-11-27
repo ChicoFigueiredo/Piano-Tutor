@@ -269,6 +269,9 @@ pub struct EstadoPartitura {
     preferencias_mudadas: Option<PreferenciasPartitura>,
     visual: EstadoVisual,
     compasso_inicial: Option<usize>,
+    /// Último compasso apontado pelo usuário (nota selecionada ou clique no compasso), para a
+    /// ligação com o PDF de origem (ticket 20). Não altera o documento.
+    compasso_em_foco: Option<usize>,
     reproducao: Option<Reproducao>,
     campo_exportar: String,
     sobrescrever: bool,
@@ -351,6 +354,7 @@ impl EstadoPartitura {
             preferencias_mudadas: None,
             visual: EstadoVisual::default(),
             compasso_inicial: None,
+            compasso_em_foco: None,
             reproducao: None,
             campo_exportar: String::new(),
             sobrescrever: false,
@@ -394,6 +398,7 @@ impl EstadoPartitura {
         self.campo_exportar = format!("{}.musicxml", nome_de_arquivo(&d.nome));
         self.documento = Some(d);
         self.compasso_inicial = None;
+        self.compasso_em_foco = None;
         // Outro documento, outras identidades de nota: a seleção anterior não vale mais.
         self.selecao.limpar();
         self.pratica = None;
@@ -420,7 +425,22 @@ impl EstadoPartitura {
     /// Executa um comando de navegação sobre a partitura aberta. Não edita nem suja o documento.
     pub fn navegar(&mut self, cmd: Comando) -> Option<Resultado> {
         let d = self.documento.as_ref()?;
-        Some(self.selecao.executar(&d.leitura, cmd))
+        let r = self.selecao.executar(&d.leitura, cmd);
+        if let Some(c) = self
+            .selecao
+            .nota()
+            .and_then(|n| d.leitura.entrada(n))
+            .map(|e| e.compasso)
+        {
+            self.compasso_em_foco = Some(c);
+        }
+        Some(r)
+    }
+
+    /// Compasso (índice a partir de 0) que o usuário apontou por último na partitura: o da nota
+    /// selecionada ou o do compasso clicado. `None` até apontar algo.
+    pub fn compasso_em_foco(&self) -> Option<usize> {
+        self.compasso_em_foco
     }
 
     /// Traduz o acerto de um clique: nota seleciona a nota; fora de nota, alterna o compasso de
@@ -430,6 +450,15 @@ impl EstadoPartitura {
             return EfeitoDoClique::Nenhum;
         };
         let efeito = self.selecao.clicar(&d.leitura, acerto);
+        match efeito {
+            EfeitoDoClique::NotaSelecionada(id) => {
+                if let Some(e) = d.leitura.entrada(id) {
+                    self.compasso_em_foco = Some(e.compasso);
+                }
+            }
+            EfeitoDoClique::Compasso(c) => self.compasso_em_foco = Some(c),
+            EfeitoDoClique::Nenhum => {}
+        }
         if let EfeitoDoClique::Compasso(c) = efeito {
             self.compasso_inicial = if self.compasso_inicial == Some(c) {
                 None
@@ -2410,6 +2439,21 @@ mod testes {
         apertar(&ctx, &mut u, &mut som, Key::Tab, Modifiers::NONE);
         assert_eq!(u.nota_selecionada(), None);
         assert!(u.selecao().aviso().is_none());
+    }
+
+    #[test]
+    fn compasso_em_foco_acompanha_clique_e_navegacao_para_ligar_o_pdf() {
+        let (mut som, ctx) = banco();
+        let mut e = ode();
+        quadro(&ctx, &mut e, &mut som);
+        assert_eq!(e.compasso_em_foco(), None);
+        e.clicar_na_partitura(Some(Acerto::Compasso(2)));
+        assert_eq!(e.compasso_em_foco(), Some(2));
+        e.navegar(Comando::Seguinte);
+        let da_nota = e
+            .nota_selecionada()
+            .and_then(|n| e.documento.as_ref()?.leitura.entrada(n).map(|x| x.compasso));
+        assert_eq!(e.compasso_em_foco(), da_nota);
     }
 
     #[test]

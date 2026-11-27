@@ -36,6 +36,7 @@ pub mod monitor;
 pub mod mpv;
 pub mod opcoes;
 pub mod partitura_visual;
+pub mod pdf_sincronizado;
 pub mod perfis;
 pub mod player_aula;
 pub mod preferencias;
