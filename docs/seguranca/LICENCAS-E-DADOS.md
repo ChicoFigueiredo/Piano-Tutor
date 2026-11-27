@@ -66,7 +66,7 @@ Transitivas novas: nenhuma além das do `cpal` (alsa, alsa-sys, libc, dasp_sampl
 | `roxmltree` | 0.21.2 (fixada com `=`) | MIT OR Apache-2.0 (conferida em `cargo info`, 2026-11-22) | leitura de MusicXML; DTD permitida (os arquivos MusicXML trazem `DOCTYPE`), sem resolver entidades externas; limite de nós e de tamanho aplicado pelo próprio `piano-tutor-core` |
 | `memchr` (transitiva) | já presente no `Cargo.lock` | MIT OR Unlicense | **NÃO VERIFICADO** uma a uma |
 
-Partituras empacotadas em `assets/partituras/`: três lieder do **OpenScore Lieder Corpus** (CC0 1.0, obras em domínio público), com origem, commit e SHA-256 em `assets/partituras/LEIA-ME.md`. Nenhuma fonte musical (Bravura etc.) é embutida: a notação é desenhada com formas próprias no painter do egui.
+Partituras empacotadas em `assets/partituras/`: três lieder do **OpenScore Lieder Corpus** (CC0 1.0, obras em domínio público), com origem, commit e SHA-256 em `assets/partituras/LEIA-ME.md`. Nenhuma fonte musical (Bravura etc.) é embutida: a notação é desenhada com formas próprias no painter do egui. **Atualização (ticket evolucao/09, 2026-11-27):** a Bravura passou a ser versionada em `assets/fontes/bravura/` para o spike de render, mas continua **fora do app e do binário de produção** (só testes a embutem); ver a seção "Fonte Bravura e oráculo Verovio" abaixo.
 
 ## Dependências do `piano-tutor-core` para `.mxl` (F07)
 
@@ -133,6 +133,22 @@ Versões fixadas com `=` em `crates/piano-tutor-app/Cargo.toml`; licenças confe
 | `tempfile` | 3.27.0 | MIT OR Apache-2.0 | **somente dev-dependency**: pastas temporárias nos testes (mesma versão do `piano-tutor-curso`) |
 
 A oficina do tutor (`<dados>/fontes/<tutor>/oficina/`: MusicXML, páginas PNG, estados, divergências e Roteiro de Hipóteses) fica **fora do git**; os testes usam só fixtures sintéticas. As páginas do PDF e o conteúdo derivado do curso nunca são copiados para o repositório. `cargo deny`/`cargo license` não foram executados: **NÃO VERIFICADO**.
+
+## Fonte Bravura e oráculo Verovio (evolução, ticket 09)
+
+Detalhes e SHA-256 em `assets/fontes/bravura/LEIA-ME.md`; decisão em [ADR-0018](../decisoes/ADR-0018-motor-de-render-egui-bravura.md).
+
+| Item | Versão | Licença | Onde entra | Observação |
+| --- | --- | --- | --- | --- |
+| **Bravura** (fonte SMuFL, Steinberg) | 1.482 (de `steinbergmedia/bravura`, `redist/`, baixada em 2026-11-27) | **OFL-1.1** (texto em `assets/fontes/bravura/OFL.txt`) | arquivos `Bravura.otf` e `Bravura.json` (metadata) em `assets/fontes/bravura/`; embutidos **só em testes** | Dado, não código. Reserved Font Name "Bravura": um *subset* é versão modificada e teria de ser renomeado. Se for para o binário, o aviso e o texto da OFL acompanham a cópia (tela de licenças ou pacote). `deny.toml` não muda (não é crate). |
+| `piano-tutor-fixtures` | do workspace | MIT OR Apache-2.0 | **dev-dependency** do `piano-tutor-app` (corpus do ticket 07 nos testes do spike) | Nenhum crate de produção depende dele. |
+| `roxmltree` | 0.21.2 (fixada com `=`, a mesma do core) | MIT OR Apache-2.0 | **dev-dependency** do `piano-tutor-app` (lê letra, cifra e dedilhado do MusicXML no protótipo) | Já estava no `Cargo.lock`. |
+| **Verovio** (oráculo) | 6.4.1 (pacote `verovio` do PyPI, usado em ambiente virtual fora do repositório) | **LGPL-3.0-only** (campo `License-Expression` do pacote) | **somente** `scripts/spike-render/comparar_verovio.py`, em processo Python separado, manual | **Nunca linkado**, fora do `Cargo.toml` e do `Cargo.lock` (o teste `verovio_nao_e_dependencia_do_cargo` confere), fora da CI, nada dele é copiado ou redistribuído. |
+| `cairosvg` (rasteriza o SVG do oráculo) | 2.9.1 (PyPI) | LGPL-3.0-or-later | mesmo script, mesma regra (ferramenta de desenvolvimento, processo separado) | Idem. `pillow` 13.0.0 (MIT-CMU) monta as imagens lado a lado. |
+
+As capturas anexadas ao relatório do spike têm duas metades: o protótipo (desenhado por nós com a
+Bravura) e o oráculo. Os recortes do Verovio são saídas de um programa LGPL sobre partituras CC0
+do próprio corpus; não são cópia do programa. Não foi feita revisão jurídica: **NÃO VERIFICADO**.
 
 ## Auditoria automática com `cargo deny` (evolução, ticket 01)
 
