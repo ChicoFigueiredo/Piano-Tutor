@@ -15,6 +15,7 @@
 mod comando;
 mod duracao;
 mod edicao;
+mod editar_duracao;
 mod erro;
 mod exportar;
 mod grafia;
@@ -26,9 +27,10 @@ mod texto;
 
 pub use comando::{
     AvisoDeEdicao, ComandoDeEdicao, ErroDeEdicao, LimitesDeAltura, ResultadoDaEdicao,
-    SentidoDaAltura, UnidadeDeAltura,
+    SentidoDaAltura, UnidadeDeAltura, figura_da_tecla, nome_da_figura,
 };
 pub use duracao::mmc_dos_denominadores;
+pub use editar_duracao::{MudancaDeDuracao, ValorDeDuracao};
 pub use erro::ErroDocumento;
 pub use exportar::{Impressao, Patch, Patches, impressao_de};
 pub use grafia::{nome_da_altura, nome_do_midi};

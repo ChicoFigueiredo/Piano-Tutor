@@ -20,6 +20,10 @@
 //! - **Altura** (ticket 14): as seis ações de altura ([`AcaoAtalho::altura`]) viram
 //!   [`Destino::Altura`] (unidade e sentido); a tela monta o comando tipado do serviço de
 //!   documento e o chama. A tecla nunca edita por conta própria.
+//! - **Duração** (ticket 16): as teclas `1` a `9` ([`AcaoAtalho::Duracao`]) viram
+//!   [`Destino::Duracao`] e o ponto ([`AcaoAtalho::Ponto`]) vira [`Destino::Ponto`]; a tela monta
+//!   o comando tipado de duração do serviço de documento. A `9` (longa) chega ao serviço, que a
+//!   recusa com o motivo (o modelo de partitura não tem a longa). Remapear continua valendo.
 //! - **Pendentes**: ação sem comando ainda ([`AcaoAtalho::pendente`]) aparece em
 //!   [`MapaAtalhos::pendentes`]; ao apertar a tecla, a tela avisa em vez de calar.
 //! - **Persistência**: texto `id=Ctrl+Shift+Z` por linha (seção `tela.atalhos` do perfil,
@@ -183,7 +187,7 @@ impl AcaoAtalho {
             Self::OitavaAcima => "Subir uma oitava".into(),
             Self::OitavaAbaixo => "Descer uma oitava".into(),
             Self::Duracao(n) => format!("Duração: {}", nome_da_duracao(n)),
-            Self::Ponto => "Aumentar a duração com ponto".into(),
+            Self::Ponto => "Ponto de aumento (liga e desliga)".into(),
             Self::Desfazer => "Desfazer".into(),
             Self::Refazer => "Refazer".into(),
             Self::Apagar => "Apagar a nota selecionada".into(),
@@ -242,9 +246,21 @@ impl AcaoAtalho {
         }
     }
 
+    /// Ação de **duração** (ticket 16): as teclas `1` a `9` escolhem a figura e o ponto alterna.
+    pub fn duracao(self) -> Option<Destino> {
+        match self {
+            Self::Duracao(n) => Some(Destino::Duracao(n)),
+            Self::Ponto => Some(Destino::Ponto),
+            _ => None,
+        }
+    }
+
     /// Ação com atalho mas ainda sem comando nenhum (nem de navegação, nem de edição).
     pub fn pendente(self) -> bool {
-        self.comando().is_none() && self.altura().is_none() && self.historico().is_none()
+        self.comando().is_none()
+            && self.altura().is_none()
+            && self.historico().is_none()
+            && self.duracao().is_none()
     }
 
     /// Comando de navegação ligado à ação; `None` = não é navegação (edição ou ainda pendente).
@@ -418,6 +434,10 @@ pub enum Destino {
     Desfazer,
     /// Refazer a edição desfeita (ticket 15).
     Refazer,
+    /// Escolher a figura da nota selecionada com a tecla `1` a `9` (ticket 16).
+    Duracao(u8),
+    /// Alternar o ponto de aumento da nota selecionada (ticket 16).
+    Ponto,
     /// Ação do perfil sem comando ainda: a tela avisa.
     Pendente(AcaoAtalho),
 }
@@ -551,7 +571,10 @@ impl MapaAtalhos {
         Some(match (acao.comando(), acao.altura()) {
             (Some(c), _) => Destino::Comando(c),
             (None, Some((unidade, sentido))) => Destino::Altura(unidade, sentido),
-            (None, None) => acao.historico().unwrap_or(Destino::Pendente(acao)),
+            (None, None) => acao
+                .historico()
+                .or_else(|| acao.duracao())
+                .unwrap_or(Destino::Pendente(acao)),
         })
     }
 
@@ -679,7 +702,7 @@ mod testes {
         // Ponto sem Ctrl é a duração pontuada, não o Pânico.
         assert_eq!(
             m.rotear(Key::Period, Modifiers::NONE, true),
-            Some(Destino::Pendente(AcaoAtalho::Ponto))
+            Some(Destino::Ponto)
         );
     }
 
@@ -729,15 +752,14 @@ mod testes {
     fn acoes_sem_comando_ficam_registradas_como_pendentes_e_roteiam_como_pendente() {
         let m = MapaAtalhos::padrao();
         let p = m.pendentes();
-        // Navegação (4), altura (6) e histórico (2) têm comando; o resto segue pendente.
-        assert_eq!(p.len(), ACOES.len() - 4 - 6 - 2);
-        for a in [
-            AcaoAtalho::Apagar,
-            AcaoAtalho::Cifra,
-            AcaoAtalho::Duracao(3),
-        ] {
+        // Navegação (4), altura (6), histórico (2) e duração (9 teclas e o ponto) têm comando; o
+        // resto segue pendente.
+        assert_eq!(p.len(), ACOES.len() - 4 - 6 - 2 - 10);
+        for a in [AcaoAtalho::Apagar, AcaoAtalho::Cifra] {
             assert!(p.contains(&a), "{a:?}");
         }
+        assert!(!p.contains(&AcaoAtalho::Duracao(3)));
+        assert!(!p.contains(&AcaoAtalho::Ponto));
         assert!(!p.contains(&AcaoAtalho::NotaSeguinte));
         assert!(!p.contains(&AcaoAtalho::SemitomAcima));
         assert!(!p.contains(&AcaoAtalho::Desfazer));
@@ -754,10 +776,49 @@ mod testes {
             m.rotear(Key::Delete, Modifiers::NONE, true),
             Some(Destino::Pendente(AcaoAtalho::Apagar))
         );
+    }
+
+    #[test]
+    fn as_teclas_um_a_nove_e_o_ponto_roteiam_para_a_duracao_do_servico() {
+        let m = MapaAtalhos::padrao();
+        let teclas = [
+            (Key::Num1, 1),
+            (Key::Num2, 2),
+            (Key::Num3, 3),
+            (Key::Num4, 4),
+            (Key::Num5, 5),
+            (Key::Num6, 6),
+            (Key::Num7, 7),
+            (Key::Num8, 8),
+            (Key::Num9, 9),
+        ];
+        for (tecla, n) in teclas {
+            assert_eq!(
+                m.rotear(tecla, Modifiers::NONE, true),
+                Some(Destino::Duracao(n)),
+                "{tecla:?}"
+            );
+        }
         assert_eq!(
-            m.rotear(Key::Num4, Modifiers::NONE, true),
-            Some(Destino::Pendente(AcaoAtalho::Duracao(4)))
+            m.rotear(Key::Period, Modifiers::NONE, true),
+            Some(Destino::Ponto)
         );
+        // Com Ctrl, `1`..`9` e `.` não são duração (e Ctrl+. é o Pânico, nunca capturado).
+        assert_eq!(m.rotear(Key::Num4, mods(true, false, false), true), None);
+        assert_eq!(m.rotear(Key::Period, mods(true, false, false), true), None);
+        // Remapeada, a duração segue a nova tecla e a antiga fica livre.
+        let mut m = MapaAtalhos::padrao();
+        let novo = Atalho::ctrl(Key::J);
+        assert_eq!(m.remapear(AcaoAtalho::Duracao(4), novo), Ok(None));
+        assert_eq!(
+            m.rotear(Key::J, Modifiers::COMMAND, true),
+            Some(Destino::Duracao(4))
+        );
+        assert_eq!(m.rotear(Key::Num4, Modifiers::NONE, true), None);
+        // Nenhum atalho existente saiu do mapa: as 31 ações seguem com combinação própria.
+        let padrao = MapaAtalhos::padrao();
+        assert_eq!(padrao.linhas().count(), ACOES.len());
+        assert!(padrao.linhas().all(|(_, c)| c.is_some()));
     }
 
     #[test]

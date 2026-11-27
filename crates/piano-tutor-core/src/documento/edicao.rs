@@ -20,7 +20,7 @@ fn posto_pitch(nome: &str) -> Option<u32> {
 
 /// Posto dos filhos de `<note>` (sequência do esquema MusicXML 4.0; filhos fora da lista são
 /// "desconhecidos" e ficam onde estão).
-fn posto_nota(nome: &str) -> Option<u32> {
+pub(super) fn posto_nota(nome: &str) -> Option<u32> {
     Some(match nome {
         "grace" | "cue" => 0,
         "chord" => 1,
@@ -78,7 +78,7 @@ fn validar(a: Altura) -> Result<(), ErroDocumento> {
     Ok(())
 }
 
-fn leaf(nome: &str, conteudo: &str) -> No {
+pub(super) fn leaf(nome: &str, conteudo: &str) -> No {
     No::novo(nome, format!("<{nome}>{conteudo}</{nome}>"))
 }
 
