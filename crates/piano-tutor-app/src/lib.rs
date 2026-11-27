@@ -68,6 +68,7 @@ pub mod tela_ritmos;
 pub mod tela_timbres;
 pub mod treino_andamento;
 pub mod versoes;
+pub mod versoes_diff;
 pub mod video_embutido;
 
 /// `tokens.json` do app (formato lido pela casca).

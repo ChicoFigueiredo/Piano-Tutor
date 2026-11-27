@@ -13,6 +13,7 @@
 //! arquivos é o chamador. Nada aqui é interface (seam S1).
 
 mod comando;
+pub mod diff;
 mod duracao;
 mod edicao;
 mod erro;
@@ -27,6 +28,10 @@ mod texto;
 pub use comando::{
     AvisoDeEdicao, ComandoDeEdicao, ErroDeEdicao, LimitesDeAltura, ResultadoDaEdicao,
     SentidoDaAltura, UnidadeDeAltura,
+};
+pub use diff::{
+    CampoAlterado, CompassoAlterado, DiffDeDocumentos, MudancaDeNota, ResumoDeNota,
+    diff_de_documentos,
 };
 pub use duracao::mmc_dos_denominadores;
 pub use erro::ErroDocumento;
