@@ -5,8 +5,8 @@
 use super::*;
 use crate::geometria::Alinha;
 use bancada_casca::egui::{
-    Align, Align2, Color32, EventFilter, FontId, Id, Painter, Pos2, Rect, ScrollArea, Sense, Shape,
-    Stroke, StrokeKind, Ui, WidgetInfo, WidgetType, pos2, vec2,
+    Align, Align2, Color32, EventFilter, FontFamily, FontId, Id, Painter, Pos2, Rect, ScrollArea,
+    Sense, Shape, Stroke, StrokeKind, Ui, WidgetInfo, WidgetType, pos2, vec2,
 };
 
 /// Cores da partitura (tokens do tema do app: Noite e Claro).
@@ -246,8 +246,52 @@ pub fn pintar_itens(
                     );
                 }
             }
+            Forma::Glifo {
+                pos,
+                caractere,
+                escala,
+            } => {
+                if com_texto {
+                    pintar_glifo(painter, px(*pos), esp, *caractere, *escala, cor);
+                }
+            }
         }
     }
+}
+
+/// Pinta um glifo da Bravura com a origem da linha de base em `alvo`. Sem a família `Bravura`
+/// nas fontes do contexto (a casca a registra na partida), cai no algarismo comum.
+fn pintar_glifo(painter: &Painter, alvo: Pos2, esp: f32, c: char, escala: f32, cor: Color32) {
+    let corpo = bravura::CORPO_EM_SP * esp * escala;
+    if !(corpo.is_finite() && corpo > 0.05) {
+        return;
+    }
+    if !bravura::bravura_registrada(painter.ctx()) {
+        // O glifo `fingeringN` tem o algarismo `N`: o texto comum o substitui sem enganar.
+        let n = (c as u32).saturating_sub(0xED10);
+        painter.text(
+            pos2(alvo.x, alvo.y),
+            Align2::LEFT_BOTTOM,
+            n.to_string(),
+            FontId::proportional((bravura::ALTURA_DO_ALGARISMO * esp * escala / 0.72).max(11.0)),
+            cor,
+        );
+        return;
+    }
+    let galley = painter.layout_no_wrap(
+        c.to_string(),
+        FontId::new(corpo, FontFamily::Name(bravura::FAMILIA.into())),
+        cor,
+    );
+    // A linha de base do glifo no galley: posição da linha mais a posição do glifo.
+    let (bx, by) = galley.rows.first().map_or((0.0, 0.0), |r| {
+        let g = r.glyphs.first();
+        (
+            r.pos.x + g.map_or(0.0, |g| g.pos.x),
+            r.pos.y + g.map_or(0.0, |g| g.pos.y),
+        )
+    });
+    painter.galley(pos2(alvo.x - bx, alvo.y - by), galley, cor);
 }
 
 /// Raio do anel de seleção, em sp (maior que a cabeça de nota, que tem 0,64 sp de meia largura).
@@ -369,6 +413,9 @@ pub struct Marcas<'a> {
     /// Identidades das notas do documento: com elas o layout carrega a identidade em cada nota.
     /// O layout fica em cache até `EstadoVisual::invalidar`: troque o documento invalidando.
     pub ids: Option<&'a IdsPorNota>,
+    /// Letra, cifra e dedilhado a desenhar junto das notas (ticket 19); só vale com `ids`. Fica
+    /// em cache com o layout, como `ids`.
+    pub exibicao: Option<&'a Exibicao>,
     /// Seleção de nota e foco do teclado (ticket 12); `None` = vista só de leitura.
     pub selecao: Option<MarcaSelecao<'a>>,
 }
@@ -400,11 +447,15 @@ pub fn desenhar_partitura(
     let layout = match &estado.cache {
         Some((k, v, l)) if *k == chave && *v == estado.versao => l.clone(),
         _ => {
-            let l = Arc::new(match (fita, marcas.ids) {
-                (true, Some(ids)) => calcular_layout_fita_com_ids(p, ids),
-                (true, None) => calcular_layout_fita(p),
-                (false, Some(ids)) => calcular_layout_com_ids(p, ids, largura_sp),
-                (false, None) => calcular_layout(p, largura_sp),
+            let l = Arc::new(match (fita, marcas.ids, marcas.exibicao) {
+                (true, Some(ids), Some(ex)) => calcular_layout_fita_com_exibicao(p, ids, ex),
+                (true, Some(ids), None) => calcular_layout_fita_com_ids(p, ids),
+                (true, None, _) => calcular_layout_fita(p),
+                (false, Some(ids), Some(ex)) => {
+                    calcular_layout_com_exibicao(p, ids, ex, largura_sp)
+                }
+                (false, Some(ids), None) => calcular_layout_com_ids(p, ids, largura_sp),
+                (false, None, _) => calcular_layout(p, largura_sp),
             });
             estado.cache = Some((chave, estado.versao, l.clone()));
             estado.ultimo_sistema = None;

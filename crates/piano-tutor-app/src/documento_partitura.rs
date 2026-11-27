@@ -6,7 +6,7 @@
 
 use crate::selecao_partitura::IndiceLeitura;
 use piano_tutor_core::documento::{
-    ComandoDeEdicao, DocumentoAberto, ErroDeEdicao, ErroServico, Formato, IdsPorNota,
+    ComandoDeEdicao, DocumentoAberto, ErroDeEdicao, ErroServico, Exibicao, Formato, IdsPorNota,
     ResultadoDaEdicao, ResultadoDoHistorico,
 };
 use piano_tutor_core::mxl::MXL_TAMANHO_MAXIMO_BYTES;
@@ -151,17 +151,23 @@ pub struct DocumentoPartitura {
     pub musica: Musica,
     /// Ordem de leitura das notas para a seleção e a navegação (ticket 12).
     pub leitura: IndiceLeitura,
+    /// Letra, cifra e dedilhado (só mostrados e preservados, D13) e a lista de elementos que o
+    /// editor não desenha (ticket 19). Lida do texto original uma vez por abertura: os comandos
+    /// de edição de hoje (altura) não tocam nesses elementos.
+    exibicao: Exibicao,
 }
 
 impl DocumentoPartitura {
     fn de_aberto(nome: String, aberto: DocumentoAberto) -> Self {
         let musica = Musica::de(aberto.partitura());
         let leitura = IndiceLeitura::de(aberto.partitura(), aberto.ids());
+        let exibicao = aberto.documento().exibicao();
         Self {
             nome,
             aberto,
             musica,
             leitura,
+            exibicao,
         }
     }
 
@@ -191,6 +197,11 @@ impl DocumentoPartitura {
     /// Identidade de cada nota do modelo, para o layout.
     pub fn ids(&self) -> &IdsPorNota {
         self.aberto.ids()
+    }
+
+    /// Letra, cifra, dedilhado e elementos não suportados, para desenhar e listar.
+    pub fn exibicao(&self) -> &Exibicao {
+        &self.exibicao
     }
 
     /// Aplica um comando de edição do serviço de documento (ticket 14) e recalcula o que deriva
@@ -238,6 +249,9 @@ impl DocumentoPartitura {
     fn recalcular(&mut self) {
         self.musica = Musica::de(self.aberto.partitura());
         self.leitura = IndiceLeitura::de(self.aberto.partitura(), self.aberto.ids());
+        // Letra, cifra e dedilhado seguem a nota por IdNota; recalcular mantém a exibição fiel
+        // depois de editar, desfazer ou refazer (e quando o ticket 17 inserir ou remover notas).
+        self.exibicao = self.aberto.documento().exibicao();
     }
 
     /// Há compasso editado (sujo)? Abrir e navegar nunca editam.

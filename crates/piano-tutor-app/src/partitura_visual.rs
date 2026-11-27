@@ -17,7 +17,7 @@
 #![allow(clippy::needless_range_loop)]
 
 use crate::geometria::{Ancora, IdNota, Ponto, Retangulo, ponto, vetor};
-use piano_tutor_core::documento::IdsPorNota;
+use piano_tutor_core::documento::{Exibicao, IdsPorNota};
 use piano_tutor_core::partitura::{
     Acidente, Altura, Armadura, Barra, Clave, Compasso, DirecaoHaste, EstadoViga, Figura, Fracao,
     InfoCompasso, MarcaLigadura, Nota, Partitura, SimboloForma, SinalClave,
@@ -60,6 +60,13 @@ pub const FRACAO_CURSOR_FITA: f32 = 1.0 / 3.0;
 // --- Paleta --------------------------------------------------------------------------------
 
 pub mod adaptador_egui;
+pub mod bravura;
+mod textos;
+
+#[cfg(test)]
+mod captura_testes;
+#[cfg(test)]
+mod textos_testes;
 pub use adaptador_egui::*;
 
 // Spike do ticket 09 (ADR-0018): protótipo de render com a Bravura, só em testes.
@@ -125,6 +132,13 @@ pub enum Forma {
         altura: f32,
         ancora: Ancora,
     },
+    /// Glifo da fonte musical Bravura (SMuFL): `pos` é a origem na linha de base, à esquerda do
+    /// glifo; `escala` 1,0 é o corpo de 4 sp do SMuFL. Hoje só o dedilhado o usa.
+    Glifo {
+        pos: Ponto,
+        caractere: char,
+        escala: f32,
+    },
 }
 
 impl Forma {
@@ -141,7 +155,7 @@ impl Forma {
                 }
             }
             Forma::Cabeca { centro, .. } | Forma::Disco { centro, .. } => *centro += d,
-            Forma::Texto { pos, .. } => *pos += d,
+            Forma::Texto { pos, .. } | Forma::Glifo { pos, .. } => *pos += d,
         }
     }
 
@@ -165,6 +179,17 @@ impl Forma {
             Forma::Texto { pos, altura, .. } => {
                 Retangulo::from_center_size(*pos, vetor(*altura, *altura))
             }
+            Forma::Glifo {
+                pos,
+                caractere,
+                escala,
+            } => Retangulo::from_min_max(
+                ponto(pos.x, pos.y - bravura::ALTURA_DO_ALGARISMO * escala),
+                ponto(
+                    pos.x + bravura::avanco_do_glifo(*caractere) * escala,
+                    pos.y + 0.05 * escala,
+                ),
+            ),
         }
     }
 }
@@ -174,9 +199,10 @@ pub struct Item {
     pub forma: Forma,
     pub cor: Cor,
     pub alvo: Option<Alvo>,
-    /// Identidade estável da nota a que a primitiva pertence (cabeça, ponto de aumento e
-    /// acidente). Espaço reservado: o serviço de documento a preenche (ticket 10); enquanto
-    /// for `None` vale o vínculo antigo por compasso (`alvo`).
+    /// Identidade estável da nota a que a primitiva pertence (cabeça, ponto de aumento,
+    /// acidente e, desde o ticket 19, a letra e o dedilhado da nota). O serviço de documento a
+    /// preenche (ticket 10); enquanto for `None` vale o vínculo antigo por compasso (`alvo`).
+    /// Só a cabeça é alvo de clique (`Layout::nota_em`).
     pub nota: Option<IdNota>,
 }
 
@@ -641,7 +667,11 @@ fn largura_acidente(a: Acidente) -> f32 {
     }
 }
 
-fn planejar_compasso(analises: &[AnalisePauta], info: &InfoCompasso) -> PlanoCompasso {
+fn planejar_compasso(
+    analises: &[AnalisePauta],
+    info: &InfoCompasso,
+    textos: &[(Fracao, f32)],
+) -> PlanoCompasso {
     let mut pos: Vec<Fracao> = analises
         .iter()
         .flat_map(|a| a.eventos.iter().map(|e| e.pos))
@@ -683,9 +713,19 @@ fn planejar_compasso(analises: &[AnalisePauta], info: &InfoCompasso) -> PlanoCom
             }
         }
     }
+    // Largura do texto (letra e cifra) de cada coluna: sem textos, tudo zero e nada muda.
+    let larg: Vec<f32> = pos
+        .iter()
+        .map(|p| {
+            textos
+                .iter()
+                .filter(|(q, _)| q == p)
+                .fold(0.0f32, |m, (_, w)| m.max(*w))
+        })
+        .collect();
     let rep_ini = if info.repeticao_inicio { 1.8 } else { 0.0 };
     let rep_fim = if info.repeticao_fim { 1.8 } else { 0.0 };
-    let dx0 = 1.0 + rep_ini + sala[0];
+    let dx0 = (1.0 + rep_ini + sala[0]).max(larg[0] / 2.0 + 0.3);
     let dur = info.duracao.como_f64();
     let mut dx = vec![dx0];
     for k in 0..n - 1 {
@@ -693,11 +733,14 @@ fn planejar_compasso(analises: &[AnalisePauta], info: &InfoCompasso) -> PlanoCom
         let natural = largura_da_duracao(d);
         let minimo = meia[k] + meia[k + 1] + pontos[k] + sala[k + 1] + 0.4;
         let anterior = dx[k];
-        dx.push(anterior + natural.max(minimo));
+        let texto = (larg[k] + larg[k + 1]) / 2.0 + 0.5;
+        dx.push(anterior + natural.max(minimo).max(texto));
     }
     let d_ultimo = (dur - pos[n - 1].como_f64()).max(0.25);
-    let cauda =
-        (0.85 * largura_da_duracao(d_ultimo)).max(meia[n - 1] + pontos[n - 1] + 0.9) + rep_fim;
+    let cauda = (0.85 * largura_da_duracao(d_ultimo))
+        .max(meia[n - 1] + pontos[n - 1] + 0.9)
+        .max(larg[n - 1] / 2.0 + 0.9)
+        + rep_fim;
     let largura = dx[n - 1] + cauda;
     PlanoCompasso {
         pos,
@@ -1723,31 +1766,53 @@ struct SistemaTrabalho {
 /// Diagrama a partitura para uma largura disponível, em sp, quebrando em sistemas. Sem
 /// identidades de nota: as primitivas da nota não carregam [`IdNota`] (`Item::nota` é `None`).
 pub fn calcular_layout(p: &Partitura, largura_sp: f32) -> Layout {
-    calcular_layout_com(p, None, largura_sp, false)
+    calcular_layout_com(p, None, None, largura_sp, false)
 }
 
 /// Como [`calcular_layout`], mas as primitivas de cada nota (cabeça, pontos de aumento e
 /// acidente) carregam a identidade que o serviço de documento atribuiu a ela (ticket 10). A
 /// geometria é a mesma: só `Item::nota` muda.
 pub fn calcular_layout_com_ids(p: &Partitura, ids: &IdsPorNota, largura_sp: f32) -> Layout {
-    calcular_layout_com(p, Some(ids), largura_sp, false)
+    calcular_layout_com(p, Some(ids), None, largura_sp, false)
+}
+
+/// Como [`calcular_layout_com_ids`], e ainda desenha a letra (uma linha por estrofe, com a
+/// altura reservada), a cifra e o dedilhado que a [`Exibicao`] traz, junto das notas a que
+/// pertencem (ticket 19). Cada texto carrega a identidade da sua nota em `Item::nota`.
+pub fn calcular_layout_com_exibicao(
+    p: &Partitura,
+    ids: &IdsPorNota,
+    exibicao: &Exibicao,
+    largura_sp: f32,
+) -> Layout {
+    calcular_layout_com(p, Some(ids), Some(exibicao), largura_sp, false)
 }
 
 /// Diagrama a partitura como **fita contínua**: um único sistema sem quebras de linha, na
 /// largura natural dos compassos (sem esticar). Clave e armadura só aparecem no início e onde
 /// mudam. `Layout::largura` é a largura total da fita, em sp.
 pub fn calcular_layout_fita(p: &Partitura) -> Layout {
-    calcular_layout_com(p, None, LARGURA_MINIMA, true)
+    calcular_layout_com(p, None, None, LARGURA_MINIMA, true)
 }
 
 /// A fita contínua com as identidades de nota (ver [`calcular_layout_com_ids`]).
 pub fn calcular_layout_fita_com_ids(p: &Partitura, ids: &IdsPorNota) -> Layout {
-    calcular_layout_com(p, Some(ids), LARGURA_MINIMA, true)
+    calcular_layout_com(p, Some(ids), None, LARGURA_MINIMA, true)
+}
+
+/// A fita contínua com letra, cifra e dedilhado (ver [`calcular_layout_com_exibicao`]).
+pub fn calcular_layout_fita_com_exibicao(
+    p: &Partitura,
+    ids: &IdsPorNota,
+    exibicao: &Exibicao,
+) -> Layout {
+    calcular_layout_com(p, Some(ids), Some(exibicao), LARGURA_MINIMA, true)
 }
 
 fn calcular_layout_com(
     p: &Partitura,
     ids: Option<&IdsPorNota>,
+    exibicao: Option<&Exibicao>,
     largura_sp: f32,
     fita: bool,
 ) -> Layout {
@@ -1781,8 +1846,23 @@ fn calcular_layout_com(
                 .collect()
         })
         .collect();
+    // Letra, cifra e dedilhado: só com identidades de nota e algo para mostrar.
+    let extras = match (ids, exibicao) {
+        (Some(i), Some(e)) if !e.vazia() => Some((i, e)),
+        _ => None,
+    };
+    let estrofes = extras.map_or_else(Vec::new, |(i, e)| {
+        textos::estrofes_das_pautas(p, i, e, &pautas)
+    });
+    let textos_de: Vec<textos::TextosCompasso> = (0..n_comp)
+        .map(|m| {
+            extras.map_or_else(Default::default, |(i, e)| {
+                textos::coletar(p, i, e, &pautas, &estrofes, m)
+            })
+        })
+        .collect();
     let planos: Vec<PlanoCompasso> = (0..n_comp)
-        .map(|m| planejar_compasso(&analises[m], &p.compassos[m]))
+        .map(|m| planejar_compasso(&analises[m], &p.compassos[m], &textos_de[m].larguras()))
         .collect();
 
     // Larguras de prefixo.
@@ -1874,6 +1954,12 @@ fn calcular_layout_com(
         let primeiro_sistema = is == 0;
         let mut por_pauta: Vec<Vec<Item>> = vec![Vec::new(); n_pautas];
         let mut marcas: Vec<Vec<MarcaArco>> = vec![Vec::new(); n_pautas];
+        // Letra e cifra esperam o fim do sistema (a altura delas depende do resto da pauta);
+        // o dedilhado já é desenhado junto das notas.
+        let mut letras_pend: Vec<Vec<(f32, &textos::LetraL)>> = vec![Vec::new(); n_pautas];
+        let mut cifras_pend: Vec<Vec<(f32, &textos::CifraL)>> = vec![Vec::new(); n_pautas];
+        let mut dedo_acima = vec![0.0f32; n_pautas];
+        let mut dedo_abaixo = vec![0.0f32; n_pautas];
         let mut x = MARGEM_ESQUERDA;
         let x_inicio = x;
         let mut barras_x: Vec<(f32, Barra, bool)> = Vec::new();
@@ -1969,6 +2055,27 @@ fn calcular_layout_com(
                 }
                 por_pauta[k].extend(ctx.itens);
                 marcas[k].extend(ctx.arcos);
+                let t = &textos_de[m];
+                let dedos: Vec<&textos::DedoL> = t.dedos.iter().filter(|d| d.k == k).collect();
+                if !dedos.is_empty() {
+                    let (itens, ac, ab) =
+                        textos::itens_do_dedilhado(&dedos, &analises[m][k], &x_de);
+                    por_pauta[k].extend(itens);
+                    dedo_acima[k] = dedo_acima[k].max(ac);
+                    dedo_abaixo[k] = dedo_abaixo[k].max(ab);
+                }
+                letras_pend[k].extend(
+                    t.letras
+                        .iter()
+                        .filter(|l| l.k == k)
+                        .map(|l| (x_de(l.pos), l)),
+                );
+                cifras_pend[k].extend(
+                    t.cifras
+                        .iter()
+                        .filter(|c| c.k == k)
+                        .map(|c| (x_de(c.pos), c)),
+                );
             }
             barras_x.push((x_fim, inf.barra_final, inf.repeticao_fim));
             // Casas de repetição, números de compasso e colunas para o cursor.
@@ -2017,9 +2124,24 @@ fn calcular_layout_com(
                 por_pauta[k].push(it);
             }
         }
-        // Posição vertical.
         let tem_casa = (t.primeiro..t.fim).any(|m| !p.compassos[m].casas.is_empty());
         let reserva_topo = if tem_casa { 3.6 } else { 2.6 };
+        // Dedilhado, letra (uma linha por estrofe, abaixo de tudo o que a pauta já tem embaixo)
+        // e cifra (acima de tudo o que a pauta já tem em cima, do número do compasso e das casas):
+        // a altura reservada entra na da pauta, e a pauta de baixo é empurrada.
+        for k in 0..n_pautas {
+            acima[k] = acima[k].max(dedo_acima[k]);
+            abaixo[k] = abaixo[k].max(dedo_abaixo[k]);
+            let (itens, novo_abaixo) = textos::itens_da_letra(&letras_pend[k], abaixo[k]);
+            por_pauta[k].extend(itens);
+            abaixo[k] = novo_abaixo;
+            // As pautas de baixo não têm número de compasso nem casas acima delas.
+            let reserva = if k == 0 { reserva_topo } else { 1.0 };
+            let (itens, novo_acima) = textos::itens_da_cifra(&cifras_pend[k], acima[k], reserva);
+            por_pauta[k].extend(itens);
+            acima[k] = novo_acima;
+        }
+        // Posição vertical.
         let y_topo_sistema = y_cursor;
         let mut ys: Vec<f32> = Vec::with_capacity(n_pautas);
         let mut y = y_topo_sistema + acima[0].max(reserva_topo);
@@ -2318,6 +2440,7 @@ fn forma_finita(f: &Forma) -> bool {
         } => centro.is_finite() && rx.is_finite() && ry.is_finite() && rotacao.is_finite(),
         Forma::Disco { centro, raio } => centro.is_finite() && raio.is_finite(),
         Forma::Texto { pos, altura, .. } => pos.is_finite() && altura.is_finite(),
+        Forma::Glifo { pos, escala, .. } => pos.is_finite() && escala.is_finite(),
     }
 }
 
@@ -3064,6 +3187,16 @@ mod testes {
                 texto.bytes().for_each(|b| h.u64(u64::from(b)));
                 h.f(*altura);
                 h.u64(ancora_id(*ancora));
+            }
+            Forma::Glifo {
+                pos,
+                caractere,
+                escala,
+            } => {
+                h.u64(16);
+                h.p(*pos);
+                h.u64(u64::from(*caractere as u32));
+                h.f(*escala);
             }
         }
         h.0
