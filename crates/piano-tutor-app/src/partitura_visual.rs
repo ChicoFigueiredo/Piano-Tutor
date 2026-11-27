@@ -309,6 +309,17 @@ impl Layout {
         melhor.map(|(_, id)| id)
     }
 
+    /// Sistema e centro (em sp) da cabeça da nota `id`, se o layout a tiver (ticket 12: anel de
+    /// seleção e rolagem até a nota).
+    pub fn cabeca_da_nota(&self, id: IdNota) -> Option<(usize, Ponto)> {
+        self.sistemas.iter().enumerate().find_map(|(i, s)| {
+            s.itens.iter().find_map(|it| match (it.nota, &it.forma) {
+                (Some(n), Forma::Cabeca { centro, .. }) if n == id => Some((i, *centro)),
+                _ => None,
+            })
+        })
+    }
+
     /// Hit test completo: a nota sob o ponto, se alguma primitiva com identidade o contiver;
     /// senão o compasso (comportamento antigo, o único possível sem identidades).
     pub fn acertar(&self, p: Ponto, tol: f32) -> Option<Acerto> {
@@ -3339,6 +3350,91 @@ mod testes {
         );
         // Fora de qualquer sistema.
         assert_eq!(l.acertar(ponto(-50.0, -50.0), TOLERANCIA_NOTA_SP), None);
+    }
+
+    #[test]
+    fn cor_da_selecao_tem_contraste_minimo_documentado_contra_o_papel_em_todos_os_temas() {
+        use crate::selecao_partitura::{
+            CONTRASTE_MINIMO, CONTRASTE_MINIMO_ALTO, razao_de_contraste,
+        };
+        let rgb = |c: bancada_casca::egui::Color32| [c.r(), c.g(), c.b()];
+        for escuro in [true, false] {
+            for alto in [false, true] {
+                let pal = Paleta::para_tema_com(escuro, alto);
+                let minimo = if alto {
+                    CONTRASTE_MINIMO_ALTO
+                } else {
+                    CONTRASTE_MINIMO
+                };
+                let r = razao_de_contraste(rgb(pal.selecao), rgb(pal.papel));
+                assert!(
+                    r >= minimo,
+                    "escuro={escuro} alto_contraste={alto}: contraste {r:.2} < {minimo}"
+                );
+                // A seleção não pode ser confundida com nenhuma outra cor de significado.
+                for outra in [pal.direita, pal.esquerda, pal.acerto, pal.erro, pal.tinta] {
+                    assert_ne!(pal.selecao, outra, "escuro={escuro} alto={alto}");
+                }
+            }
+        }
+        // O alto contraste só aumenta o contraste da seleção e não mexe no resto da paleta.
+        for escuro in [true, false] {
+            let (n, a) = (
+                Paleta::para_tema(escuro),
+                Paleta::para_tema_com(escuro, true),
+            );
+            assert!(
+                razao_de_contraste(rgb(a.selecao), rgb(a.papel))
+                    > razao_de_contraste(rgb(n.selecao), rgb(n.papel))
+            );
+            assert_eq!(
+                (
+                    n.papel, n.tinta, n.suave, n.direita, n.esquerda, n.acerto, n.erro
+                ),
+                (
+                    a.papel, a.tinta, a.suave, a.direita, a.esquerda, a.acerto, a.erro
+                )
+            );
+        }
+        assert_eq!(Paleta::para_tema(true), Paleta::para_tema_com(true, false));
+    }
+
+    #[test]
+    fn nota_selecionada_pinta_com_a_cor_da_selecao_e_so_ela() {
+        use piano_tutor_core::documento::DocumentoAberto;
+        let d = DocumentoAberto::abrir_texto("t", MINIMA).expect("abre");
+        let l = calcular_layout_com_ids(d.partitura(), d.ids(), 80.0);
+        let cabecas: Vec<&Item> = l
+            .sistemas
+            .iter()
+            .flat_map(|s| &s.itens)
+            .filter(|i| matches!(i.forma, Forma::Cabeca { .. }) && i.nota.is_some())
+            .collect();
+        assert!(cabecas.len() >= 2);
+        let pal = Paleta::para_tema(true);
+        let sel = cabecas[0].nota.expect("id");
+        let marcas = Marcas {
+            selecao: Some(MarcaSelecao {
+                nota: Some(sel),
+                ..MarcaSelecao::default()
+            }),
+            ..Marcas::default()
+        };
+        assert_eq!(cor_final(cabecas[0], &pal, marcas), pal.selecao);
+        assert_ne!(cor_final(cabecas[1], &pal, marcas), pal.selecao);
+        // Sem seleção, ninguém ganha a cor da seleção.
+        assert_ne!(cor_final(cabecas[0], &pal, Marcas::default()), pal.selecao);
+    }
+
+    #[test]
+    fn cabeca_da_nota_acha_o_sistema_e_o_centro_ou_nada() {
+        let l = layout_com_ids();
+        let y = l.sistemas[0].y_topo + 2.0;
+        assert_eq!(l.cabeca_da_nota(IdNota(8)), Some((0, ponto(21.2, y))));
+        assert_eq!(l.cabeca_da_nota(IdNota(404)), None);
+        // Sem identidades no layout, nenhuma cabeça é achada.
+        let p = Partitura::de_musicxml(MINIMA).expect("válida");
+        assert_eq!(calcular_layout(&p, 60.0).cabeca_da_nota(IdNota(1)), None);
     }
 
     #[test]

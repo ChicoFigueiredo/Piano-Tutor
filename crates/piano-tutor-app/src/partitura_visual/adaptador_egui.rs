@@ -5,8 +5,8 @@
 use super::*;
 use crate::geometria::Alinha;
 use bancada_casca::egui::{
-    Align, Align2, Color32, FontId, Painter, Pos2, Rect, ScrollArea, Sense, Shape, Stroke, Ui,
-    pos2, vec2,
+    Align, Align2, Color32, EventFilter, FontId, Id, Painter, Pos2, Rect, ScrollArea, Sense, Shape,
+    Stroke, StrokeKind, Ui, WidgetInfo, WidgetType, pos2, vec2,
 };
 
 /// Cores da partitura (tokens do tema do app: Noite e Claro).
@@ -21,10 +21,31 @@ pub struct Paleta {
     pub acerto: Color32,
     /// Nota errada ou perdida na prática.
     pub erro: Color32,
+    /// Nota selecionada e foco do teclado (ticket 12): anel e cor da nota. Contraste mínimo
+    /// contra o papel em `selecao_partitura::CONTRASTE_MINIMO` (e `_ALTO` no alto contraste).
+    pub selecao: Color32,
 }
 
 impl Paleta {
     pub fn para_tema(escuro: bool) -> Self {
+        Self::para_tema_com(escuro, false)
+    }
+
+    /// Como [`Paleta::para_tema`], com a opção de **alto contraste** da seleção (amarelo sobre o
+    /// papel escuro, azul puro sobre o claro).
+    pub fn para_tema_com(escuro: bool, alto_contraste: bool) -> Self {
+        let mut p = Self::base(escuro);
+        if alto_contraste {
+            p.selecao = if escuro {
+                Color32::from_rgb(0xFF, 0xFF, 0x00)
+            } else {
+                Color32::from_rgb(0x00, 0x00, 0xFF)
+            };
+        }
+        p
+    }
+
+    fn base(escuro: bool) -> Self {
         if escuro {
             Self {
                 papel: Color32::from_rgb(0x1E, 0x21, 0x29),
@@ -34,6 +55,7 @@ impl Paleta {
                 esquerda: Color32::from_rgb(0x4F, 0xA3, 0xC7),
                 acerto: Color32::from_rgb(0x4C, 0xC3, 0x6B),
                 erro: Color32::from_rgb(0xE8, 0x5A, 0x50),
+                selecao: Color32::from_rgb(0xFF, 0x6F, 0xE0),
             }
         } else {
             Self {
@@ -44,6 +66,7 @@ impl Paleta {
                 esquerda: Color32::from_rgb(0x1F, 0x6F, 0x8B),
                 acerto: Color32::from_rgb(0x1B, 0x8A, 0x3C),
                 erro: Color32::from_rgb(0xC6, 0x28, 0x28),
+                selecao: Color32::from_rgb(0x7B, 0x1F, 0xA2),
             }
         }
     }
@@ -85,6 +108,15 @@ pub(super) fn cor_do_item_com(
     match it.cor {
         Cor::Tinta => pal.tinta,
         Cor::Suave => pal.suave,
+    }
+}
+
+/// Cor com que a primitiva é pintada: a nota selecionada (cabeça, pontos de aumento e acidente)
+/// ganha a cor da seleção acima de tudo; as demais seguem destaque, resultado e tinta.
+pub(super) fn cor_final(it: &Item, pal: &Paleta, marcas: Marcas<'_>) -> Color32 {
+    match marcas.selecao.and_then(|s| s.nota) {
+        Some(sel) if it.nota == Some(sel) => pal.selecao,
+        _ => cor_do_item_com(it, pal, marcas.destaque, marcas.resultados),
     }
 }
 
@@ -135,7 +167,7 @@ pub fn pintar_itens(
         if !corte.intersects(Rect::from_min_max(px(lim.min), px(lim.max))) {
             continue;
         }
-        let cor = cor_do_item_com(it, pal, marcas.destaque, marcas.resultados);
+        let cor = cor_final(it, pal, marcas);
         match &it.forma {
             Forma::Linha { a, b, espessura } => {
                 let (mut pa, mut pb) = (px(*a), px(*b));
@@ -218,6 +250,9 @@ pub fn pintar_itens(
     }
 }
 
+/// Raio do anel de seleção, em sp (maior que a cabeça de nota, que tem 0,64 sp de meia largura).
+const RAIO_ANEL_SP: f32 = 1.25;
+
 type ChaveLayout = (u32, u32, ModoRolagem);
 
 /// Estado persistente do componente (cache do layout e rolagem).
@@ -298,8 +333,30 @@ impl Default for OpcoesVisuais {
 /// O que o usuário fez na partitura neste quadro.
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
 pub struct RespostaPartitura {
-    /// Compasso clicado.
+    /// Compasso clicado (mesmo quando o clique caiu numa nota).
     pub compasso_clicado: Option<usize>,
+    /// Alvo do clique: a nota sob o ponteiro (se o layout tiver identidades) ou o compasso.
+    pub acerto: Option<Acerto>,
+    /// A vista da partitura tem o foco do teclado neste quadro (só com `Marcas::selecao`).
+    pub com_foco: bool,
+    /// Identidade do widget da vista (para pedir foco por programa e em testes).
+    pub id: Option<Id>,
+}
+
+/// Seleção de nota e foco do teclado nesta vista (ticket 12). Sem ela a vista só mostra e
+/// continua reportando o compasso clicado, como antes.
+#[derive(Clone, Copy, Debug, Default)]
+pub struct MarcaSelecao<'a> {
+    /// Nota selecionada (por identidade).
+    pub nota: Option<IdNota>,
+    /// Nota a trazer para a vista neste quadro (depois de navegar pelo teclado).
+    pub rolar_para: Option<IdNota>,
+    /// `Tab` pertence à partitura (há mais de uma voz ou pauta): não troca o foco da janela.
+    pub captura_tab: bool,
+    /// Seleção em alto contraste.
+    pub alto_contraste: bool,
+    /// Descrição em texto da nota selecionada (rótulo de acessibilidade).
+    pub descricao: &'a str,
 }
 
 /// Compasso em seleção (ponto de partida) e destaque de execução.
@@ -312,6 +369,8 @@ pub struct Marcas<'a> {
     /// Identidades das notas do documento: com elas o layout carrega a identidade em cada nota.
     /// O layout fica em cache até `EstadoVisual::invalidar`: troque o documento invalidando.
     pub ids: Option<&'a IdsPorNota>,
+    /// Seleção de nota e foco do teclado (ticket 12); `None` = vista só de leitura.
+    pub selecao: Option<MarcaSelecao<'a>>,
 }
 
 /// Desenha a partitura com rolagem própria. A largura do layout acompanha a do `ui`.
@@ -353,7 +412,18 @@ pub fn desenhar_partitura(
         }
     };
     estado.ultimo_layout = Some(layout.clone());
-    let pal = Paleta::para_tema(ui.visuals().dark_mode && !opc.papel_branco);
+    let pal = Paleta::para_tema_com(
+        ui.visuals().dark_mode && !opc.papel_branco,
+        marcas.selecao.is_some_and(|s| s.alto_contraste),
+    );
+    let cabeca_selecionada = marcas
+        .selecao
+        .and_then(|s| s.nota)
+        .and_then(|id| layout.cabeca_da_nota(id));
+    let cabeca_a_mostrar = marcas
+        .selecao
+        .and_then(|s| s.rolar_para)
+        .and_then(|id| layout.cabeca_da_nota(id));
     let mut resposta = RespostaPartitura::default();
     let mut area = ScrollArea::both()
         .id_salt(if fita {
@@ -381,6 +451,35 @@ pub fn desenhar_partitura(
             },
         );
         let (resp, painter) = ui.allocate_painter(tamanho, Sense::click());
+        resposta.id = Some(resp.id);
+        if let Some(sel) = marcas.selecao {
+            let rotulo = if sel.descricao.is_empty() {
+                "Partitura. Setas esquerda e direita escolhem a nota; Tab troca de voz.".to_owned()
+            } else {
+                format!("Partitura. Nota selecionada: {}", sel.descricao)
+            };
+            resp.widget_info(|| WidgetInfo::labeled(WidgetType::Other, true, rotulo.clone()));
+            resposta.com_foco = resp.has_focus();
+            if resp.gained_focus() {
+                // O filtro de teclas só vale a partir do quadro seguinte ao do foco: garante um.
+                ui.ctx().request_repaint();
+            }
+            if resposta.com_foco {
+                // Setas horizontais (e Tab, havendo mais de uma voz) são da partitura; Esc devolve
+                // o foco à janela, então o teclado nunca fica preso.
+                ui.ctx().memory_mut(|m| {
+                    m.set_focus_lock_filter(
+                        resp.id,
+                        EventFilter {
+                            tab: sel.captura_tab,
+                            horizontal_arrows: true,
+                            vertical_arrows: false,
+                            escape: false,
+                        },
+                    );
+                });
+            }
+        }
         // Na fita o sistema fica centrado na vertical, sobre o papel que ocupa a vista.
         let origem = resp.rect.min + vec2(0.0, ((tamanho.y - altura_px) / 2.0).max(0.0).floor());
         painter.rect_filled(resp.rect, 4.0, pal.papel);
@@ -393,7 +492,6 @@ pub fn desenhar_partitura(
                     origem.y + (s.y_base + 6.0) * esp,
                 ),
             );
-            let _ = i;
             if !faixa.intersects(visivel) {
                 continue;
             }
@@ -454,7 +552,34 @@ pub fn desenhar_partitura(
                     ),
                 );
             }
+            // Anel da nota selecionada, sob as notas: forma além da cor (mais grosso com foco).
+            if let Some((sis, c)) = cabeca_selecionada
+                && sis == i
+            {
+                let centro = pos2(origem.x + c.x * esp, origem.y + c.y * esp);
+                let raio = RAIO_ANEL_SP * esp;
+                let (r, g, b) = (pal.selecao.r(), pal.selecao.g(), pal.selecao.b());
+                painter.circle_filled(centro, raio, Color32::from_rgba_unmultiplied(r, g, b, 56));
+                let grossura = if resposta.com_foco { 3.0 } else { 1.5 };
+                painter.circle_stroke(centro, raio, Stroke::new(grossura, pal.selecao));
+            }
             pintar_itens(&painter, origem, esp, &s.itens, &pal, marcas, true);
+        }
+        if marcas.selecao.is_some() && resposta.com_foco {
+            // Moldura de foco na região visível: o foco do teclado é sempre localizável.
+            ui.painter().rect_stroke(
+                visivel.shrink(1.5),
+                3.0,
+                Stroke::new(3.0, pal.selecao),
+                StrokeKind::Inside,
+            );
+        }
+        if let Some((_, c)) = cabeca_a_mostrar {
+            let alvo = Rect::from_center_size(
+                pos2(origem.x + c.x * esp, origem.y + c.y * esp),
+                vec2(8.0 * esp, 10.0 * esp),
+            );
+            ui.scroll_to_rect(alvo, None);
         }
         if let Some(d) = marcas.destaque
             && opc.seguir
@@ -481,6 +606,7 @@ pub fn desenhar_partitura(
         {
             let (x, y) = ((pos.x - origem.x) / esp, (pos.y - origem.y) / esp);
             resposta.compasso_clicado = layout.compasso_em(x, y);
+            resposta.acerto = layout.acertar(ponto(x, y), TOLERANCIA_NOTA_SP);
         }
     });
     resposta

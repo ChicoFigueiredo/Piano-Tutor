@@ -46,6 +46,7 @@ pub mod revisao;
 pub mod ritmo;
 pub mod roda_bend;
 pub mod roteiro_aula;
+pub mod selecao_partitura;
 pub mod seletor_instrumento;
 pub mod sincronia;
 pub mod som;

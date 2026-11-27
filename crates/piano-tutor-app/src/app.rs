@@ -2139,6 +2139,39 @@ mod testes {
     }
 
     #[test]
+    fn partitura_em_foco_navega_sem_atrapalhar_panico_nem_paleta() {
+        let mut c = casca();
+        let ctx = Context::default();
+        c.abrir(&ctx, ROTA_PARTITURA.into(), Local::Centro);
+        quadro(&mut c, &ctx, Vec::new(), Modifiers::NONE);
+        quadro(&mut c, &ctx, Vec::new(), Modifiers::NONE);
+        let id = c.app.partitura.id_da_vista.expect("a vista foi desenhada");
+        // Sem foco na partitura, a seta não seleciona nada.
+        apertar(&mut c, &ctx, Key::ArrowRight, Modifiers::NONE);
+        assert_eq!(c.app.partitura.nota_selecionada(), None);
+        // Com foco, a seta seleciona.
+        ctx.memory_mut(|m| m.request_focus(id));
+        quadro(&mut c, &ctx, Vec::new(), Modifiers::NONE);
+        quadro(&mut c, &ctx, Vec::new(), Modifiers::NONE);
+        apertar(&mut c, &ctx, Key::ArrowRight, Modifiers::NONE);
+        let nota = c.app.partitura.nota_selecionada().expect("selecionou");
+        // Pânico (Ctrl+.) continua valendo e não mexe na seleção.
+        // (O pânico para o ritmo em andamento: é o efeito observável sem saída de áudio.)
+        c.app.ritmo.iniciar_em(0);
+        assert!(c.app.ritmo.tocando());
+        apertar(&mut c, &ctx, Key::Period, Modifiers::COMMAND);
+        assert!(!c.app.ritmo.tocando(), "Ctrl+. deve disparar o pânico");
+        assert_eq!(c.app.partitura.nota_selecionada(), Some(nota));
+        // Paleta (Ctrl+K) continua abrindo; com ela aberta (campo de busca em foco) as setas
+        // não movem a seleção da partitura.
+        apertar(&mut c, &ctx, Key::K, Modifiers::COMMAND);
+        assert!(c.estado.paleta.aberta);
+        apertar(&mut c, &ctx, Key::ArrowRight, Modifiers::NONE);
+        assert_eq!(c.app.partitura.nota_selecionada(), Some(nota));
+        assert!(c.estado.erros.is_empty(), "{:?}", c.estado.erros);
+    }
+
+    #[test]
     fn ctrl_ponto_dispara_o_panico_e_limpa_a_simulacao() {
         let mut c = casca();
         let ctx = Context::default();

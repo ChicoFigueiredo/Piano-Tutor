@@ -8,13 +8,17 @@
 
 pub use crate::documento_partitura::Musica;
 use crate::documento_partitura::{DocumentoPartitura, destino_de_exportacao};
+use crate::geometria::IdNota;
 use crate::partitura_visual::{
-    Destaque, EstadoVisual, Mao, MapaResultados, Marcas, ModoRolagem, OpcoesVisuais, ResultadoNota,
-    ZOOM_MAX, ZOOM_MIN, desenhar_partitura,
+    Acerto, Destaque, EstadoVisual, Mao, MapaResultados, MarcaSelecao, Marcas, ModoRolagem,
+    OpcoesVisuais, ResultadoNota, ZOOM_MAX, ZOOM_MIN, desenhar_partitura,
 };
 use crate::preferencias::PreferenciasPartitura;
+use crate::selecao_partitura::{Comando, EfeitoDoClique, Resultado, SelecaoPartitura, descrever};
 use crate::som::{EstadoSom, ServicoSom};
-use bancada_casca::egui::{self, Button, ComboBox, Key, RichText, Slider, TextEdit, Ui};
+use bancada_casca::egui::{
+    self, Button, ComboBox, Event, Key, Modifiers, RichText, Slider, TextEdit, Ui,
+};
 use piano_tutor_core::NotaMidi;
 use piano_tutor_core::comparador::EventoEsperado;
 use piano_tutor_core::documento::ErroServico;
@@ -252,6 +256,12 @@ pub struct EstadoPartitura {
     pub modo_rolagem: ModoRolagem,
     /// Papel branco com tinta escura mesmo no tema Noite.
     pub papel_branco: bool,
+    /// Seleção de nota em alto contraste (preferência do perfil).
+    pub alto_contraste: bool,
+    /// Nota selecionada e navegação por teclado (ticket 12): fora do documento e do egui.
+    selecao: SelecaoPartitura,
+    /// Identidade do widget da vista no último quadro (foco do teclado; testes).
+    pub(crate) id_da_vista: Option<egui::Id>,
     /// Arquivo onde as preferências de exibição são gravadas (sem pasta de dados, não grava).
     /// Últimas preferências entregues ao app (ele as grava no perfil ativo).
     preferencias_gravadas: PreferenciasPartitura,
@@ -334,6 +344,9 @@ impl EstadoPartitura {
             seguir: prefs.seguir,
             modo_rolagem: prefs.modo,
             papel_branco: prefs.papel_branco,
+            alto_contraste: prefs.alto_contraste,
+            selecao: SelecaoPartitura::default(),
+            id_da_vista: None,
             preferencias_gravadas: prefs,
             preferencias_mudadas: None,
             visual: EstadoVisual::default(),
@@ -381,8 +394,56 @@ impl EstadoPartitura {
         self.campo_exportar = format!("{}.musicxml", nome_de_arquivo(&d.nome));
         self.documento = Some(d);
         self.compasso_inicial = None;
+        // Outro documento, outras identidades de nota: a seleção anterior não vale mais.
+        self.selecao.limpar();
         self.pratica = None;
         self.visual.invalidar();
+    }
+
+    /// Nota selecionada (por identidade), se houver.
+    pub fn nota_selecionada(&self) -> Option<IdNota> {
+        self.selecao.nota()
+    }
+
+    /// Estado da seleção (nota e último aviso).
+    pub fn selecao(&self) -> &SelecaoPartitura {
+        &self.selecao
+    }
+
+    /// Quantas vozes ou pautas com notas há para o `Tab` alternar.
+    pub fn trilhas_de_leitura(&self) -> usize {
+        self.documento
+            .as_ref()
+            .map_or(0, |d| d.leitura.trilhas().len())
+    }
+
+    /// Executa um comando de navegação sobre a partitura aberta. Não edita nem suja o documento.
+    pub fn navegar(&mut self, cmd: Comando) -> Option<Resultado> {
+        let d = self.documento.as_ref()?;
+        Some(self.selecao.executar(&d.leitura, cmd))
+    }
+
+    /// Traduz o acerto de um clique: nota seleciona a nota; fora de nota, alterna o compasso de
+    /// partida (comportamento de sempre) e mantém a nota selecionada; fora de tudo, nada muda.
+    pub fn clicar_na_partitura(&mut self, acerto: Option<Acerto>) -> EfeitoDoClique {
+        let Some(d) = self.documento.as_ref() else {
+            return EfeitoDoClique::Nenhum;
+        };
+        let efeito = self.selecao.clicar(&d.leitura, acerto);
+        if let EfeitoDoClique::Compasso(c) = efeito {
+            self.compasso_inicial = if self.compasso_inicial == Some(c) {
+                None
+            } else {
+                Some(c)
+            };
+        }
+        efeito
+    }
+
+    /// Descrição em texto da nota selecionada (altura, compasso, pauta e voz).
+    pub fn descricao_da_selecao(&self) -> Option<String> {
+        let d = self.documento.as_ref()?;
+        descrever(d.partitura(), &d.leitura, self.selecao.nota()?)
     }
 
     fn preferencias_visuais(&self) -> PreferenciasPartitura {
@@ -391,6 +452,7 @@ impl EstadoPartitura {
             papel_branco: self.papel_branco,
             seguir: self.seguir,
             zoom: self.zoom,
+            alto_contraste: self.alto_contraste,
         }
     }
 
@@ -415,6 +477,7 @@ impl EstadoPartitura {
         self.seguir = p.seguir;
         self.modo_rolagem = p.modo;
         self.papel_branco = p.papel_branco;
+        self.alto_contraste = p.alto_contraste;
         self.preferencias_gravadas = p;
         self.preferencias_mudadas = None;
         self.visual.invalidar();
@@ -934,6 +997,9 @@ pub struct OpcoesTela {
     pub com_titulo: bool,
     pub com_origem: bool,
     pub com_exportacao: bool,
+    /// Seleção de nota e navegação por teclado (só a tela Partitura; a prática embutida do
+    /// Exercício de Curso fica sem ela).
+    pub com_selecao: bool,
     /// Se houver, manda no cursor (por exemplo, o do áudio do professor).
     pub cursor_externo: Option<Destaque>,
 }
@@ -943,6 +1009,7 @@ impl OpcoesTela {
         com_titulo: true,
         com_origem: true,
         com_exportacao: true,
+        com_selecao: true,
         cursor_externo: None,
     };
 }
@@ -998,9 +1065,22 @@ pub fn desenhar_corpo(
     ui.add_space(4.0);
     let agora = som.agora_ns();
     let destaque = opcoes.cursor_externo.or_else(|| e.destaque(agora));
+    if opcoes.com_selecao {
+        desenhar_estado_da_selecao(ui, e);
+    }
     let Some(d) = e.documento.take() else {
         ui.label("Nenhuma partitura carregada.");
         return;
+    };
+    let descricao = if opcoes.com_selecao {
+        e.descricao_da_selecao().unwrap_or_default()
+    } else {
+        String::new()
+    };
+    let rolar_para = if opcoes.com_selecao {
+        e.selecao.tomar_rolagem()
+    } else {
+        None
     };
     let resposta = desenhar_partitura(
         ui,
@@ -1017,10 +1097,32 @@ pub fn desenhar_corpo(
             selecionado: e.compasso_inicial,
             resultados: e.pratica.as_ref().map(|s| &s.mapa),
             ids: Some(d.ids()),
+            selecao: opcoes.com_selecao.then(|| MarcaSelecao {
+                nota: e.selecao.nota(),
+                rolar_para,
+                captura_tab: d.leitura.trilhas().len() > 1,
+                alto_contraste: e.alto_contraste,
+                descricao: &descricao,
+            }),
         },
     );
     e.documento = Some(d);
-    if let Some(c) = resposta.compasso_clicado {
+    if opcoes.com_selecao {
+        e.id_da_vista = resposta.id;
+        if resposta.com_foco && !ui.ctx().text_edit_focused() {
+            let tab_ativo = e.trilhas_de_leitura() > 1;
+            let comandos = ler_comandos_de_teclado(ui, tab_ativo);
+            if !comandos.is_empty() {
+                for c in comandos {
+                    e.navegar(c);
+                }
+                ui.ctx().request_repaint();
+            }
+        }
+        if resposta.acerto.is_some() {
+            e.clicar_na_partitura(resposta.acerto);
+        }
+    } else if let Some(c) = resposta.compasso_clicado {
         e.compasso_inicial = if e.compasso_inicial == Some(c) {
             None
         } else {
@@ -1030,6 +1132,60 @@ pub fn desenhar_corpo(
     if e.tocando() || e.praticando() || opcoes.cursor_externo.is_some() {
         ui.ctx().request_repaint();
     }
+}
+
+/// Tabela **interna e fixa** das teclas de navegação da partitura (ticket 12). O ticket 13 a
+/// troca pelo mapa de atalhos remapeável. Só vale sem Ctrl, Alt ou Cmd, para não tocar em
+/// atalhos da casca (Ctrl+K, Ctrl+.). `Tab` só entra quando há mais de uma voz ou pauta.
+pub fn comando_da_tecla(tecla: Key, mods: Modifiers, tab_ativo: bool) -> Option<Comando> {
+    match tecla {
+        Key::ArrowLeft if !mods.any() => Some(Comando::Anterior),
+        Key::ArrowRight if !mods.any() => Some(Comando::Seguinte),
+        Key::Tab if tab_ativo && !mods.any() => Some(Comando::TrilhaSeguinte),
+        Key::Tab if tab_ativo && mods.shift_only() => Some(Comando::TrilhaAnterior),
+        _ => None,
+    }
+}
+
+/// Lê (e consome) as teclas de navegação do quadro. Só deve ser chamada com a vista da
+/// partitura em foco: com foco em campo de texto ou em outro controle, as teclas não são tocadas.
+fn ler_comandos_de_teclado(ui: &Ui, tab_ativo: bool) -> Vec<Comando> {
+    ui.ctx().input_mut(|i| {
+        let mut comandos = Vec::new();
+        i.events.retain(|ev| {
+            if let Event::Key {
+                key,
+                pressed: true,
+                modifiers,
+                ..
+            } = ev
+                && let Some(c) = comando_da_tecla(*key, *modifiers, tab_ativo)
+            {
+                comandos.push(c);
+                return false;
+            }
+            true
+        });
+        comandos
+    })
+}
+
+/// Linha de estado da seleção: nota selecionada em texto (além da cor e do anel), aviso discreto
+/// de limite e a dica das teclas.
+fn desenhar_estado_da_selecao(ui: &mut Ui, e: &EstadoPartitura) {
+    let mut partes = Vec::new();
+    match e.descricao_da_selecao() {
+        Some(t) => partes.push(format!("Nota selecionada: {t}")),
+        None => partes.push(
+            "Clique numa nota (ou ative a partitura com Tab) e use as setas esquerda e direita; \
+             Tab troca de voz ou pauta; Esc sai."
+                .to_owned(),
+        ),
+    }
+    if let Some(a) = e.selecao.aviso() {
+        partes.push(a.texto().to_owned());
+    }
+    ui.label(RichText::new(partes.join(" · ")).weak());
 }
 
 /// Só a vista da partitura (pautas, cursor e rolagem), sem a barra de comandos, para telas que
@@ -1060,6 +1216,7 @@ pub fn desenhar_vista_com_cursor(ui: &mut Ui, e: &mut EstadoPartitura, destaque:
             selecionado: None,
             resultados: None,
             ids: Some(d.ids()),
+            selecao: None,
         },
     );
     e.documento = Some(d);
@@ -1311,6 +1468,11 @@ fn desenhar_transporte(ui: &mut Ui, e: &mut EstadoPartitura, som: &mut ServicoSo
             );
         ui.checkbox(&mut e.papel_branco, "Papel branco")
             .on_hover_text("Partitura sempre em papel branco, mesmo com o tema Noite");
+        ui.checkbox(&mut e.alto_contraste, "Alto contraste na seleção")
+            .on_hover_text(
+                "Nota selecionada e foco do teclado em amarelo (tema Noite) ou azul puro \
+                 (papel branco), com contraste de pelo menos 7:1 contra o papel",
+            );
     });
     // Não grava a cada quadro enquanto o slider de zoom é arrastado.
     if !ui.input(|i| i.pointer.any_down()) {
@@ -2026,5 +2188,291 @@ mod testes {
         quadro_tesselado(&ctx, &mut e, &mut som, (1280.0, 800.0));
         e.parar_pratica();
         quadro_tesselado(&ctx, &mut e, &mut som, (1280.0, 800.0));
+    }
+
+    // --- Seleção e navegação (ticket 12) ------------------------------------------------------
+
+    /// Duas vozes (pautas 1 e 2) para o `Tab`.
+    const DUAS_VOZES: &str = r#"<score-partwise><part-list><score-part id="P1"><part-name>x</part-name></score-part></part-list>
+<part id="P1"><measure number="1"><attributes><divisions>1</divisions><staves>2</staves>
+<clef number="1"><sign>G</sign><line>2</line></clef><clef number="2"><sign>F</sign><line>4</line></clef></attributes>
+<note><pitch><step>C</step><octave>5</octave></pitch><duration>2</duration><voice>1</voice><type>half</type><staff>1</staff></note>
+<note><pitch><step>E</step><octave>5</octave></pitch><duration>2</duration><voice>1</voice><type>half</type><staff>1</staff></note>
+<backup><duration>4</duration></backup>
+<note><pitch><step>C</step><octave>3</octave></pitch><duration>4</duration><voice>5</voice><type>whole</type><staff>2</staff></note>
+</measure></part></score-partwise>"#;
+
+    fn tecla(key: Key, modifiers: Modifiers) -> Event {
+        Event::Key {
+            key,
+            physical_key: None,
+            pressed: true,
+            repeat: false,
+            modifiers,
+        }
+    }
+
+    fn quadro_com(
+        ctx: &Context,
+        e: &mut EstadoPartitura,
+        som: &mut ServicoSom,
+        eventos: Vec<Event>,
+        modifiers: Modifiers,
+    ) {
+        let entrada = RawInput {
+            screen_rect: Some(Rect::from_min_size(pos2(0.0, 0.0), vec2(1280.0, 800.0))),
+            events: std::iter::once(Event::ModifiersChanged(modifiers))
+                .chain(eventos)
+                .collect(),
+            ..Default::default()
+        };
+        ctx.run_ui(entrada, |ui| desenhar_tela(ui, e, som))
+            .drop_without_applying_deltas();
+    }
+
+    /// Desenha, dá o foco do teclado à vista da partitura e deixa o filtro de teclas assentar.
+    fn partitura_em_foco(ctx: &Context, e: &mut EstadoPartitura, som: &mut ServicoSom) -> egui::Id {
+        quadro(ctx, e, som);
+        let id = e.id_da_vista.expect("a vista foi desenhada");
+        ctx.memory_mut(|m| m.request_focus(id));
+        quadro(ctx, e, som);
+        quadro(ctx, e, som);
+        assert!(ctx.memory(|m| m.has_focus(id)), "a vista deveria ter foco");
+        id
+    }
+
+    fn apertar(
+        ctx: &Context,
+        e: &mut EstadoPartitura,
+        som: &mut ServicoSom,
+        key: Key,
+        modifiers: Modifiers,
+    ) {
+        quadro_com(ctx, e, som, vec![tecla(key, modifiers)], modifiers);
+        quadro(ctx, e, som);
+    }
+
+    fn banco() -> (ServicoSom, Context) {
+        let (som, _m) = servico_pronto(Arc::new(RelogioManual::novo()) as Arc<dyn Relogio>);
+        (som, Context::default())
+    }
+
+    #[test]
+    fn tabela_de_teclas_so_vale_sem_ctrl_alt_cmd_e_tab_so_com_mais_de_uma_voz() {
+        let nenhum = Modifiers::NONE;
+        assert_eq!(
+            comando_da_tecla(Key::ArrowLeft, nenhum, false),
+            Some(Comando::Anterior)
+        );
+        assert_eq!(
+            comando_da_tecla(Key::ArrowRight, nenhum, false),
+            Some(Comando::Seguinte)
+        );
+        assert_eq!(
+            comando_da_tecla(Key::Tab, nenhum, true),
+            Some(Comando::TrilhaSeguinte)
+        );
+        assert_eq!(
+            comando_da_tecla(Key::Tab, Modifiers::SHIFT, true),
+            Some(Comando::TrilhaAnterior)
+        );
+        // Uma voz só: Tab é da janela (passa o foco adiante), não da partitura.
+        assert_eq!(comando_da_tecla(Key::Tab, nenhum, false), None);
+        // Atalhos da casca e do sistema nunca são tomados.
+        for m in [
+            Modifiers::COMMAND,
+            Modifiers::CTRL,
+            Modifiers::ALT,
+            Modifiers::SHIFT,
+        ] {
+            assert_eq!(comando_da_tecla(Key::ArrowLeft, m, true), None, "{m:?}");
+            assert_eq!(comando_da_tecla(Key::ArrowRight, m, true), None, "{m:?}");
+        }
+        assert_eq!(comando_da_tecla(Key::Tab, Modifiers::COMMAND, true), None);
+        assert_eq!(comando_da_tecla(Key::K, Modifiers::COMMAND, true), None);
+        assert_eq!(
+            comando_da_tecla(Key::Period, Modifiers::COMMAND, true),
+            None
+        );
+        assert_eq!(comando_da_tecla(Key::A, nenhum, true), None);
+        assert_eq!(comando_da_tecla(Key::Space, nenhum, true), None);
+    }
+
+    #[test]
+    fn setas_so_agem_com_a_partitura_em_foco_e_esc_devolve_o_foco() {
+        let (mut som, ctx) = banco();
+        let mut e = ode();
+        quadro(&ctx, &mut e, &mut som);
+        // Sem foco na partitura, as setas não fazem nada.
+        apertar(&ctx, &mut e, &mut som, Key::ArrowRight, Modifiers::NONE);
+        assert_eq!(e.nota_selecionada(), None);
+        // Com foco: → seleciona a primeira nota, depois anda.
+        partitura_em_foco(&ctx, &mut e, &mut som);
+        apertar(&ctx, &mut e, &mut som, Key::ArrowRight, Modifiers::NONE);
+        let primeira = e.nota_selecionada().expect("selecionou a primeira");
+        apertar(&ctx, &mut e, &mut som, Key::ArrowRight, Modifiers::NONE);
+        let segunda = e.nota_selecionada().expect("andou");
+        assert_ne!(primeira, segunda);
+        apertar(&ctx, &mut e, &mut som, Key::ArrowLeft, Modifiers::NONE);
+        assert_eq!(e.nota_selecionada(), Some(primeira));
+        // Na primeira nota, ← fica e avisa.
+        apertar(&ctx, &mut e, &mut som, Key::ArrowLeft, Modifiers::NONE);
+        assert_eq!(e.nota_selecionada(), Some(primeira));
+        assert!(e.selecao().aviso().is_some());
+        // Esc devolve o foco à janela; a seleção fica e as setas voltam a não fazer nada.
+        apertar(&ctx, &mut e, &mut som, Key::Escape, Modifiers::NONE);
+        let id = e.id_da_vista.expect("id");
+        assert!(!ctx.memory(|m| m.has_focus(id)));
+        apertar(&ctx, &mut e, &mut som, Key::ArrowRight, Modifiers::NONE);
+        assert_eq!(e.nota_selecionada(), Some(primeira));
+        // Navegar nunca suja o documento.
+        assert!(!e.documento.as_ref().expect("doc").editado());
+    }
+
+    #[test]
+    fn ctrl_e_alt_com_setas_nao_movem_a_selecao_mesmo_com_foco() {
+        let (mut som, ctx) = banco();
+        let mut e = ode();
+        partitura_em_foco(&ctx, &mut e, &mut som);
+        apertar(&ctx, &mut e, &mut som, Key::ArrowRight, Modifiers::COMMAND);
+        apertar(&ctx, &mut e, &mut som, Key::ArrowRight, Modifiers::ALT);
+        apertar(&ctx, &mut e, &mut som, Key::ArrowRight, Modifiers::SHIFT);
+        assert_eq!(e.nota_selecionada(), None);
+    }
+
+    #[test]
+    fn digitar_em_campo_de_texto_nao_move_a_selecao() {
+        let (mut som, ctx) = banco();
+        let mut e = ode();
+        partitura_em_foco(&ctx, &mut e, &mut som);
+        apertar(&ctx, &mut e, &mut som, Key::ArrowRight, Modifiers::NONE);
+        let antes = e.nota_selecionada().expect("selecionada");
+        // O foco passa a um campo de texto ao lado da partitura.
+        let campo = egui::Id::new("campo-de-texto-da-casca");
+        let mut texto = String::new();
+        let mut frame = |eventos: Vec<Event>, e: &mut EstadoPartitura, som: &mut ServicoSom| {
+            let entrada = RawInput {
+                screen_rect: Some(Rect::from_min_size(pos2(0.0, 0.0), vec2(1280.0, 800.0))),
+                events: eventos,
+                ..Default::default()
+            };
+            ctx.run_ui(entrada, |ui| {
+                ui.add(TextEdit::singleline(&mut texto).id(campo));
+                desenhar_corpo(ui, e, som, OpcoesTela::COMPLETA);
+            })
+            .drop_without_applying_deltas();
+        };
+        frame(Vec::new(), &mut e, &mut som);
+        ctx.memory_mut(|m| m.request_focus(campo));
+        frame(Vec::new(), &mut e, &mut som);
+        frame(Vec::new(), &mut e, &mut som);
+        assert!(ctx.memory(|m| m.has_focus(campo)));
+        let id = e.id_da_vista.expect("id");
+        assert!(!ctx.memory(|m| m.has_focus(id)));
+        // Digitar e andar o cursor do texto: a seleção da partitura não muda.
+        frame(
+            vec![
+                Event::Text("abc".into()),
+                tecla(Key::ArrowRight, Modifiers::NONE),
+                tecla(Key::ArrowLeft, Modifiers::NONE),
+            ],
+            &mut e,
+            &mut som,
+        );
+        frame(Vec::new(), &mut e, &mut som);
+        assert_eq!(e.nota_selecionada(), Some(antes));
+        assert!(e.selecao().aviso().is_none());
+    }
+
+    #[test]
+    fn tab_troca_de_voz_e_so_e_capturado_havendo_mais_de_uma() {
+        let (mut som, ctx) = banco();
+        let mut e = EstadoPartitura::novo(None);
+        e.abrir_xml("duas vozes", DUAS_VOZES.to_owned())
+            .expect("abre");
+        assert_eq!(e.trilhas_de_leitura(), 2);
+        let id = partitura_em_foco(&ctx, &mut e, &mut som);
+        apertar(&ctx, &mut e, &mut som, Key::Tab, Modifiers::NONE);
+        let em_cima = e.nota_selecionada().expect("começou pela primeira voz");
+        apertar(&ctx, &mut e, &mut som, Key::Tab, Modifiers::NONE);
+        let embaixo = e.nota_selecionada().expect("trocou de pauta");
+        assert_ne!(em_cima, embaixo);
+        // O foco continua na partitura (Tab não o levou a outro controle).
+        assert!(ctx.memory(|m| m.has_focus(id)));
+        apertar(&ctx, &mut e, &mut som, Key::Tab, Modifiers::SHIFT);
+        assert_eq!(e.nota_selecionada(), Some(em_cima));
+
+        // Com uma voz só, a partitura não captura o Tab: nada é selecionado nem avisado.
+        let mut u = EstadoPartitura::novo(None);
+        u.abrir_xml("uma voz", PEQUENA.to_owned()).expect("abre");
+        assert_eq!(u.trilhas_de_leitura(), 1);
+        partitura_em_foco(&ctx, &mut u, &mut som);
+        apertar(&ctx, &mut u, &mut som, Key::Tab, Modifiers::NONE);
+        assert_eq!(u.nota_selecionada(), None);
+        assert!(u.selecao().aviso().is_none());
+    }
+
+    #[test]
+    fn clique_em_nota_seleciona_e_clique_fora_alterna_o_compasso_sem_perder_a_nota() {
+        let (mut som, ctx) = banco();
+        let mut e = ode();
+        quadro(&ctx, &mut e, &mut som);
+        let layout = e.visual.ultimo_layout.clone().expect("layout");
+        let (centro, id) = layout
+            .sistemas
+            .iter()
+            .flat_map(|s| &s.itens)
+            .find_map(|it| match (&it.forma, it.nota) {
+                (crate::partitura_visual::Forma::Cabeca { centro, .. }, Some(id)) => {
+                    Some((*centro, id))
+                }
+                _ => None,
+            })
+            .expect("há cabeça com identidade");
+        let sobre = layout.nota_em(centro, crate::partitura_visual::TOLERANCIA_NOTA_SP);
+        assert_eq!(sobre, Some(id));
+        // Clique na nota: seleciona e informa a mesma identidade do hit test; o compasso de
+        // partida não muda.
+        let efeito = e.clicar_na_partitura(layout.acertar(centro, 0.25));
+        assert_eq!(efeito, EfeitoDoClique::NotaSelecionada(id));
+        assert_eq!(e.nota_selecionada(), Some(id));
+        assert_eq!(e.compasso_inicial, None);
+        // Clique fora de nota (dentro do compasso): alterna o compasso de partida, a nota fica.
+        let efeito = e.clicar_na_partitura(Some(Acerto::Compasso(2)));
+        assert_eq!(efeito, EfeitoDoClique::Compasso(2));
+        assert_eq!(e.compasso_inicial, Some(2));
+        assert_eq!(e.nota_selecionada(), Some(id));
+        e.clicar_na_partitura(Some(Acerto::Compasso(2)));
+        assert_eq!(e.compasso_inicial, None);
+        // Clique fora de tudo: nada muda.
+        assert_eq!(e.clicar_na_partitura(None), EfeitoDoClique::Nenhum);
+        assert_eq!(e.nota_selecionada(), Some(id));
+        // Trocar de partitura limpa a seleção (outras identidades).
+        e.escolher(0);
+        assert_eq!(e.nota_selecionada(), None);
+    }
+
+    #[test]
+    fn desenha_com_selecao_foco_e_alto_contraste_sem_panico() {
+        let (mut som, ctx) = banco();
+        let mut e = ode();
+        partitura_em_foco(&ctx, &mut e, &mut som);
+        apertar(&ctx, &mut e, &mut som, Key::ArrowRight, Modifiers::NONE);
+        for alto in [false, true] {
+            e.alto_contraste = alto;
+            for modo in ModoRolagem::TODOS {
+                e.modo_rolagem = modo;
+                quadro_tesselado(&ctx, &mut e, &mut som, (1280.0, 800.0));
+                quadro_tesselado(&ctx, &mut e, &mut som, (120.0, 80.0));
+            }
+        }
+        // O alto contraste é preferência do perfil: sai e volta pelas preferências.
+        e.alto_contraste = true;
+        e.salvar_preferencias();
+        let p = e.tomar_preferencias_mudadas().expect("mudou");
+        assert!(p.alto_contraste);
+        let mut outro = EstadoPartitura::novo(None);
+        outro.definir_preferencias(p);
+        assert!(outro.alto_contraste);
     }
 }
