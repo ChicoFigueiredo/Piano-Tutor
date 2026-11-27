@@ -330,6 +330,7 @@ impl AppPianoTutor {
             s::CURSOS => r::retrato_cursos(&self.cursos),
             s::REVISAO => r::retrato_revisao(&self.revisao),
             s::TIMBRES => r::retrato_timbres(&self.seletor),
+            s::ATALHOS => r::retrato_atalhos(&self.partitura),
             // Telas que não se lembram (Calibração, Sobre) e o quadro antes da primeira tela
             // deixam valer a última rota gravada.
             s::APP => match rota_lembrada(&self.rota_atual) {
@@ -362,6 +363,7 @@ impl AppPianoTutor {
                 s::CURSOS => r::aplicar_cursos(&mut self.cursos, &t),
                 s::REVISAO => r::aplicar_revisao(&mut self.revisao, &t),
                 s::TIMBRES => r::aplicar_timbres(&mut self.seletor, &t),
+                s::ATALHOS => r::aplicar_atalhos(&mut self.partitura, &t),
                 // A rota só vale na abertura (`rota_inicial`); trocar de perfil não muda de tela.
                 s::APP => {
                     self.retratos_gravados.push((secao, t));
@@ -1664,6 +1666,34 @@ mod testes {
         b.app.apagar_perfil();
         assert!(b.app.perfis().1.expect("ativo").de_fabrica);
         assert_eq!(b.app.espelho.mapa_dedos, None);
+    }
+
+    #[test]
+    fn atalhos_remapeados_da_oficina_sao_salvos_no_perfil_e_lidos_de_volta() {
+        use crate::atalhos_partitura::AcaoAtalho;
+        use bancada_casca::Atalho;
+        let mut b = bancada();
+        let fabrica = b.app.perfis().1.expect("ativo");
+        let novo = Atalho::ctrl(Key::J).com_shift();
+        b.app
+            .partitura
+            .remapear_atalho(AcaoAtalho::NotaSeguinte, novo);
+        b.app.partitura.atalhos.remover(AcaoAtalho::Apagar);
+        b.app.gravar_retratos();
+        let meu = b.app.perfis().1.expect("ativo");
+        assert!(!meu.de_fabrica, "mudar o mapa cria Meu perfil");
+
+        b.app.trocar_perfil(fabrica.id);
+        assert_eq!(
+            b.app.partitura.atalhos.atalho(AcaoAtalho::NotaSeguinte),
+            Some(AcaoAtalho::NotaSeguinte.padrao())
+        );
+        b.app.trocar_perfil(meu.id);
+        assert_eq!(
+            b.app.partitura.atalhos.atalho(AcaoAtalho::NotaSeguinte),
+            Some(novo)
+        );
+        assert_eq!(b.app.partitura.atalhos.atalho(AcaoAtalho::Apagar), None);
     }
 
     #[test]

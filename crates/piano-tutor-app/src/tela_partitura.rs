@@ -6,7 +6,8 @@
 //! O app chama [`EstadoPartitura::atualizar`] a cada quadro (agenda as notas até
 //! `agora + ANTECEDENCIA`) e [`EstadoPartitura::tocando`] para saber se há reprodução.
 
-pub use crate::documento_partitura::Musica;
+pub use crate::atalhos_partitura::{AcaoAtalho, Destino, MapaAtalhos};
+use crate::documento_partitura::Musica;
 use crate::documento_partitura::{DocumentoPartitura, destino_de_exportacao};
 use crate::geometria::IdNota;
 use crate::partitura_visual::{
@@ -16,9 +17,8 @@ use crate::partitura_visual::{
 use crate::preferencias::PreferenciasPartitura;
 use crate::selecao_partitura::{Comando, EfeitoDoClique, Resultado, SelecaoPartitura, descrever};
 use crate::som::{EstadoSom, ServicoSom};
-use bancada_casca::egui::{
-    self, Button, ComboBox, Event, Key, Modifiers, RichText, Slider, TextEdit, Ui,
-};
+use bancada_casca::Atalho;
+use bancada_casca::egui::{self, Button, ComboBox, Event, Key, RichText, Slider, TextEdit, Ui};
 use piano_tutor_core::NotaMidi;
 use piano_tutor_core::comparador::EventoEsperado;
 use piano_tutor_core::documento::ErroServico;
@@ -260,6 +260,12 @@ pub struct EstadoPartitura {
     pub alto_contraste: bool,
     /// Nota selecionada e navegação por teclado (ticket 12): fora do documento e do egui.
     selecao: SelecaoPartitura,
+    /// Mapa de atalhos da Oficina (ticket 13), gravado no perfil (`tela.atalhos`).
+    pub atalhos: MapaAtalhos,
+    /// Ação cujo atalho está sendo capturado na lista de atalhos (a próxima tecla vale).
+    capturando_atalho: Option<AcaoAtalho>,
+    /// Último aviso ou recusa de atalho (ação pendente, conflito, combinação recusada).
+    aviso_atalho: Option<String>,
     /// Identidade do widget da vista no último quadro (foco do teclado; testes).
     pub(crate) id_da_vista: Option<egui::Id>,
     /// Arquivo onde as preferências de exibição são gravadas (sem pasta de dados, não grava).
@@ -349,6 +355,9 @@ impl EstadoPartitura {
             papel_branco: prefs.papel_branco,
             alto_contraste: prefs.alto_contraste,
             selecao: SelecaoPartitura::default(),
+            atalhos: MapaAtalhos::padrao(),
+            capturando_atalho: None,
+            aviso_atalho: None,
             id_da_vista: None,
             preferencias_gravadas: prefs,
             preferencias_mudadas: None,
@@ -420,6 +429,33 @@ impl EstadoPartitura {
         self.documento
             .as_ref()
             .map_or(0, |d| d.leitura.trilhas().len())
+    }
+
+    /// Remapeia a ação para `atalho` (vale já) e guarda a mensagem de recusa ou de conflito.
+    pub fn remapear_atalho(&mut self, acao: AcaoAtalho, atalho: Atalho) {
+        self.capturando_atalho = None;
+        self.aviso_atalho = Some(match self.atalhos.remapear(acao, atalho) {
+            Ok(None) => format!("«{}» agora é {atalho}.", acao.rotulo()),
+            Ok(Some(aviso)) => format!("«{}» agora é {atalho}. Atenção: {aviso}", acao.rotulo()),
+            Err(recusa) => recusa.to_string(),
+        });
+    }
+
+    /// Avisa que a ação do atalho apertado ainda não tem comando (fatias seguintes).
+    pub fn avisar_pendente(&mut self, acao: AcaoAtalho) {
+        let atalho = self
+            .atalhos
+            .atalho(acao)
+            .map_or_else(String::new, |a| format!(" ({a})"));
+        self.aviso_atalho = Some(format!(
+            "«{}»{atalho} ainda não tem comando: a edição chega nas próximas etapas.",
+            acao.rotulo()
+        ));
+    }
+
+    /// Último aviso ou recusa de atalho, para a linha de estado e os testes.
+    pub fn aviso_de_atalho(&self) -> Option<&str> {
+        self.aviso_atalho.as_deref()
     }
 
     /// Executa um comando de navegação sobre a partitura aberta. Não edita nem suja o documento.
@@ -1140,13 +1176,21 @@ pub fn desenhar_corpo(
         e.id_da_vista = resposta.id;
         if resposta.com_foco && !ui.ctx().text_edit_focused() {
             let tab_ativo = e.trilhas_de_leitura() > 1;
-            let comandos = ler_comandos_de_teclado(ui, tab_ativo);
-            if !comandos.is_empty() {
-                for c in comandos {
-                    e.navegar(c);
+            let destinos = ler_comandos_de_teclado(ui, &e.atalhos, tab_ativo);
+            if !destinos.is_empty() {
+                for d in destinos {
+                    match d {
+                        Destino::Comando(c) => {
+                            e.navegar(c);
+                        }
+                        Destino::Pendente(a) => e.avisar_pendente(a),
+                    }
                 }
                 ui.ctx().request_repaint();
             }
+        }
+        if e.capturando_atalho.is_some() && !ui.ctx().text_edit_focused() {
+            capturar_atalho(ui, e);
         }
         if resposta.acerto.is_some() {
             e.clicar_na_partitura(resposta.acerto);
@@ -1163,24 +1207,13 @@ pub fn desenhar_corpo(
     }
 }
 
-/// Tabela **interna e fixa** das teclas de navegação da partitura (ticket 12). O ticket 13 a
-/// troca pelo mapa de atalhos remapeável. Só vale sem Ctrl, Alt ou Cmd, para não tocar em
-/// atalhos da casca (Ctrl+K, Ctrl+.). `Tab` só entra quando há mais de uma voz ou pauta.
-pub fn comando_da_tecla(tecla: Key, mods: Modifiers, tab_ativo: bool) -> Option<Comando> {
-    match tecla {
-        Key::ArrowLeft if !mods.any() => Some(Comando::Anterior),
-        Key::ArrowRight if !mods.any() => Some(Comando::Seguinte),
-        Key::Tab if tab_ativo && !mods.any() => Some(Comando::TrilhaSeguinte),
-        Key::Tab if tab_ativo && mods.shift_only() => Some(Comando::TrilhaAnterior),
-        _ => None,
-    }
-}
-
-/// Lê (e consome) as teclas de navegação do quadro. Só deve ser chamada com a vista da
-/// partitura em foco: com foco em campo de texto ou em outro controle, as teclas não são tocadas.
-fn ler_comandos_de_teclado(ui: &Ui, tab_ativo: bool) -> Vec<Comando> {
+/// Lê (e consome) as teclas da Oficina do quadro, roteadas pelo mapa de atalhos (ticket 13).
+/// Só deve ser chamada com a vista da partitura em foco: com foco em campo de texto ou em outro
+/// controle, as teclas não são tocadas. Ctrl+K, Ctrl+. e Esc nunca são consumidos: a casca os
+/// trata (ver [`MapaAtalhos::rotear`]).
+fn ler_comandos_de_teclado(ui: &Ui, mapa: &MapaAtalhos, tab_ativo: bool) -> Vec<Destino> {
     ui.ctx().input_mut(|i| {
-        let mut comandos = Vec::new();
+        let mut destinos = Vec::new();
         i.events.retain(|ev| {
             if let Event::Key {
                 key,
@@ -1188,20 +1221,69 @@ fn ler_comandos_de_teclado(ui: &Ui, tab_ativo: bool) -> Vec<Comando> {
                 modifiers,
                 ..
             } = ev
-                && let Some(c) = comando_da_tecla(*key, *modifiers, tab_ativo)
+                && let Some(d) = mapa.rotear(*key, *modifiers, tab_ativo)
             {
-                comandos.push(c);
+                destinos.push(d);
                 return false;
             }
             true
         });
-        comandos
+        destinos
     })
+}
+
+/// Captura a próxima combinação apertada para a ação em remapeamento. Esc cancela (e segue para
+/// a casca); só modificador sozinho é ignorado.
+fn capturar_atalho(ui: &Ui, e: &mut EstadoPartitura) {
+    let Some(acao) = e.capturando_atalho else {
+        return;
+    };
+    let apertada = ui.ctx().input_mut(|i| {
+        if i.events.iter().any(|ev| {
+            matches!(
+                ev,
+                Event::Key {
+                    key: Key::Escape,
+                    pressed: true,
+                    ..
+                }
+            )
+        }) {
+            return Some(None);
+        }
+        let pos = i.events.iter().position(|ev| {
+            matches!(
+                ev,
+                Event::Key {
+                    pressed: true,
+                    repeat: false,
+                    ..
+                }
+            )
+        })?;
+        match i.events.remove(pos) {
+            Event::Key { key, modifiers, .. } => Some(Some(Atalho {
+                ctrl: modifiers.command,
+                alt: modifiers.alt,
+                shift: modifiers.shift,
+                tecla: key,
+            })),
+            _ => None,
+        }
+    });
+    match apertada {
+        Some(None) => {
+            e.capturando_atalho = None;
+            e.aviso_atalho = Some("Remapeamento cancelado.".to_owned());
+        }
+        Some(Some(atalho)) => e.remapear_atalho(acao, atalho),
+        None => {}
+    }
 }
 
 /// Linha de estado da seleção: nota selecionada em texto (além da cor e do anel), aviso discreto
 /// de limite e a dica das teclas.
-fn desenhar_estado_da_selecao(ui: &mut Ui, e: &EstadoPartitura) {
+fn desenhar_estado_da_selecao(ui: &mut Ui, e: &mut EstadoPartitura) {
     let mut partes = Vec::new();
     match e.descricao_da_selecao() {
         Some(t) => partes.push(format!("Nota selecionada: {t}")),
@@ -1214,7 +1296,74 @@ fn desenhar_estado_da_selecao(ui: &mut Ui, e: &EstadoPartitura) {
     if let Some(a) = e.selecao.aviso() {
         partes.push(a.texto().to_owned());
     }
+    if let Some(a) = e.aviso_de_atalho() {
+        partes.push(a.to_owned());
+    }
     ui.label(RichText::new(partes.join(" · ")).weak());
+    desenhar_lista_de_atalhos(ui, e);
+}
+
+/// Lista de atalhos da Oficina: rótulo em PT-BR, combinação, situação (pendente, conflito com a
+/// tela Teclado) e os botões de remapear. Ctrl+K, Ctrl+. e Esc são listados como reservados.
+fn desenhar_lista_de_atalhos(ui: &mut Ui, e: &mut EstadoPartitura) {
+    egui::CollapsingHeader::new("Atalhos de teclado da Oficina")
+        .id_salt("atalhos_da_oficina")
+        .show(ui, |ui| {
+            ui.label(
+                RichText::new(
+                    "Reservados e fora do alcance da Oficina: Ctrl+K (paleta), Ctrl+. (Pânico) \
+                     e Esc (casca).",
+                )
+                .weak(),
+            );
+            let avisos = e.atalhos.avisos_tela_teclado();
+            let linhas: Vec<_> = e.atalhos.linhas().collect();
+            let mut mudar = None;
+            let mut remover = None;
+            egui::Grid::new("grade_de_atalhos")
+                .num_columns(4)
+                .striped(true)
+                .show(ui, |ui| {
+                    for (acao, atalho) in linhas {
+                        ui.label(acao.rotulo());
+                        let texto = if e.capturando_atalho == Some(acao) {
+                            "Aperte a nova combinação (Esc cancela)".to_owned()
+                        } else {
+                            atalho.map_or_else(|| "sem atalho".to_owned(), |a| a.to_string())
+                        };
+                        ui.monospace(texto);
+                        let mut situacao = Vec::new();
+                        if acao.comando().is_none() {
+                            situacao.push("pendente: ainda sem comando".to_owned());
+                        }
+                        if let Some((_, a)) = avisos.iter().find(|(x, _)| *x == acao) {
+                            situacao.push(format!("conflita com a tela Teclado ({})", a.letra));
+                        }
+                        ui.label(RichText::new(situacao.join("; ")).weak());
+                        ui.horizontal(|ui| {
+                            if ui.button("Mudar").clicked() {
+                                mudar = Some(acao);
+                            }
+                            if ui.button("Sem atalho").clicked() {
+                                remover = Some(acao);
+                            }
+                        });
+                        ui.end_row();
+                    }
+                });
+            if let Some(a) = mudar {
+                e.capturando_atalho = Some(a);
+                e.aviso_atalho = None;
+            }
+            if let Some(a) = remover {
+                e.atalhos.remover(a);
+            }
+            if ui.button("Restaurar atalhos padrão").clicked() {
+                e.atalhos.restaurar_padrao();
+                e.capturando_atalho = None;
+                e.aviso_atalho = Some("Atalhos restaurados ao padrão.".to_owned());
+            }
+        });
 }
 
 /// Só a vista da partitura (pautas, cursor e rolagem), sem a barra de comandos, para telas que
@@ -1536,7 +1685,7 @@ mod testes {
     use super::*;
     use crate::partitura_visual::Alvo;
     use crate::som::apoio_testes::servico_pronto;
-    use bancada_casca::egui::{Context, RawInput, Rect, pos2, vec2};
+    use bancada_casca::egui::{Context, Modifiers, RawInput, Rect, pos2, vec2};
     use piano_tutor_audio::RelogioManual;
     use piano_tutor_audio::sintetizador::RegistroFalso;
     use piano_tutor_core::mxl::empacotar_mxl;
@@ -2286,6 +2435,14 @@ mod testes {
         (som, Context::default())
     }
 
+    /// O comando de navegação que o perfil padrão liga à tecla.
+    fn comando_da_tecla(tecla: Key, mods: Modifiers, tab_ativo: bool) -> Option<Comando> {
+        match MapaAtalhos::padrao().rotear(tecla, mods, tab_ativo) {
+            Some(Destino::Comando(c)) => Some(c),
+            _ => None,
+        }
+    }
+
     #[test]
     fn tabela_de_teclas_so_vale_sem_ctrl_alt_cmd_e_tab_so_com_mais_de_uma_voz() {
         let nenhum = Modifiers::NONE;
@@ -2325,6 +2482,112 @@ mod testes {
         );
         assert_eq!(comando_da_tecla(Key::A, nenhum, true), None);
         assert_eq!(comando_da_tecla(Key::Space, nenhum, true), None);
+    }
+
+    #[test]
+    fn a_oficina_nunca_consome_ctrl_k_ctrl_ponto_nem_esc_e_so_trata_o_que_a_casca_entrega() {
+        let ctx = Context::default();
+        let mapa = MapaAtalhos::padrao();
+        let eventos = vec![
+            tecla(Key::K, Modifiers::COMMAND),
+            tecla(Key::Period, Modifiers::COMMAND),
+            tecla(Key::Escape, Modifiers::NONE),
+            tecla(Key::ArrowRight, Modifiers::NONE),
+        ];
+        let entrada = RawInput {
+            screen_rect: Some(Rect::from_min_size(pos2(0.0, 0.0), vec2(800.0, 600.0))),
+            events: eventos,
+            ..Default::default()
+        };
+        let mut destinos = Vec::new();
+        let mut restantes = Vec::new();
+        ctx.run_ui(entrada, |ui| {
+            destinos = ler_comandos_de_teclado(ui, &mapa, true);
+            restantes = ui.input(|i| {
+                i.events
+                    .iter()
+                    .filter_map(|ev| match ev {
+                        Event::Key { key, .. } => Some(*key),
+                        _ => None,
+                    })
+                    .collect::<Vec<_>>()
+            });
+        })
+        .drop_without_applying_deltas();
+        assert_eq!(destinos, vec![Destino::Comando(Comando::Seguinte)]);
+        // Os três reservados seguem no quadro para a casca; só a seta foi consumida.
+        assert_eq!(restantes, vec![Key::K, Key::Period, Key::Escape]);
+    }
+
+    #[test]
+    fn atalho_de_acao_pendente_avisa_em_vez_de_calar_e_nao_muda_a_selecao() {
+        let (mut som, ctx) = banco();
+        let mut e = ode();
+        partitura_em_foco(&ctx, &mut e, &mut som);
+        apertar(&ctx, &mut e, &mut som, Key::ArrowRight, Modifiers::NONE);
+        let sel = e.nota_selecionada();
+        apertar(&ctx, &mut e, &mut som, Key::ArrowUp, Modifiers::NONE);
+        let aviso = e.aviso_de_atalho().expect("aviso de pendente");
+        assert!(aviso.contains("Subir um semitom"), "{aviso}");
+        assert!(aviso.contains("ainda não tem comando"), "{aviso}");
+        assert_eq!(e.nota_selecionada(), sel);
+        assert!(!e.documento.as_ref().expect("doc").editado());
+    }
+
+    #[test]
+    fn remapear_vale_sem_reiniciar_e_recusa_reservado_e_em_uso_com_mensagem() {
+        let (mut som, ctx) = banco();
+        let mut e = ode();
+        partitura_em_foco(&ctx, &mut e, &mut som);
+        // Ctrl+J passa a ser "próxima nota"; → deixa de andar.
+        e.remapear_atalho(AcaoAtalho::NotaSeguinte, Atalho::ctrl(Key::J));
+        apertar(&ctx, &mut e, &mut som, Key::ArrowRight, Modifiers::NONE);
+        assert_eq!(e.nota_selecionada(), None);
+        apertar(&ctx, &mut e, &mut som, Key::J, Modifiers::COMMAND);
+        assert!(e.nota_selecionada().is_some());
+        // Recusas.
+        e.remapear_atalho(AcaoAtalho::Cifra, Atalho::ctrl(Key::K));
+        assert!(e.aviso_de_atalho().expect("recusa").contains("reservado"));
+        e.remapear_atalho(AcaoAtalho::Cifra, Atalho::ctrl(Key::Z));
+        assert!(e.aviso_de_atalho().expect("recusa").contains("Desfazer"));
+        assert_eq!(
+            e.atalhos.atalho(AcaoAtalho::Cifra),
+            Some(AcaoAtalho::Cifra.padrao())
+        );
+    }
+
+    #[test]
+    fn captura_da_lista_de_atalhos_aplica_a_proxima_tecla() {
+        let (mut som, ctx) = banco();
+        let mut e = ode();
+        quadro(&ctx, &mut e, &mut som);
+        e.capturando_atalho = Some(AcaoAtalho::Ponto);
+        quadro_com(
+            &ctx,
+            &mut e,
+            &mut som,
+            vec![tecla(Key::P, Modifiers::COMMAND)],
+            Modifiers::COMMAND,
+        );
+        assert_eq!(e.capturando_atalho, None);
+        assert_eq!(
+            e.atalhos.atalho(AcaoAtalho::Ponto),
+            Some(Atalho::ctrl(Key::P))
+        );
+        // Esc cancela a captura sem mudar nada.
+        e.capturando_atalho = Some(AcaoAtalho::Ponto);
+        quadro_com(
+            &ctx,
+            &mut e,
+            &mut som,
+            vec![tecla(Key::Escape, Modifiers::NONE)],
+            Modifiers::NONE,
+        );
+        assert_eq!(e.capturando_atalho, None);
+        assert_eq!(
+            e.atalhos.atalho(AcaoAtalho::Ponto),
+            Some(Atalho::ctrl(Key::P))
+        );
     }
 
     #[test]

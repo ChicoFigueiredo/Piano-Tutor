@@ -18,6 +18,7 @@ pub mod abertura;
 pub mod acoes;
 pub mod acordes;
 pub mod app;
+pub mod atalhos_partitura;
 pub mod baixar_sf2;
 pub mod calibracao;
 pub mod chamada_app;
