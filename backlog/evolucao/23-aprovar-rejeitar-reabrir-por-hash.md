@@ -12,12 +12,12 @@
 
 **Blocked by:** 21 (Salvar como nova Versão, com nota de motivo, e listar as Versões)
 
-**Status:** em andamento — módulo pronto e revisado pelo supervisor; consumidores e UI pendentes (módulo `versoes.rs`; a UI de aprovar/rejeitar/reabrir entra com a ligação da tela, depois de 15 e 19)
+**Status:** feito, aguarda revisão — módulo, consumidores (prática, Exercício, CLI) e botões da tela (módulo `versoes.rs`; a UI de aprovar/rejeitar/reabrir entra com a ligação da tela, depois de 15 e 19)
 
 - [x] A9: dada uma Versão Aprovada, uma edição seguida de salvar cria uma Versão Em revisão com hash diferente; a aprovação da anterior não é herdada (teste de estado). (teste `a9_editar_versao_aprovada_...`)
 - [x] As transições válidas são as da máquina existente; transições inválidas são recusadas com mensagem (testes herdados continuam verdes). (teste `transicoes_invalidas_...` e `as_acoes_alcancam_exatamente_...`: as ações usam `transicao_valida` de `revisao`; erro `TransicaoInvalida` com mensagem em PT-BR)
 - [x] Aprovar, rejeitar e reabrir exigem um motivo (curto) e registram revisor, data e hash; aprovação direta, quando usada, é marcada como direta. (`aprovar`/`rejeitar`/`reabrir`/`aprovar_direto`; motivo obrigatório até 280 caracteres; `[[decisao]]` no índice com `direto = true` na direta)
-- [ ] Qualquer consumidor (prática, Exercício) consulta a aprovação por hash, nunca por nome do arquivo (teste: alterar o arquivo muda o hash e a aprovação não vale). (fechado no ticket 25: `pratica_versao::PraticaDaVersao` pergunta `aprovacao_de(hash)` ao abrir e a cada conferência; `DecisorPorHash` decide o estado do Exercício na importação (`importar_com`) pelo hash do conteúdo, e o `estado.toml` deixa de ser a autoridade da aprovação. Testes: `exercicio_consulta_a_aprovacao_por_hash_e_nao_pelo_estado_toml`, `importar_curso_com_o_decisor_por_hash`, `aprovada_so_com_registro_...`. Resíduo: a CLI `piano-tutor-curso importar` continua com `importar`, que usa o decisor legado do `estado.toml`; só o app deve chamar `importar_com` com o `DecisorPorHash`.)
+- [x] Qualquer consumidor (prática, Exercício) consulta a aprovação por hash, nunca por nome do arquivo (teste: alterar o arquivo muda o hash e a aprovação não vale). (prática: `pratica_versao::PraticaDaVersao` pergunta `aprovacao_de(hash)`; Exercício: `DecisorPorHash` decide na importação pelo hash do conteúdo. A CLI `piano-tutor-curso importar` também: `importar` agora usa `DecisorPorHash`, que mora em `piano-tutor-curso` (`aprovacao.rs`, leitura mínima do índice; o app o reexporta e `pratica_versao::estado_do_conteudo` delega a ele, sem duplicar a regra). Testes na CLI: `cli_alterar_o_arquivo_muda_o_hash_e_a_aprovacao_nao_vale`, `cli_estado_toml_aprovada_sem_decisao_nao_aprova`, `indice_malformado_e_erro_e_nunca_aprovacao`; no app: `exercicio_consulta_a_aprovacao_por_hash_e_nao_pelo_estado_toml`, `importar_curso_com_o_decisor_por_hash`. O decisor legado `EstadoDoArquivo` só roda por `importar_com` explícito.)
 - [x] A Hipótese original permanece intacta (hash) mesmo após aprovar uma Versão derivada (T8). (teste `t8_hipotese_original_...`)
 - [x] Nada aprova automaticamente: nenhuma saída de IA ou plugin promove conteúdo (só o humano). (`aprovacao_de` só vale com estado Aprovada **e** registro `[[decisao]]`; estado escrito à mão não vale; só chamadas explícitas do revisor mudam o estado)
 
@@ -37,3 +37,5 @@
 **Ticket 25 (2026-11-28):** critério dos consumidores fechado, com o resíduo da CLI acima. Os botões já estão na tela (ligação acima).
 
 **Supervisor (2026-11-27, revisão do 25):** o critério dos consumidores continua aberto porque a CLI `piano-tutor-curso importar` ainda usa o decisor legado. Ele fecha quando a CLI também decidir por hash.
+
+**CLI (2026-11-27):** `piano-tutor-curso importar` decide por hash (mesma regra do app, em `piano-tutor-curso::aprovacao`). Escrita do índice continua só no app. Dois processos reais, Windows e macOS: NÃO VERIFICADO.

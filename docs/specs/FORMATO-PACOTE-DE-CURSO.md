@@ -229,7 +229,7 @@ Na raiz da oficina, `roteiro.toml` é opcional e vai para a raiz da pasta-origem
 
 Regras do importador:
 
-- O estado do Exercício é **sempre** o do `estado.toml`; o importador nunca promove conteúdo. Sem `estado.toml`, entra como `hipotese` e isso vai para os avisos.
+- O estado do Exercício vem da **aprovação por hash** (tickets 23 e 25): o SHA-256 de `partituras/<id>.musicxml` é procurado no índice de Versões `partituras/<id>.versoes/indice.toml`. `aprovada` só com a Versão `aprovada` **e** o registro `[[decisao]]` do revisor; `aprovada` escrito à mão (no índice ou no `estado.toml`) não vale. Conteúdo sem Versão registrada entra como `hipotese`, com aviso; mudar o arquivo muda o hash e a aprovação não acompanha. O importador nunca promove conteúdo. O `estado.toml` não decide mais o estado (só `trecho_aula` e `bpm_sugerido`).
 - Arquivo opcional ausente só deixa de entrar, com aviso. Exercício sem partitura é erro, com o caminho esperado.
 - A pasta-origem tem `manifesto.toml` sem `[assinatura]` nem `[[arquivos]]`, o que `empacotar` preenche.
 - `gerado_em` é o instante da importação (UTC). `bpm` do plano tem precedência sobre `bpm_sugerido`.

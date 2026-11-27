@@ -114,7 +114,7 @@ use toml_edit::{ArrayOfTables, DocumentMut, Item, Table, value};
 /// Versão do formato do índice.
 pub const FORMATO_DO_INDICE: i64 = 1;
 /// Nome do arquivo de índice dentro da pasta de Versões.
-pub const ARQUIVO_DO_INDICE: &str = "indice.toml";
+pub const ARQUIVO_DO_INDICE: &str = piano_tutor_curso::ARQUIVO_DO_INDICE;
 /// Subpasta dos objetos (conteúdo por hash).
 pub const PASTA_DOS_OBJETOS: &str = "objetos";
 /// Tamanho máximo da nota de motivo, em caracteres.
@@ -675,7 +675,7 @@ impl Versoes {
     pub fn em(pasta_partituras: &Path, id: &str, pdf: Option<PathBuf>) -> Self {
         Self {
             id: id.to_owned(),
-            pasta: pasta_partituras.join(format!("{id}.versoes")),
+            pasta: piano_tutor_curso::pasta_das_versoes(pasta_partituras, id),
             hipotese: pasta_partituras.join(format!("{id}.musicxml")),
             pdf,
         }

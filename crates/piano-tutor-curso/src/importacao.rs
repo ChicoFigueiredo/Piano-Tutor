@@ -3,10 +3,10 @@
 //! O **plano** (TOML escrito à mão) descreve a estrutura do Curso: metadados, Seções, Lições e
 //! Exercícios. A **oficina** (fora do git) traz as partituras, os estados de revisão, o áudio,
 //! os Alinhamentos e o Roteiro. O importador nunca promove conteúdo: quem decide o estado de cada
-//! Exercício é um [`DecideEstado`]. O padrão ([`EstadoDoArquivo`], usado por [`importar`]) é o de
-//! `partituras/<id>.estado.toml` (ausente = Hipótese). O app usa [`importar_com`] com um decisor
-//! **por hash do conteúdo** (a aprovação da Versão, tickets 23 e 25): o `estado.toml` deixa de
-//! ser a autoridade da aprovação (continua dando `bpm_sugerido` e `trecho_aula`).
+//! Exercício é um [`DecideEstado`]. O padrão ([`DecisorPorHash`], usado por [`importar`], pela CLI
+//! e pelo app) decide **pelo hash do conteúdo** (a aprovação da Versão, tickets 23 e 25): o
+//! `estado.toml` deixa de ser a autoridade da aprovação (continua dando `bpm_sugerido` e
+//! `trecho_aula`). [`EstadoDoArquivo`] é o decisor legado, só via [`importar_com`] explícito.
 //!
 //! Formato do plano: `docs/specs/FORMATO-PACOTE-DE-CURSO.md`, seção "Plano de importação".
 
@@ -17,6 +17,7 @@ use std::time::{SystemTime, UNIX_EPOCH};
 use serde::Deserialize;
 
 use crate::FORMATO_VERSAO;
+use crate::aprovacao::DecisorPorHash;
 use crate::erro::ErroPacote;
 use crate::modelo::{
     AssinaturaInfo, Aula, Autor, Contagem, EstadoConteudo, Exercicio, Licao, Licenciado, Manifesto,
@@ -100,7 +101,7 @@ pub trait DecideEstado {
     }
 }
 
-/// Decisor legado: o `estado` de `partituras/<id>.estado.toml` (ausente = sem decisão).
+/// Decisor legado (não é mais o padrão): o `estado` de `partituras/<id>.estado.toml` (ausente = sem decisão).
 #[derive(Debug, Clone, Copy, Default)]
 pub struct EstadoDoArquivo;
 
@@ -159,7 +160,7 @@ pub fn importar(
         oficina,
         destino,
         somente_aprovadas,
-        &EstadoDoArquivo,
+        &DecisorPorHash,
     )
 }
 
