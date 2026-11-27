@@ -1078,6 +1078,7 @@ pub fn montar_cena(p: &Partitura, layout: &Layout, extras: &Extras, met: &Metric
                     pautas[k].pauta,
                     claves[k].inicio[m],
                     &claves[k].internas[m],
+                    &|_| None,
                 );
                 emitir_pauta(
                     &mut c,
