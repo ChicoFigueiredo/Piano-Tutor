@@ -4,9 +4,11 @@
 //! - [`corpus`]: fixtures com licença e origem registradas (índice em `fixtures/INDICE.md`);
 //! - [`harness`]: comparação byte a byte (com lista de compassos que diferem) e semântica;
 //! - [`leitura`]: relatório do que o modelo atual descarta por fixture;
+//! - [`documento`]: spike do modelo híbrido de documento (ticket 08);
 //! - [`gerador`]: peça de 100 compassos e `.mxl` válidos/maliciosos gerados por script.
 
 pub mod corpus;
+pub mod documento;
 pub mod gerador;
 pub mod harness;
 pub mod leitura;
