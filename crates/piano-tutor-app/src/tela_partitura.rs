@@ -345,6 +345,10 @@ pub struct EstadoPartitura {
     pedido_hipotese: Option<String>,
     /// Aviso na tela: recusa ou sessão de prática de Versão invalidada.
     aviso_pratica_versao: Option<String>,
+    /// Quando a sessão de prática da Versão foi conferida pela última vez (ns do relógio do som).
+    /// A conferência lê o arquivo e calcula SHA-256: no máximo uma vez por segundo, nunca a cada
+    /// quadro, para não pesar no caminho MIDI→tela.
+    ultima_conferencia_ns: Option<u64>,
 }
 
 /// O vínculo com a Oficina, guardado enquanto o serviço de prática troca o documento aberto
@@ -481,6 +485,7 @@ impl EstadoPartitura {
             pratica_versao: None,
             pedido_hipotese: None,
             aviso_pratica_versao: None,
+            ultima_conferencia_ns: None,
         };
         e.escolher(0);
         e
@@ -1619,6 +1624,22 @@ impl EstadoPartitura {
     /// Confere a sessão de prática da Versão (a tela chama a cada quadro enquanto ela existe).
     /// Se deixou de valer (outra Versão ou arquivo aberto, partitura mexida, Versão adulterada,
     /// aprovação reaberta ou rejeitada), encerra a prática e deixa o aviso na tela.
+    /// Confere a sessão no máximo uma vez por [`INTERVALO_CONFERENCIA_NS`] (a primeira chamada
+    /// sempre confere). Ações explícitas (abrir, iniciar, editar) conferem na hora pelo serviço.
+    pub fn sincronizar_pratica_da_versao_periodica(&mut self, agora_ns: u64) {
+        if self.pratica_versao.is_none() {
+            self.ultima_conferencia_ns = None;
+            return;
+        }
+        if let Some(t) = self.ultima_conferencia_ns
+            && agora_ns.saturating_sub(t) < INTERVALO_CONFERENCIA_NS
+        {
+            return;
+        }
+        self.ultima_conferencia_ns = Some(agora_ns);
+        self.sincronizar_pratica_da_versao();
+    }
+
     pub fn sincronizar_pratica_da_versao(&mut self) {
         let Some(pv) = self.pratica_versao.take() else {
             return;
@@ -2232,6 +2253,9 @@ pub fn desenhar_tela(ui: &mut Ui, e: &mut EstadoPartitura, som: &mut ServicoSom)
     desenhar_corpo(ui, e, som, OpcoesTela::COMPLETA);
 }
 
+/// Intervalo mínimo entre conferências periódicas da sessão de prática da Versão (1 s).
+pub const INTERVALO_CONFERENCIA_NS: u64 = 1_000_000_000;
+
 /// Desenha transporte, prática e partitura, com as partes que `opcoes` pedir.
 pub fn desenhar_corpo(
     ui: &mut Ui,
@@ -2248,7 +2272,7 @@ pub fn desenhar_corpo(
     e.atualizar_pratica(som.agora_ns());
     e.autosave_tick(som.agora_ns() / 1_000_000);
     desenhar_transporte(ui, e, som);
-    e.sincronizar_pratica_da_versao();
+    e.sincronizar_pratica_da_versao_periodica(som.agora_ns());
     desenhar_pratica(ui, e, som);
     desenhar_selo_da_pratica_da_versao(ui, e);
     if opcoes.com_exportacao {
@@ -5482,5 +5506,27 @@ mod testes {
                 .expect("dica")
                 .contains("Pare")
         );
+    }
+
+    #[test]
+    fn conferencia_periodica_da_pratica_da_versao_respeita_o_intervalo() {
+        let (mut som, _ctx) = banco();
+        let (_d, mut e, _hip, v1) = com_versao_um();
+        aprovar(&mut e, &v1);
+        e.pedir_pratica_da_versao(&v1, &mut som);
+        assert!(e.pratica_da_versao().is_some());
+        // A primeira chamada confere (a sessão vale).
+        e.sincronizar_pratica_da_versao_periodica(1_000);
+        assert!(e.pratica_da_versao().is_some());
+        e.definir_motivo_da_decisao("achei um erro");
+        e.decidir_versao(&v1, AcaoDeRevisao::Reabrir, false)
+            .expect("reabre");
+        // Dentro do intervalo não relê o arquivo nem recalcula o hash.
+        e.sincronizar_pratica_da_versao_periodica(1_000 + INTERVALO_CONFERENCIA_NS - 1);
+        assert!(e.pratica_da_versao().is_some());
+        // Passado o intervalo, confere e encerra a sessão.
+        e.sincronizar_pratica_da_versao_periodica(1_000 + INTERVALO_CONFERENCIA_NS);
+        assert!(e.pratica_da_versao().is_none());
+        assert!(e.aviso_da_pratica_da_versao().is_some());
     }
 }
