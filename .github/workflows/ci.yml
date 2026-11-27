@@ -30,3 +30,26 @@ jobs:
       - name: Rust test
         run: cargo test --workspace
 # Não comprova ligação física REVAS, MIDI real, áudio, Linux de referência ou modelos de IA.
+
+  # Auditoria de dependências (ticket evolucao/01; R-N03, T6, T10). Config: deny.toml.
+  # Medido localmente: ~7 s a frio, ~2 s com cache. Não usa credencial; a bancada é pública.
+  deny:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: cargo deny (licenças, bans, fontes)
+        uses: EmbarkStudios/cargo-deny-action@v2
+        with:
+          command: check licenses bans sources
+
+  # Advisories dependem do banco RustSec (rede) e de avisos novos que surgem sem mudança de
+  # código: job separado e não bloqueante. Falha visível, mas não derruba o PR.
+  deny-advisories:
+    runs-on: ubuntu-latest
+    continue-on-error: true
+    steps:
+      - uses: actions/checkout@v4
+      - name: cargo deny (advisories, não bloqueante)
+        uses: EmbarkStudios/cargo-deny-action@v2
+        with:
+          command: check advisories
