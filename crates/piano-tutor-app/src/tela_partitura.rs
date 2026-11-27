@@ -22,7 +22,7 @@ use bancada_casca::egui::{self, Button, ComboBox, Event, Key, RichText, Slider, 
 use piano_tutor_core::NotaMidi;
 use piano_tutor_core::comparador::EventoEsperado;
 use piano_tutor_core::documento::{
-    ComandoDeEdicao, ErroServico, ResultadoDaEdicao, SentidoDaAltura, UnidadeDeAltura,
+    ComandoDeEdicao, ErroServico, Exibicao, ResultadoDaEdicao, SentidoDaAltura, UnidadeDeAltura,
     nome_da_altura,
 };
 use piano_tutor_core::partitura::{Partitura, SinalClave, TAMANHO_MAXIMO_BYTES};
@@ -428,6 +428,18 @@ impl EstadoPartitura {
         self.audicao_pendente = None;
         self.pratica = None;
         self.visual.invalidar();
+    }
+
+    /// Letra, cifra, dedilhado e elementos sem suporte da partitura aberta (ticket 19).
+    pub fn exibicao(&self) -> Option<&Exibicao> {
+        self.documento.as_ref().map(DocumentoPartitura::exibicao)
+    }
+
+    /// Uma linha por elemento que o editor não desenha (`nome (categoria): quantidade`).
+    pub fn elementos_sem_suporte(&self) -> Vec<String> {
+        self.exibicao()
+            .map(Exibicao::linhas_de_nao_suportados)
+            .unwrap_or_default()
     }
 
     /// Nota selecionada (por identidade), se houver.
@@ -1226,6 +1238,7 @@ pub fn desenhar_corpo(
     let destaque = opcoes.cursor_externo.or_else(|| e.destaque(agora));
     if opcoes.com_selecao {
         desenhar_estado_da_selecao(ui, e);
+        desenhar_elementos_sem_suporte(ui, e);
     }
     let Some(d) = e.documento.take() else {
         ui.label("Nenhuma partitura carregada.");
@@ -1256,6 +1269,7 @@ pub fn desenhar_corpo(
             selecionado: e.compasso_inicial,
             resultados: e.pratica.as_ref().map(|s| &s.mapa),
             ids: Some(d.ids()),
+            exibicao: Some(d.exibicao()),
             selecao: opcoes.com_selecao.then(|| MarcaSelecao {
                 nota: e.selecao.nota(),
                 rolar_para,
@@ -1404,6 +1418,72 @@ fn desenhar_estado_da_selecao(ui: &mut Ui, e: &mut EstadoPartitura) {
     desenhar_lista_de_atalhos(ui, e);
 }
 
+/// O que a partitura traz e a Oficina só **mostra e preserva** (letra, cifra, dedilhado: D13, a
+/// edição é da E03) e a lista dos elementos que ela ainda não desenha nem edita (A15). Sempre
+/// visível: o titular vê o que existe no arquivo sem poder tocar nisso aqui.
+fn desenhar_elementos_sem_suporte(ui: &mut Ui, e: &EstadoPartitura) {
+    let Some(ex) = e.exibicao() else {
+        return;
+    };
+    let mut mostrados = Vec::new();
+    if ex.total_de_silabas() > 0 {
+        mostrados.push(format!(
+            "letra ({} sílabas, {} estrofe{})",
+            ex.total_de_silabas(),
+            ex.estrofes().len(),
+            if ex.estrofes().len() == 1 { "" } else { "s" }
+        ));
+    }
+    if !ex.cifras().is_empty() {
+        mostrados.push(format!("cifra ({})", ex.cifras().len()));
+    }
+    if ex.total_de_dedos() > 0 {
+        mostrados.push(format!("dedilhado ({})", ex.total_de_dedos()));
+    }
+    if !mostrados.is_empty() {
+        ui.label(
+            RichText::new(format!(
+                "Mostrados e preservados, ainda sem edição: {}.",
+                mostrados.join(", ")
+            ))
+            .weak(),
+        );
+    }
+    let linhas = ex.linhas_de_nao_suportados();
+    let titulo = if linhas.is_empty() {
+        "Elementos que o editor ainda não desenha nem edita: nenhum".to_owned()
+    } else {
+        format!(
+            "Elementos que o editor ainda não desenha nem edita ({} tipo{})",
+            linhas.len(),
+            if linhas.len() == 1 { "" } else { "s" }
+        )
+    };
+    egui::CollapsingHeader::new(titulo)
+        .id_salt("elementos-sem-suporte")
+        .default_open(!linhas.is_empty())
+        .show(ui, |ui| {
+            if linhas.is_empty() {
+                ui.label(RichText::new("Todos os elementos reconhecidos têm desenho.").weak());
+                return;
+            }
+            ui.label(
+                RichText::new(
+                    "Continuam no arquivo e voltam intactos ao salvar; só não aparecem na partitura.",
+                )
+                .weak(),
+            );
+            for (l, el) in linhas.iter().zip(ex.nao_suportados()) {
+                let onde = el
+                    .primeiro
+                    .as_ref()
+                    .map(|(parte, c)| format!(" (primeiro: parte {parte}, compasso {c})"))
+                    .unwrap_or_default();
+                ui.label(format!("{l}{onde}"));
+            }
+        });
+}
+
 /// Lista de atalhos da Oficina: rótulo em PT-BR, combinação, situação (pendente, conflito com a
 /// tela Teclado) e os botões de remapear. Ctrl+K, Ctrl+. e Esc são listados como reservados.
 fn desenhar_lista_de_atalhos(ui: &mut Ui, e: &mut EstadoPartitura) {
@@ -1495,6 +1575,7 @@ pub fn desenhar_vista_com_cursor(ui: &mut Ui, e: &mut EstadoPartitura, destaque:
             selecionado: None,
             resultados: None,
             ids: Some(d.ids()),
+            exibicao: Some(d.exibicao()),
             selecao: None,
         },
     );
@@ -3091,6 +3172,158 @@ mod testes {
         // Trocar de partitura limpa a seleção (outras identidades).
         e.escolher(0);
         assert_eq!(e.nota_selecionada(), None);
+    }
+
+    /// Todos os textos que o egui pintou num quadro (para conferir o que a tela mostra).
+    fn textos_do_quadro(
+        ctx: &Context,
+        e: &mut EstadoPartitura,
+        som: &mut ServicoSom,
+    ) -> Vec<String> {
+        let entrada = RawInput {
+            screen_rect: Some(Rect::from_min_size(pos2(0.0, 0.0), vec2(1280.0, 800.0))),
+            ..Default::default()
+        };
+        let mut saida = ctx.run_ui(entrada, |ui| desenhar_tela(ui, e, som));
+        let mut v = Vec::new();
+        for cs in &saida.shapes {
+            collect_textos(&cs.shape, &mut v);
+        }
+        saida.textures_delta.clear();
+        v
+    }
+
+    fn collect_textos(s: &egui::epaint::Shape, v: &mut Vec<String>) {
+        match s {
+            egui::epaint::Shape::Text(t) => v.push(t.galley.text().to_owned()),
+            egui::epaint::Shape::Vec(filhas) => filhas.iter().for_each(|f| collect_textos(f, v)),
+            _ => {}
+        }
+    }
+
+    fn combinada() -> EstadoPartitura {
+        let mut e = EstadoPartitura::novo(None);
+        e.abrir_xml(
+            "combinada.musicxml",
+            piano_tutor_fixtures::exibicao::COMBINADA.to_owned(),
+        )
+        .expect("abre");
+        e
+    }
+
+    #[test]
+    fn a15_a_oficina_lista_os_elementos_sem_suporte_com_nome_e_quantidade() {
+        let (mut som, ctx) = banco();
+        let mut e = combinada();
+        let linhas = e.elementos_sem_suporte();
+        for esperado in [
+            "dynamics (dinâmica): 1",
+            "trill-mark (ornamento): 1",
+            "staccato (articulação): 1",
+            "fermata (fermata): 1",
+            "grouping (agrupamento): 1",
+            "x-extensao-futura (desconhecido): 1",
+        ] {
+            assert!(
+                linhas.iter().any(|l| l == esperado),
+                "{esperado}: {linhas:?}"
+            );
+        }
+        // E a lista está **visível** na tela da Oficina, com o que é só mostrado e preservado.
+        let textos = textos_do_quadro(&ctx, &mut e, &mut som);
+        let tem = |trecho: &str| textos.iter().any(|t| t.contains(trecho));
+        assert!(tem(
+            "Elementos que o editor ainda não desenha nem edita (6 tipos)"
+        ));
+        assert!(tem("dynamics (dinâmica): 1"), "{textos:?}");
+        assert!(tem("x-extensao-futura (desconhecido): 1"));
+        assert!(tem(
+            "letra (30 sílabas, 3 estrofes), cifra (6), dedilhado (16)"
+        ));
+        // Partitura sem elementos sem suporte: a Oficina diz "nenhum" em vez de calar.
+        let mut simples = EstadoPartitura::novo(None);
+        simples
+            .abrir_xml("p.musicxml", PEQUENA.to_owned())
+            .expect("abre");
+        let textos = textos_do_quadro(&ctx, &mut simples, &mut som);
+        assert!(
+            textos
+                .iter()
+                .any(|t| t.contains("não desenha nem edita: nenhum")),
+            "{textos:?}"
+        );
+    }
+
+    #[test]
+    fn letra_cifra_e_dedilhado_nao_sao_editaveis_na_oficina_por_tecla_nem_por_clique() {
+        use bancada_casca::egui::Key;
+        let (mut som, ctx) = banco();
+        let mut e = combinada();
+        let antes = e.exibicao().cloned().expect("exibição");
+        let original = e.documento.as_ref().expect("doc").xml().to_owned();
+        let contar = |t: &str| {
+            [("<lyric", 0usize), ("<harmony", 0), ("<fingering", 0)]
+                .map(|(n, _)| t.matches(n).count())
+        };
+        partitura_em_foco(&ctx, &mut e, &mut som);
+        // Seleciona a primeira nota (que tem sílabas e cifra) e aperta todas as teclas, sem
+        // modificador e com Shift e Ctrl: nenhuma delas edita texto (só a altura é editável).
+        e.navegar(Comando::Seguinte);
+        for k in Key::ALL {
+            for m in [Modifiers::NONE, Modifiers::SHIFT, Modifiers::CTRL] {
+                apertar(&ctx, &mut e, &mut som, *k, m);
+            }
+        }
+        // Cliques sobre a letra, a cifra e o dedilhado (o que o texto não aceita como alvo).
+        let layout = e.visual.ultimo_layout.clone().expect("layout");
+        for it in layout.sistemas.iter().flat_map(|s| &s.itens) {
+            let pos = match &it.forma {
+                crate::partitura_visual::Forma::Texto { pos, .. }
+                | crate::partitura_visual::Forma::Glifo { pos, .. } => *pos,
+                _ => continue,
+            };
+            e.clicar_na_partitura(layout.acertar(pos, 0.25));
+        }
+        quadro(&ctx, &mut e, &mut som);
+        // Letra, cifra e dedilhado: os mesmos, nas mesmas notas, no modelo e no arquivo.
+        assert_eq!(e.exibicao(), Some(&antes));
+        let doc = e.documento.as_ref().expect("doc");
+        let saida = doc.exportado().expect("exporta");
+        assert_eq!(contar(&saida), contar(&original));
+        assert_eq!(
+            piano_tutor_core::documento::DocumentoAberto::abrir_texto("s", &saida)
+                .expect("abre")
+                .documento()
+                .exibicao(),
+            antes
+        );
+    }
+
+    #[test]
+    fn editar_a_altura_de_uma_nota_com_letra_e_cifra_preserva_o_que_a_tela_mostra() {
+        let (mut som, ctx) = banco();
+        let mut e = combinada();
+        let antes = e.exibicao().cloned().expect("exibição");
+        partitura_em_foco(&ctx, &mut e, &mut som);
+        e.navegar(Comando::Seguinte);
+        let nota = e.nota_selecionada().expect("selecionada");
+        assert!(antes.da_nota(nota).is_some(), "a nota tem letra");
+        e.mudar_altura(UnidadeDeAltura::Semitom, SentidoDaAltura::Acima);
+        assert!(e.documento.as_ref().expect("doc").editado());
+        quadro(&ctx, &mut e, &mut som);
+        assert_eq!(e.exibicao(), Some(&antes));
+        let layout = e.visual.ultimo_layout.clone().expect("layout");
+        let silabas = layout
+            .sistemas
+            .iter()
+            .flat_map(|s| &s.itens)
+            .filter(|it| {
+                matches!(&it.forma, crate::partitura_visual::Forma::Texto { altura, .. }
+                    if (*altura - 1.3).abs() < 1e-3)
+            })
+            .count();
+        // 30 sílabas (mais os hifens), todas ainda desenhadas depois da edição.
+        assert!(silabas >= 30, "{silabas}");
     }
 
     #[test]

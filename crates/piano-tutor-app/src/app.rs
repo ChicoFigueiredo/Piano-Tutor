@@ -1189,6 +1189,8 @@ pub fn config() -> ConfigCasca {
     let mut config = ConfigCasca::nova(TITULO, TOKENS_JSON, TEMAS_JSON);
     config.tema_inicial = TEMAS[0].id.to_owned();
     config.icones = crate::icones::familia();
+    // Bravura (SMuFL, OFL-1.1): o dedilhado da partitura usa seus glifos (ADR-0018, ticket 19).
+    config.definicoes_de_fontes = Some(crate::partitura_visual::bravura::fontes_com_bravura());
     config.icone_janela = Some(crate::icones::icone_janela());
     config.id_app = Some("piano-tutor".to_owned());
     config

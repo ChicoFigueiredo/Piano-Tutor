@@ -169,6 +169,8 @@ impl Ancora {
     pub const CENTER_CENTER: Ancora = Ancora([Alinha::Centro, Alinha::Centro]);
     pub const LEFT_BOTTOM: Ancora = Ancora([Alinha::Min, Alinha::Max]);
     pub const LEFT_TOP: Ancora = Ancora([Alinha::Min, Alinha::Min]);
+    pub const CENTER_TOP: Ancora = Ancora([Alinha::Centro, Alinha::Min]);
+    pub const CENTER_BOTTOM: Ancora = Ancora([Alinha::Centro, Alinha::Max]);
 }
 
 #[cfg(test)]

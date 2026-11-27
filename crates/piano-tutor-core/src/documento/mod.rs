@@ -16,6 +16,7 @@ mod comando;
 mod duracao;
 mod edicao;
 mod erro;
+mod exibicao;
 mod exportar;
 mod grafia;
 mod ids;
@@ -29,6 +30,10 @@ pub use comando::{
 };
 pub use duracao::mmc_dos_denominadores;
 pub use erro::ErroDocumento;
+pub use exibicao::{
+    Cifra, Dedo, ElementoNaoSuportado, ElementosDaNota, Exibicao, Silaba, TipoDeSilaba,
+    ordenar_estrofes,
+};
 pub use exportar::{Impressao, Patch, Patches, impressao_de};
 pub use grafia::{nome_da_altura, nome_do_midi};
 pub use ids::{ChaveNota, TabelaIds};
