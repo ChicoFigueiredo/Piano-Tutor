@@ -31,8 +31,8 @@ Unidade praticável com um Gabarito, pertencente a uma Lição ou fornecida de f
 _Evitar_: lição, desafio, atividade ("cada vídeo é um desafio" é jeito de falar, não termo)
 
 **Acervo**:
-Biblioteca de partituras do aplicativo, com as de domínio público que vêm com ele e as importadas pelo aluno.
-_Evitar_: repositório, banco de partituras
+Biblioteca de partituras do aplicativo, com as de domínio público que vêm com ele e as importadas pelo aluno; ao importar, o Acervo guarda sua própria cópia do arquivo.
+_Evitar_: biblioteca, repositório, banco de partituras
 
 **Pacote de Curso**:
 Arquivo plugável que abastece o aplicativo com um Curso de tutor (Lições, partituras, áudios, Alinhamentos, Roteiro) sem fazer parte dele; pode ser distribuído só com licença do autor.
@@ -77,6 +77,10 @@ _Evitar_: Espera (nome antigo)
 **Calibração de vídeo**:
 Mapa, por Aula, de onde fica cada tecla no quadro da câmera de cima, proposto automaticamente pela fábrica e conferido pelo revisor; é dele que sai a Hipótese de dedilhado da Aula.
 _Evitar_: calibração do teclado (é a do instrumento MIDI)
+
+**Versão**:
+Estado salvo e imutável de uma partitura do Acervo, criado a cada edição ou importação; o PDF e o MusicXML de origem são a primeira Versão e nunca são sobrescritos. Aprovação e Gabarito valem para uma Versão específica.
+_Evitar_: revisão (é o ato de conferir; ver Em revisão), rascunho, cópia
 
 **Gabarito**:
 Resposta esperada de um Exercício; só existe a partir de conteúdo aprovado, nunca de saída bruta de IA.
