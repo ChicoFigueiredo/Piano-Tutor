@@ -24,6 +24,7 @@ pub mod chamada_app;
 pub mod cursos;
 pub mod dados_usuario;
 pub mod dedos;
+pub mod documento_partitura;
 pub mod espelho;
 pub mod estado;
 pub mod exercicios;

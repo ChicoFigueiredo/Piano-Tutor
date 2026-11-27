@@ -12,12 +12,12 @@
 
 **Blocked by:** None (can start immediately)
 
-**Status:** ready-for-agent
+**Status:** feito, aguarda revisão
 
-- [ ] Todo o conjunto de testes existente do workspace continua verde, sem alteração de assertivas (linha de base da E00: 1053 verdes, 6 ignorados); fmt e clippy com avisos como erro verdes.
-- [ ] Abrir um arquivo, tocar, praticar (os quatro modos) e exportar na tela se comportam como antes (testes existentes da tela passam; nenhum teste foi apagado).
-- [ ] O novo tipo de documento é construível e testável sem janela, áudio ou egui (um teste novo abre uma fixture e exporta sem criar interface).
-- [ ] A exportação continua gravando o texto original e a releitura de conferência continua existindo.
-- [ ] O diff do PR é só movimentação e delegação: nenhuma regra nova, nenhum atalho novo, nenhuma dependência nova.
+- [x] Todo o conjunto de testes existente do workspace continua verde, sem alteração de assertivas (linha de base da E00: 1053 verdes, 6 ignorados); fmt e clippy com avisos como erro verdes.
+- [x] Abrir um arquivo, tocar, praticar (os quatro modos) e exportar na tela se comportam como antes (testes existentes da tela passam; nenhum teste foi apagado).
+- [x] O novo tipo de documento é construível e testável sem janela, áudio ou egui (um teste novo abre uma fixture e exporta sem criar interface).
+- [x] A exportação continua gravando o texto original e a releitura de conferência continua existindo.
+- [x] O diff do PR é só movimentação e delegação: nenhuma regra nova, nenhum atalho novo, nenhuma dependência nova.
 
 **Notas:** Mantenha S4 (prática e comparação MIDI) exatamente como está; qualquer teste de prática que precisar mudar é sinal de que o prefactor passou do limite.
