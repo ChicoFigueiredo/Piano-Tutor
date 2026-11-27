@@ -12,14 +12,14 @@
 
 **Blocked by:** 14 (Selecionar nota e mudar a altura com seta (semitom, oitava, escala))
 
-**Status:** ready-for-agent
+**Status:** feito, aguarda revisão (módulo `versoes.rs`; falta ligar a UI: botão "Salvar como Versão", campo de nota e lista na tela da Oficina/Partitura)
 
-- [ ] A8: dada uma Hipótese aberta, salvar duas correções cria duas Versões encadeadas (pai→filho) e o hash da Hipótese permanece idêntico antes e depois (teste).
-- [ ] Salvar nunca sobrescreve arquivo de Versão existente; salvar sem mudanças não cria Versão vazia (ou pede confirmação, decisão registrada).
-- [ ] Cada Versão registra hash de conteúdo, hash do pai, autor, data, nota de motivo e estado de conteúdo (nova Versão de edição nasce Em revisão); estados reaproveitam a máquina existente.
-- [ ] A lista de Versões mostra autor, data, nota e estado, e abrir uma Versão antiga a carrega em modo leitura ou como novo ponto de partida (decisão registrada).
-- [ ] Gravação atômica (arquivo temporário e renomear); queda no meio da gravação deixa a Versão anterior íntegra (teste de interrupção simulada).
-- [ ] O arquivo original (PDF e MusicXML de origem) é verificado por hash após qualquer ação da Oficina.
-- [ ] Material comprado nunca é copiado para fora da pasta de dados do usuário; o formato de armazenamento está documentado para a migração futura ao Acervo.
+- [x] A8: dada uma Hipótese aberta, salvar duas correções cria duas Versões encadeadas (pai→filho) e o hash da Hipótese permanece idêntico antes e depois (teste).
+- [x] Salvar nunca sobrescreve arquivo de Versão existente; salvar sem mudanças não cria Versão vazia (ou pede confirmação, decisão registrada). (decisão: sem mudança = não cria Versão, devolve `SemMudancas`)
+- [x] Cada Versão registra hash de conteúdo, hash do pai, autor, data, nota de motivo e estado de conteúdo (nova Versão de edição nasce Em revisão); estados reaproveitam a máquina existente.
+- [x] A lista de Versões mostra autor, data, nota e estado, e abrir uma Versão antiga a carrega em modo leitura ou como novo ponto de partida (decisão registrada). (modelo `linhas()`; decisão: abrir é somente leitura, ponto de partida = salvar com `pai` = hash; UI pendente)
+- [x] Gravação atômica (arquivo temporário e renomear); queda no meio da gravação deixa a Versão anterior íntegra (teste de interrupção simulada).
+- [x] O arquivo original (PDF e MusicXML de origem) é verificado por hash após qualquer ação da Oficina. (`verificar_originais()`; a tela deve chamá-lo após cada ação)
+- [x] Material comprado nunca é copiado para fora da pasta de dados do usuário; o formato de armazenamento está documentado para a migração futura ao Acervo. (formato documentado no cabeçalho de `versoes.rs`)
 
 **Notas:** Pergunta aberta: guardar as Versões no formato atual do repositório de oficina (estado em TOML + arquivos) ou já preparando o esquema do Acervo. Por padrão, o formato atual com histórico estendido.
