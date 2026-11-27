@@ -12,7 +12,7 @@
 
 **Blocked by:** 23 (Aprovar, rejeitar e reabrir uma Versão com motivo, ligadas ao hash (A9))
 
-**Status:** feito, aguarda revisão (módulo `pratica_versao.rs` e API para a tela; os botões Praticar Versão e Ouvir compasso entram com a ligação da tela, que outra equipe mexe)
+**Status:** em andamento — serviço pronto e revisado pelo supervisor; botões na tela pendentes (módulo `pratica_versao.rs` e API para a tela; os botões Praticar Versão e Ouvir compasso entram com a ligação da tela, que outra equipe mexe)
 
 - [x] A14: com uma Versão Aprovada, a prática existente funciona com as notas corrigidas (teste por simulação de eventos MIDI sobre as fixtures de acertos e erros já existentes, S4). (teste `a14_versao_aprovada_pratica_com_as_notas_corrigidas`: Ode com a primeira nota corrigida para Fá4, 94 de 94 certas e 1 extra, como a fixture da Ode; tocar o Mi4 da Hipótese não acerta o passo)
 - [x] Uma Hipótese ou Versão não aprovada só abre em modo sinalizado como Hipótese; nunca aparece como Gabarito oficial (teste do rótulo e do bloqueio). (testes `hipotese_e_em_revisao_so_abrem_sinalizadas_...`, `aprovada_so_com_registro_...`, `rejeitada_nunca_abre_...`)
@@ -32,3 +32,5 @@
 - Mutação conferida: trocar a consulta por hash pelo `estado` bruto do índice e remover a checagem do documento aberto fazem testes falharem.
 
 **NÃO VERIFICADO:** prática com o REVAS físico (61 teclas), latência MIDI para áudio e MIDI para tela com a Oficina aberta, estabilidade prolongada e o som real do compasso (os testes usam o motor falso e MIDI simulado). Pendente de ligação: botões de Praticar Versão, selo na tela e Ouvir compasso em `tela_partitura.rs`.
+
+**Supervisor (2026-11-27):** decisão de que uma Versão Rejeitada nunca abre para prática, igual a `carregar_exercicio`. Pendências: os botões Praticar Versão e Ouvir compasso na tela, com o selo de Hipótese, e a CLI de importação decidir por hash.
