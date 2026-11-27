@@ -19,8 +19,8 @@ use crate::preferencias::PreferenciasPartitura;
 use crate::selecao_partitura::{Comando, EfeitoDoClique, Resultado, SelecaoPartitura, descrever};
 use crate::som::{EstadoSom, ServicoSom};
 use crate::versoes::{
-    LinhaDaLista, ResultadoDoSalvar, SituacaoDoOriginal, Versao, Versoes, agora_utc, hash_curto,
-    hash_do_conteudo,
+    AcaoDeRevisao, LinhaDaLista, ResultadoDoSalvar, SituacaoDoOriginal, Versao, Versoes, agora_utc,
+    hash_curto, hash_do_conteudo,
 };
 use bancada_casca::Atalho;
 use bancada_casca::egui::{self, Button, ComboBox, Event, Key, RichText, Slider, TextEdit, Ui};
@@ -310,6 +310,8 @@ pub struct EstadoPartitura {
     lista_de_versoes: Vec<LinhaDaLista>,
     /// Nota de motivo da próxima Versão (opcional).
     campo_nota_versao: String,
+    /// Motivo da decisão (aprovar, rejeitar, reabrir); obrigatório, até `MAX_MOTIVO`.
+    campo_motivo_decisao: String,
     /// Resultado da última ação com Versões.
     aviso_versoes: Option<String>,
     /// Alerta de que um original (MusicXML ou PDF) não confere com o hash registrado.
@@ -425,6 +427,7 @@ impl EstadoPartitura {
             versoes: None,
             lista_de_versoes: Vec::new(),
             campo_nota_versao: String::new(),
+            campo_motivo_decisao: String::new(),
             aviso_versoes: None,
             alerta_originais: None,
             leitura: None,
@@ -1037,6 +1040,57 @@ impl EstadoPartitura {
 
     pub fn definir_nota_da_versao(&mut self, nota: &str) {
         nota.clone_into(&mut self.campo_nota_versao);
+    }
+
+    /// Motivo digitado para a próxima decisão sobre uma Versão.
+    pub fn motivo_da_decisao(&self) -> &str {
+        &self.campo_motivo_decisao
+    }
+
+    pub fn definir_motivo_da_decisao(&mut self, motivo: &str) {
+        motivo.clone_into(&mut self.campo_motivo_decisao);
+    }
+
+    /// Aprova, rejeita ou reabre a Versão `hash` com o motivo digitado (ticket 23). A transição
+    /// inválida, o motivo vazio ou longo demais são recusados com a mensagem do módulo; nada
+    /// muda. `direta` pede a aprovação direta (Hipótese → Aprovada, marcada como direta).
+    pub fn decidir_versao(
+        &mut self,
+        hash: &str,
+        acao: AcaoDeRevisao,
+        direta: bool,
+    ) -> Result<(), String> {
+        let Some(v) = &self.versoes else {
+            return Err("Esta partitura não tem Versões (arquivo solto).".into());
+        };
+        let motivo = self.campo_motivo_decisao.trim();
+        let motivo = (!motivo.is_empty()).then_some(motivo);
+        let revisor = crate::revisao::REVISOR;
+        let em = agora_utc();
+        let r = if direta {
+            v.aprovar_direto(hash, motivo, revisor, &em)
+        } else {
+            v.decidir(hash, acao, motivo, revisor, &em)
+        };
+        let r = match r {
+            Ok(d) => {
+                self.aviso_versoes = Some(format!(
+                    "Versão {}: {}.",
+                    hash_curto(&d.hash),
+                    crate::revisao::rotulo_do_estado(d.para)
+                ));
+                self.campo_motivo_decisao.clear();
+                Ok(())
+            }
+            Err(e) => {
+                let m = format!("Recusado: {e}");
+                self.aviso_versoes = Some(m.clone());
+                Err(m)
+            }
+        };
+        self.atualizar_lista_de_versoes();
+        self.conferir_originais();
+        r
     }
 
     /// A lista de Versões para a tela (Fonte e Hipótese primeiro, depois as correções).
@@ -2459,7 +2513,16 @@ fn desenhar_versoes(ui: &mut Ui, e: &mut EstadoPartitura) {
         }
         return;
     }
+    ui.horizontal_wrapped(|ui| {
+        ui.label("Motivo da decisão:");
+        ui.add(
+            TextEdit::singleline(&mut e.campo_motivo_decisao)
+                .hint_text("obrigatório para aprovar, rejeitar ou reabrir (até 280 caracteres)")
+                .desired_width(320.0),
+        );
+    });
     let mut abrir = None;
+    let mut decidir: Option<(String, AcaoDeRevisao, bool)> = None;
     egui::ScrollArea::vertical()
         .id_salt("lista-de-versoes")
         .max_height(130.0)
@@ -2470,11 +2533,31 @@ fn desenhar_versoes(ui: &mut Ui, e: &mut EstadoPartitura) {
                     if l.abrivel && ui.small_button("Abrir").clicked() {
                         abrir = Some(l.hash.clone());
                     }
+                    if l.abrivel && l.estado.is_some() {
+                        for (rotulo, acao, direta) in [
+                            ("Aprovar", AcaoDeRevisao::Aprovar, false),
+                            ("Rejeitar", AcaoDeRevisao::Rejeitar, false),
+                            ("Reabrir", AcaoDeRevisao::Reabrir, false),
+                            ("Aprovar direto", AcaoDeRevisao::Aprovar, true),
+                        ] {
+                            // Aprovação direta só nasce da Hipótese.
+                            if direta && l.rotulo != "Hipótese" {
+                                continue;
+                            }
+                            if ui.small_button(rotulo).clicked() {
+                                decidir = Some((l.hash.clone(), acao, direta));
+                            }
+                        }
+                    }
                 });
             }
         });
     if let Some(h) = abrir {
         e.abrir_versao(&h);
+    }
+    if let Some((h, acao, direta)) = decidir {
+        // A recusa vira aviso na tela.
+        let _ = e.decidir_versao(&h, acao, direta);
     }
     if let Some(a) = e.aviso_de_versoes() {
         ui.label(RichText::new(a).weak());
@@ -4235,8 +4318,8 @@ mod testes {
         assert!(arquivo_do_rascunho(&xml).is_file());
         assert_eq!(
             e.lista_de_versoes().len(),
-            1,
-            "só a Hipótese: autosave não é Versão"
+            0,
+            "autosave não cria Versão nem registra a origem"
         );
     }
 
@@ -4305,5 +4388,65 @@ mod testes {
         assert!(outro.rascunho_pendente().is_none());
         assert!(!arquivo_do_rascunho(&xml).exists());
         assert!(xml.is_file(), "o original não é tocado");
+    }
+
+    // --- Ticket 23: aprovar, rejeitar e reabrir na lista de Versões ----------------------------
+
+    #[test]
+    fn decidir_versao_exige_motivo_recusa_transicao_invalida_e_registra_o_estado() {
+        let (_d, mut e, _) = com_oficina();
+        editar_uma_nota(&mut e);
+        e.salvar_versao().expect("salva");
+        let v1 = e.lista_de_versoes()[1].hash.clone();
+        // Sem motivo: recusa com mensagem e nada muda.
+        let r = e.decidir_versao(&v1, AcaoDeRevisao::Aprovar, false);
+        assert!(r.is_err());
+        assert!(e.aviso_de_versoes().expect("aviso").starts_with("Recusado"));
+        assert_eq!(
+            e.lista_de_versoes()[1].estado,
+            Some(crate::revisao::Estado::EmRevisao)
+        );
+        e.definir_motivo_da_decisao("conferi com o PDF");
+        e.decidir_versao(&v1, AcaoDeRevisao::Aprovar, false)
+            .expect("aprova");
+        assert_eq!(
+            e.lista_de_versoes()[1].estado,
+            Some(crate::revisao::Estado::Aprovada)
+        );
+        assert_eq!(e.motivo_da_decisao(), "", "motivo limpo depois de decidir");
+        // Transição inválida (Aprovada -> Rejeitada): recusada com a mensagem do módulo.
+        e.definir_motivo_da_decisao("mudei de ideia");
+        let err = e
+            .decidir_versao(&v1, AcaoDeRevisao::Rejeitar, false)
+            .expect_err("recusa");
+        assert!(err.starts_with("Recusado"), "{err}");
+        assert_eq!(
+            e.lista_de_versoes()[1].estado,
+            Some(crate::revisao::Estado::Aprovada)
+        );
+        // Reabrir volta a Em revisão.
+        e.decidir_versao(&v1, AcaoDeRevisao::Reabrir, false)
+            .expect("reabre");
+        assert_eq!(
+            e.lista_de_versoes()[1].estado,
+            Some(crate::revisao::Estado::EmRevisao)
+        );
+        // Motivo longo demais.
+        e.definir_motivo_da_decisao(&"x".repeat(281));
+        assert!(
+            e.decidir_versao(&v1, AcaoDeRevisao::Rejeitar, false)
+                .is_err()
+        );
+        // Aprovação direta da Hipótese, sem motivo escrito.
+        let h = e.lista_de_versoes()[0].hash.clone();
+        e.definir_motivo_da_decisao("");
+        e.decidir_versao(&h, AcaoDeRevisao::Aprovar, true)
+            .expect("direta");
+        assert_eq!(
+            e.lista_de_versoes()[0].estado,
+            Some(crate::revisao::Estado::Aprovada)
+        );
+        let (mut som, ctx) = banco();
+        quadro(&ctx, &mut e, &mut som);
     }
 }

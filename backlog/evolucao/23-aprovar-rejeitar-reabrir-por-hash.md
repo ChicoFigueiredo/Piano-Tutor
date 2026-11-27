@@ -31,3 +31,5 @@
 
 
 **Supervisor (2026-11-27):** reabri o critério dos consumidores. A consulta por hash já existe, mas a prática e o Exercício ainda leem o `estado.toml`. A migração entra no ticket 25 (praticar a Versão aprovada), e o critério só fecha quando o 25 fechar. Botões e campo de motivo na tela também ficam pendentes. A trava entre processos foi testada só com threads no Linux: NÃO VERIFICADO em dois processos reais, no Windows e no macOS.
+
+**Ligação à tela (2026-11-28):** na lista de Versões da tela Partitura: campo de motivo e botões Aprovar, Rejeitar, Reabrir (e "Aprovar direto" na Hipótese) por linha; `EstadoPartitura::decidir_versao` mostra "Recusado: ..." com a mensagem do módulo em transição inválida, motivo vazio ou longo (teste egui sem janela). O critério dos consumidores segue aberto (ticket 25).
