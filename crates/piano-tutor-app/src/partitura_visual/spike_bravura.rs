@@ -477,14 +477,7 @@ fn nome_da_cifra(h: roxmltree::Node<'_, '_>) -> String {
 /// Lê letra, cifra e dedilhado do MusicXML (posição em semínimas dentro do compasso).
 pub fn extrair_extras(xml: &str) -> Extras {
     let mut ex = Extras::default();
-    let Ok(doc) = roxmltree::Document::parse_with_options(
-        xml,
-        roxmltree::ParsingOptions {
-            allow_dtd: true,
-            nodes_limit: 4_000_000,
-            ..Default::default()
-        },
-    ) else {
+    let Ok(doc) = piano_tutor_core::xml_seguro::analisar(xml) else {
         return ex;
     };
     let partes = doc

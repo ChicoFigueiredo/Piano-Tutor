@@ -16,6 +16,8 @@ pub mod partitura;
 
 pub mod mxl;
 
+pub mod xml_seguro;
+
 pub mod documento;
 
 pub mod chamada_resposta;

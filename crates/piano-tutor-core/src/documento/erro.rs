@@ -11,6 +11,8 @@ pub enum ErroDocumento {
     NaoUtf8(String),
     /// Estrutura fora do que o spike modela (por exemplo `score-timewise`).
     NaoSuportado(String),
+    /// Um limite de segurança foi excedido (qual): tamanho, nós, profundidade, expansão.
+    LimiteExcedido(&'static str),
     /// Faixa de um elemento fora do que o pai admite (típico de entidade que expande elementos).
     FaixaInconsistente(String),
     NotaInexistente(IdNota),
@@ -37,6 +39,7 @@ impl fmt::Display for ErroDocumento {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
             Self::Xml(m) => write!(f, "XML inválido: {m}"),
+            Self::LimiteExcedido(q) => write!(f, "limite de segurança excedido: {q}"),
             Self::NaoUtf8(m) => write!(f, "texto não é UTF-8: {m}"),
             Self::NaoSuportado(m) => write!(f, "não suportado: {m}"),
             Self::FaixaInconsistente(m) => write!(f, "faixa de bytes inconsistente: {m}"),
@@ -57,6 +60,32 @@ impl fmt::Display for ErroDocumento {
             Self::PatchesInvalidos(m) => write!(f, "patches inválidos: {m}"),
             Self::TabelaIdsDeOutroTexto => write!(f, "tabela de ids é de outro texto"),
             Self::TabelaIdsInvalida(m) => write!(f, "tabela de ids inválida: {m}"),
+        }
+    }
+}
+
+impl ErroDocumento {
+    /// Recusa de bytes que não são UTF-8, com mensagem em português (sem o texto do `Utf8Error`).
+    pub fn nao_utf8(bytes: &[u8], e: &std::str::Utf8Error) -> Self {
+        let dica = if bytes.starts_with(&[0xFF, 0xFE]) || bytes.starts_with(&[0xFE, 0xFF]) {
+            " (BOM de UTF-16)"
+        } else {
+            ""
+        };
+        Self::NaoUtf8(format!(
+            "byte inválido na posição {}{dica}",
+            e.valid_up_to()
+        ))
+    }
+}
+
+impl From<crate::xml_seguro::FalhaXml> for ErroDocumento {
+    fn from(f: crate::xml_seguro::FalhaXml) -> Self {
+        use crate::xml_seguro::FalhaXml;
+        match f {
+            FalhaXml::Invalido(m) => Self::Xml(m),
+            FalhaXml::GrandeDemais(_) => Self::LimiteExcedido("tamanho do texto"),
+            FalhaXml::Limite(q) => Self::LimiteExcedido(q),
         }
     }
 }

@@ -9,6 +9,8 @@ use piano_tutor_core::mxl::MXL_TAMANHO_MAXIMO_BYTES;
 use piano_tutor_core::partitura::{
     EventoReproducao, MapaAndamento, Partitura, TAMANHO_MAXIMO_BYTES,
 };
+use piano_tutor_core::xml_seguro::nome_para_mensagem;
+use std::io::Read;
 use std::path::{Path, PathBuf};
 
 /// Dados musicais derivados da partitura, calculados uma vez por carga.
@@ -67,9 +69,11 @@ pub fn ler_arquivo(caminho: &Path) -> Result<(Vec<u8>, Formato), String> {
         .and_then(|e| e.to_str())
         .and_then(Formato::de_extensao)
         .ok_or_else(|| "use um arquivo .musicxml, .xml ou .mxl".to_owned())?;
-    let meta = std::fs::metadata(caminho).map_err(|e| format!("{}: {e}", caminho.display()))?;
+    let nome = nome_curto(caminho);
+    let meta =
+        std::fs::metadata(caminho).map_err(|e| format!("{nome}: {}", erro_de_leitura(&e)))?;
     if !meta.is_file() {
-        return Err(format!("{} não é um arquivo", caminho.display()));
+        return Err(format!("{nome} não é um arquivo"));
     }
     let maximo = match formato {
         Formato::Mxl => MXL_TAMANHO_MAXIMO_BYTES,
@@ -81,8 +85,36 @@ pub fn ler_arquivo(caminho: &Path) -> Result<(Vec<u8>, Formato), String> {
             meta.len()
         ));
     }
-    let bytes = std::fs::read(caminho).map_err(|e| format!("{}: {e}", caminho.display()))?;
+    // O arquivo pode crescer entre a checagem e a leitura (ou ser um dispositivo que não acaba):
+    // a leitura em si também tem teto.
+    let mut bytes = Vec::new();
+    std::fs::File::open(caminho)
+        .and_then(|f| f.take(maximo as u64 + 1).read_to_end(&mut bytes))
+        .map_err(|e| format!("{nome}: {}", erro_de_leitura(&e)))?;
+    if bytes.len() > maximo {
+        return Err(format!(
+            "arquivo grande demais (mais de {maximo} bytes; máximo {maximo})"
+        ));
+    }
     Ok((bytes, formato))
+}
+
+/// Só o nome do arquivo (nunca a pasta do usuário), curto e sem caracteres de controle.
+fn nome_curto(caminho: &Path) -> String {
+    caminho.file_name().map_or_else(
+        || "arquivo".to_owned(),
+        |n| nome_para_mensagem(&n.to_string_lossy()),
+    )
+}
+
+/// Motivo de uma falha de E/S em português, sem o texto do sistema (que vem em inglês e pode
+/// trazer caminho).
+fn erro_de_leitura(e: &std::io::Error) -> &'static str {
+    match e.kind() {
+        std::io::ErrorKind::NotFound => "arquivo não encontrado",
+        std::io::ErrorKind::PermissionDenied => "sem permissão para ler",
+        _ => "não foi possível ler o arquivo",
+    }
 }
 
 /// Valida o caminho de destino da exportação (acrescenta `.musicxml` se faltar extensão).
@@ -303,6 +335,28 @@ mod testes {
                 assert!(!producao.contains(proibido), "{nome} usa {proibido}");
             }
         }
+    }
+
+    #[test]
+    fn erros_de_leitura_nao_vazam_o_caminho_completo_e_estao_em_portugues() {
+        let dir = pasta("sem-vazar");
+        let segredo = dir.join("pasta-do-usuario-secreta");
+        std::fs::create_dir_all(&segredo).expect("pasta");
+        let ausente = segredo.join("some.mxl");
+        let falso = segredo.join("lixo.musicxml");
+        std::fs::write(&falso, "isto não é xml").expect("grava");
+        let diretorio = segredo.join("pasta.musicxml");
+        std::fs::create_dir_all(&diretorio).expect("pasta");
+        for c in [&ausente, &falso, &diretorio] {
+            let e = DocumentoPartitura::de_arquivo(c, "?").expect_err("recusa");
+            assert!(!e.contains("pasta-do-usuario-secreta"), "vaza caminho: {e}");
+            assert!(!e.contains(&*dir.to_string_lossy()), "vaza caminho: {e}");
+            let baixa = e.to_lowercase();
+            for ingles in ["no such file", "os error", "not a directory", "permission"] {
+                assert!(!baixa.contains(ingles), "mensagem em inglês: {e}");
+            }
+        }
+        let _ = std::fs::remove_dir_all(&dir);
     }
 
     #[test]

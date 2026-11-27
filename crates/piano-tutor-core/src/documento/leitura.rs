@@ -7,7 +7,7 @@ use super::ids::{ChaveNota, TabelaIds};
 use super::texto::{Abertura, No, Peca, Texto, fim_da_abertura};
 use super::{Altura, Compasso, Documento, IdNota, Nota, Parte};
 use crate::partitura::Fracao;
-use roxmltree::{Document, Node, ParsingOptions};
+use roxmltree::Node;
 use std::collections::{BTreeSet, HashMap};
 
 /// Quais elementos são decompostos (e em que profundidade); o resto fica como faixa bruta.
@@ -133,14 +133,7 @@ impl Documento {
     /// Abre bytes: só UTF-8 (com ou sem BOM). Outras codificações são erro explícito, porque
     /// converter mudaria os bytes e a promessa é devolvê-los idênticos.
     pub fn abrir_bytes(bytes: &[u8]) -> Result<Self, ErroDocumento> {
-        let texto = std::str::from_utf8(bytes).map_err(|e| {
-            let dica = if bytes.starts_with(&[0xFF, 0xFE]) || bytes.starts_with(&[0xFE, 0xFF]) {
-                " (BOM de UTF-16)"
-            } else {
-                ""
-            };
-            ErroDocumento::NaoUtf8(format!("{e}{dica}"))
-        })?;
+        let texto = std::str::from_utf8(bytes).map_err(|e| ErroDocumento::nao_utf8(bytes, &e))?;
         Self::abrir(texto)
     }
 
@@ -152,15 +145,9 @@ impl Documento {
         {
             return Err(ErroDocumento::TabelaIdsDeOutroTexto);
         }
-        let doc = Document::parse_with_options(
-            texto,
-            ParsingOptions {
-                allow_dtd: true,
-                nodes_limit: 4_000_000,
-                ..ParsingOptions::default()
-            },
-        )
-        .map_err(|e| ErroDocumento::Xml(e.to_string()))?;
+        // Mesma política da rota de partitura (DTD interno sim, entidade externa nunca,
+        // expansão, nós e profundidade limitados): ver `xml_seguro`.
+        let doc = crate::xml_seguro::analisar(texto)?;
         let raiz = doc.root_element();
         if nome(raiz) != "score-partwise" {
             return Err(ErroDocumento::NaoSuportado(format!(

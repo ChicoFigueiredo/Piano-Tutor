@@ -4,6 +4,8 @@
 //! são gerados por este código, de forma determinística, em memória ou numa pasta de teste.
 //! Nenhum contém payload perigoso real: o "zip bomb" é só espaço em branco repetido e os
 //! caminhos fora do escopo são nomes de entrada que o leitor deve recusar, nunca gravados.
+//! Os XML maliciosos ([`xml_de_teste`]) só referenciam arquivos e URLs que nunca são abertos
+//! (`file:///etc/passwd`, `http://127.0.0.1:9/`): o teste é justamente provar que não são.
 
 use piano_tutor_core::mxl::empacotar_mxl;
 use std::io::{Cursor, Write};
@@ -195,6 +197,152 @@ pub fn mxl_de_teste() -> Vec<MxlDeTeste> {
             descricao: "zip sem META-INF/container.xml",
         },
     ]
+}
+
+/// Um MusicXML de teste (texto) e o que o leitor deve fazer com ele.
+#[derive(Debug, Clone)]
+pub struct XmlDeTeste {
+    pub nome: &'static str,
+    pub texto: String,
+    /// `true` = o leitor deve abrir (DOCTYPE inofensivo); `false` = deve recusar com erro.
+    pub valido: bool,
+    pub descricao: &'static str,
+}
+
+/// O `MINIMO` com um DOCTYPE (`doctype`, sem o `<!DOCTYPE` inicial) antes da raiz e `corpo`
+/// no lugar do título da obra.
+fn minimo_com_doctype(doctype: &str, titulo: &str) -> String {
+    let com_titulo = MINIMO.replacen(
+        "<part-list>",
+        &format!("<work><work-title>{titulo}</work-title></work><part-list>"),
+        1,
+    );
+    com_titulo.replacen(
+        "<score-partwise",
+        &format!("<!DOCTYPE score-partwise {doctype}>\n<score-partwise"),
+        1,
+    )
+}
+
+/// XML maliciosos ou malformados, mais DOCTYPEs inofensivos que têm de continuar abrindo.
+/// Nenhum contém payload real: referências a arquivos e URLs que o leitor jamais abre.
+pub fn xml_de_teste() -> Vec<XmlDeTeste> {
+    let mut v = vec![
+        XmlDeTeste {
+            nome: "valido-doctype-publico-com-url",
+            texto: minimo_com_doctype(
+                "PUBLIC \"-//Recordare//DTD MusicXML 4.0 Partwise//EN\" \"http://127.0.0.1:9/partwise.dtd\"",
+                "ok",
+            ),
+            valido: true,
+            descricao: "DOCTYPE do MusicXML oficial: o identificador externo é ignorado",
+        },
+        XmlDeTeste {
+            nome: "valido-doctype-system-arquivo",
+            texto: minimo_com_doctype("SYSTEM \"file:///etc/passwd\"", "ok"),
+            valido: true,
+            descricao: "DTD externo apontando um arquivo local: nunca é aberto",
+        },
+        XmlDeTeste {
+            nome: "malformado-truncado",
+            texto: MINIMO[..MINIMO.len() / 2].to_owned(),
+            valido: false,
+            descricao: "arquivo cortado no meio",
+        },
+        XmlDeTeste {
+            nome: "malformado-etiqueta-cruzada",
+            texto: MINIMO.replacen("</part-list>", "</parte>", 1),
+            valido: false,
+            descricao: "fechamento de etiqueta que não casa",
+        },
+        XmlDeTeste {
+            nome: "xxe-system-arquivo",
+            texto: minimo_com_doctype("[<!ENTITY x SYSTEM \"file:///etc/passwd\">]", "&x;"),
+            valido: false,
+            descricao: "entidade externa SYSTEM file:// usada no título",
+        },
+        XmlDeTeste {
+            nome: "xxe-public-http",
+            texto: minimo_com_doctype(
+                "[<!ENTITY x PUBLIC \"-//X//EN\" \"http://127.0.0.1:9/x\">]",
+                "&x;",
+            ),
+            valido: false,
+            descricao: "entidade externa PUBLIC http:// usada no título",
+        },
+        XmlDeTeste {
+            nome: "xxe-entidade-parametro",
+            texto: minimo_com_doctype("[<!ENTITY % p SYSTEM \"file:///etc/passwd\">%p;]", "ok"),
+            valido: false,
+            descricao: "entidade de parâmetro externa referenciada no DTD",
+        },
+        XmlDeTeste {
+            nome: "entidade-ciclica",
+            texto: minimo_com_doctype("[<!ENTITY a \"&b;\"><!ENTITY b \"&a;\">]", "&a;"),
+            valido: false,
+            descricao: "entidades que se referenciam em laço",
+        },
+    ];
+    // Billion laughs clássico: 10 níveis de 10 referências.
+    let mut decl = String::from("[<!ENTITY l0 \"lol\">");
+    for n in 1..=9 {
+        decl.push_str(&format!(
+            "<!ENTITY l{n} \"{}\">",
+            format!("&l{};", n - 1).repeat(10)
+        ));
+    }
+    decl.push(']');
+    v.push(XmlDeTeste {
+        nome: "billion-laughs",
+        texto: minimo_com_doctype(&decl, "&l9;"),
+        valido: false,
+        descricao: "expansão exponencial (10^9 repetições)",
+    });
+    // Explosão quadrática: uma entidade grande referenciada muitas vezes, sem aninhamento
+    // (o detector de laço não conta referências no nível zero).
+    let grande = "a".repeat(100_000);
+    v.push(XmlDeTeste {
+        nome: "explosao-quadratica-no-texto",
+        texto: minimo_com_doctype(&format!("[<!ENTITY g \"{grande}\">]"), &"&g;".repeat(4000)),
+        valido: false,
+        descricao: "100 KB x 4000 referências (400 MB expandidos) no texto",
+    });
+    v.push(XmlDeTeste {
+        nome: "explosao-quadratica-no-atributo",
+        texto: minimo_com_doctype(&format!("[<!ENTITY g \"{grande}\">]"), "t").replacen(
+            "<part id=\"P1\">",
+            &format!("<part id=\"{}\">", "&g;".repeat(4000)),
+            1,
+        ),
+        valido: false,
+        descricao: "100 KB x 4000 referências (400 MB expandidos) num atributo",
+    });
+    // Aninhamento profundo e nós demais: documentos pequenos que viram árvores enormes.
+    v.push(XmlDeTeste {
+        nome: "aninhamento-profundo",
+        texto: MINIMO.replacen(
+            "<part-list>",
+            &format!(
+                "<work>{}{}</work><part-list>",
+                "<a>".repeat(100_000),
+                "</a>".repeat(100_000)
+            ),
+            1,
+        ),
+        valido: false,
+        descricao: "100 mil elementos aninhados",
+    });
+    v.push(XmlDeTeste {
+        nome: "nos-demais",
+        texto: MINIMO.replacen(
+            "<part-list>",
+            &format!("<work>{}</work><part-list>", "<a/>".repeat(2_000_001)),
+            1,
+        ),
+        valido: false,
+        descricao: "mais de 2 milhões de elementos (limite de nós)",
+    });
+    v
 }
 
 /// Grava todos os `.mxl` de teste em `pasta` (que deve existir). Útil para abrir à mão.

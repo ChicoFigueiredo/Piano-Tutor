@@ -140,15 +140,8 @@ impl DocumentoAberto {
                 Self::abrir_com_formato(nome, &texto, Formato::Mxl)
             }
             Formato::MusicXml => {
-                let texto = std::str::from_utf8(bytes).map_err(|e| {
-                    let dica =
-                        if bytes.starts_with(&[0xFF, 0xFE]) || bytes.starts_with(&[0xFE, 0xFF]) {
-                            " (BOM de UTF-16)"
-                        } else {
-                            ""
-                        };
-                    ErroDocumento::NaoUtf8(format!("{e}{dica}"))
-                })?;
+                let texto =
+                    std::str::from_utf8(bytes).map_err(|e| ErroDocumento::nao_utf8(bytes, &e))?;
                 Self::abrir_com_formato(nome, texto, Formato::MusicXml)
             }
         }
