@@ -34,6 +34,7 @@ pub mod geometria;
 pub mod gravacao;
 pub mod icones;
 pub mod licoes;
+pub mod migracao_aprovacao;
 pub mod monitor;
 pub mod mpv;
 pub mod opcoes;

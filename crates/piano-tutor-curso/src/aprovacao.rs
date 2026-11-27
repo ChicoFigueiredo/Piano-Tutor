@@ -81,16 +81,33 @@ pub fn estado_do_conteudo_no_indice(
     Ok(estado_por_hash(&lido, &hash_do_conteudo(bytes)))
 }
 
+/// **A regra única** da aprovação por hash (fonte única; o app a usa em `Indice::aprovacao`).
+///
+/// `estado_da_versao` é o texto `estado` da `[[versao]]` do hash; `decisoes` são as
+/// `[[decisao]]` em ordem de gravação, cada uma vista como `(hash, para)` por `ler`. Devolve a
+/// decisão que aprova: a **última** sobre o hash, se tem `para = "aprovada"` e a Versão está
+/// `aprovada`. Estado `aprovada` sem esse registro não vale (`None`).
+pub fn decisao_que_aprova<'a, D>(
+    estado_da_versao: &str,
+    hash: &str,
+    decisoes: &'a [D],
+    ler: impl Fn(&D) -> (&str, &str),
+) -> Option<&'a D> {
+    if estado_da_versao != "aprovada" {
+        return None;
+    }
+    let ultima = decisoes.iter().rev().find(|d| ler(d).0 == hash)?;
+    (ler(ultima).1 == "aprovada").then_some(ultima)
+}
+
 fn estado_por_hash(indice: &Indice, hash: &str) -> Option<EstadoConteudo> {
     let versao = indice.versao.iter().find(|v| v.hash == hash)?;
     Some(match versao.estado.as_str() {
         "aprovada" => {
-            let registrada = indice
-                .decisao
-                .iter()
-                .rev()
-                .find(|d| d.hash == hash)
-                .is_some_and(|d| d.para == "aprovada");
+            let registrada = decisao_que_aprova(&versao.estado, hash, &indice.decisao, |d| {
+                (d.hash.as_str(), d.para.as_str())
+            })
+            .is_some();
             if registrada {
                 EstadoConteudo::Aprovada
             } else {

@@ -261,6 +261,24 @@ impl EstadoRevisao {
             self.fonte_atual = 0;
         }
         self.carregar_roteiro();
+        self.migrar_aprovacoes_antigas();
+    }
+
+    /// Migração única das aprovações do `estado.toml` para o índice de Versões (ticket 23):
+    /// idempotente, roda ao abrir as Oficinas e avisa o que migrou.
+    fn migrar_aprovacoes_antigas(&mut self) {
+        let mut total = crate::migracao_aprovacao::RelatorioDaMigracao::default();
+        for o in &self.oficinas {
+            total.juntar(crate::migracao_aprovacao::migrar_aprovacoes(o));
+        }
+        if let Some(texto) = total.aviso() {
+            let erro = !total.problemas.is_empty();
+            self.aviso = Some(if erro {
+                Aviso::erro(texto)
+            } else {
+                Aviso::ok(texto)
+            });
+        }
     }
 
     pub fn trocar_oficina(&mut self, i: usize) {
@@ -1686,6 +1704,31 @@ estado = "em_revisao"
     fn som() -> ServicoSom {
         let relogio: Arc<dyn Relogio> = Arc::new(RelogioManual::novo());
         servico_pronto(relogio).0
+    }
+
+    #[test]
+    fn abrir_a_oficina_migra_aprovacao_antiga_uma_vez_e_avisa() {
+        let d = dados_sinteticos();
+        let estado_toml = d
+            .path()
+            .join("fontes/tutor-teste/oficina/partituras/cinco-notas.estado.toml");
+        let antigo = fs::read_to_string(&estado_toml).expect("l");
+        fs::write(
+            &estado_toml,
+            antigo.replace("estado = \"hipotese\"", "estado = \"aprovada\""),
+        )
+        .expect("w");
+        let mut e = estado(&d);
+        e.recarregar_oficinas();
+        let a = e.aviso.clone().expect("aviso da migração");
+        assert!(!a.erro && a.texto.contains("cinco-notas"), "{a:?}");
+        let item = &e.itens[0];
+        let v = crate::versoes::Versoes::da_partitura(item);
+        assert!(v.aprovacao_do_arquivo(&item.musicxml).expect("l").is_some());
+        // Segunda abertura: nada a migrar, nenhum aviso novo.
+        e.aviso = None;
+        e.recarregar_oficinas();
+        assert!(e.aviso.is_none(), "{:?}", e.aviso);
     }
 
     #[test]
