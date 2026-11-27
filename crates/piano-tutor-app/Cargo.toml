@@ -3,6 +3,7 @@ name = "piano-tutor-app"
 description = "Piano Tutor: teclado MIDI, espelho de 61 teclas e som SoundFont sobre a bancada-casca (M1)"
 version.workspace = true
 edition.workspace = true
+license.workspace = true
 rust-version.workspace = true
 publish = false
 build = "build.rs"

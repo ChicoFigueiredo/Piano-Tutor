@@ -1,3 +1,5 @@
+> Numeração duplicada histórica; ver também ADR-0009-licoes-em-arquivos-toml.md
+
 # ADR-0009 — Cursos de tutor chegam como Pacote de Curso
 
 **Status:** ACEITA — 2026-11-24 · **Complementa:** [ADR-0008](ADR-0008-aulas-somente-locais.md)

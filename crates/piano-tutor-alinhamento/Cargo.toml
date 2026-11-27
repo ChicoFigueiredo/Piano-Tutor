@@ -3,6 +3,7 @@ name = "piano-tutor-alinhamento"
 description = "Alinhamento de uma partitura ao áudio de uma Aula (DTW de croma), M4 etapa 4"
 version.workspace = true
 edition.workspace = true
+license.workspace = true
 rust-version.workspace = true
 publish = false
 

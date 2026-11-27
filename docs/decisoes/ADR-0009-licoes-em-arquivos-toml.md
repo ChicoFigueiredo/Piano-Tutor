@@ -1,3 +1,5 @@
+> Numeração duplicada histórica; ver também ADR-0009-cursos-de-tutor-como-pacote.md
+
 # ADR-0009 — Lições e Exercícios em arquivos TOML declarativos; script fica para depois
 
 **Status:** PROPOSTA — 2026-11-23 · **Complementa:** F05 (professor assistido), CONTEXT.md (Lição, Exercício, Gabarito, Trilha)
