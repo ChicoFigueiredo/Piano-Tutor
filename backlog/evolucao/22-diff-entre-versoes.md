@@ -12,11 +12,11 @@
 
 **Blocked by:** 21 (Salvar como nova Versão, com nota de motivo, e listar as Versões)
 
-**Status:** ready-for-agent
+**Status:** feito (serviço), aguarda revisão; UI da Oficina pendente
 
-- [ ] A10: dadas duas Versões com edições em compassos conhecidos, o diff devolve exatamente esses compassos e, para cada um, o antes e o depois.
-- [ ] Duas Versões idênticas dão diff vazio; Versões com formatação diferente e conteúdo igual dão diff vazio (comparação semântica).
-- [ ] O diff de Versões não consecutivas funciona (ancestral comum não necessário) e é simétrico em compassos alterados.
-- [ ] Diff por IdNota detecta nota alterada, inserida e removida num compasso (três casos testados); letra, cifra e dedilhado alterados por edição indireta aparecem com marcação.
-- [ ] A Oficina mostra o diff em lista navegável com teclado; clicar numa linha leva ao compasso; sem diferenças, mostra mensagem clara.
-- [ ] O diff é calculado pelo serviço, sem janela, e é reutilizável por MCP (E06) sem mudança de contrato.
+- [x] A10: dadas duas Versões com edições em compassos conhecidos, o diff devolve exatamente esses compassos e, para cada um, o antes e o depois.
+- [x] Duas Versões idênticas dão diff vazio; Versões com formatação diferente e conteúdo igual dão diff vazio (comparação semântica).
+- [x] O diff de Versões não consecutivas funciona (ancestral comum não necessário) e é simétrico em compassos alterados.
+- [x] Diff por IdNota detecta nota alterada, inserida e removida num compasso (três casos testados); letra, cifra e dedilhado alterados por edição indireta aparecem com marcação.
+- [ ] A Oficina mostra o diff em lista navegável com teclado; clicar numa linha leva ao compasso; sem diferenças, mostra mensagem clara. (PENDENTE: serviço pronto em `versoes_diff::linhas`/`MENSAGEM_SEM_DIFERENCAS`; tela da Oficina não ligada neste ticket.)
+- [x] O diff é calculado pelo serviço, sem janela, e é reutilizável por MCP (E06) sem mudança de contrato.
