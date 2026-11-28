@@ -66,3 +66,10 @@ Nenhum estado de hardware foi promovido: F01, F02, F03 e F14 seguem NÃO VERIFIC
 | Spike de notação (M3) | Não iniciado | fora do progresso.json | Não comparável; linha só da matriz |
 
 **Resumo:** as 15 fases F00 a F14 são compatíveis com a regra, e não há divergência sem explicação. A linha do spike de notação não tem equivalente no progresso.
+
+## Evolução musical
+
+| Fase | Estado | Evidência | Observação |
+|---|---|---|---|
+| E00 (pesquisa, spec, ADRs, backlog) | Aceita pelo titular (2026-11-27) | `docs/evolucao-musical/e00/00-DECISOES.md`, PR #46 | 18 decisões confirmadas |
+| E01 (editor nativo, 1ª fatia) | Aceita pelo titular (2026-11-28 13:42 UTC, cartão "Aceito a E01") | `docs/evolucao-musical/e01/MATRIZ-RASTREABILIDADE.md`, `REVISAO-CODIGO.md`, 1617 testes verdes na nuvem | NÃO VERIFICADO continua: janela real/HiDPI, som real, REVAS e latência, Windows/macOS, desempenho no cerebro |

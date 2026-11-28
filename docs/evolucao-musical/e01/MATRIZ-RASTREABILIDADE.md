@@ -2,7 +2,7 @@
 
 Data: 2026-11-28 · Commit base: `c8b93f9 (testes e build); o merge posterior cd96186 só trouxe a revisão independente e sondas em docs` (merge de `claude/project-thread-w8l1yp`) · Autor: agente do gate (Claude), a pedido do coordenador · Revisão de código independente: **outra equipe**, em [`REVISAO-CODIGO.md`](REVISAO-CODIGO.md) (este arquivo não a substitui nem a resume).
 
-**Aceite humano do titular: aguardando aceite.** Nenhuma linha desta matriz é aceite do titular, e nenhum estado foi inferido de CI verde.
+**Aceite humano do titular: ACEITA em 2026-11-28 13:42 UTC** (Chico, cartão de decisão "Aceito a E01"). O aceite cobre a fase como um todo e não converte nenhum NÃO VERIFICADO da seção 4 em PASS; nenhum estado foi inferido de CI verde.
 
 ## 1. Números do gate
 
