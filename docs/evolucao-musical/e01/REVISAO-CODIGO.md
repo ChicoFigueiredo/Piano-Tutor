@@ -207,3 +207,109 @@ Cada correção nasceu de um teste que falhava (red registrado) e depois passou.
 
 Não tratados nesta rodada, por pedido: R5 (PDF na aba Partitura, outra equipe), R7, R9, R11 e os itens 3 a 7 do gate 27.
 
+## Segunda revisão (2026-11-28)
+
+**Revisor:** qa-aceite, segunda passada independente (sem participação nas correções). **Base:** `claude/project-thread-w8l1yp` em `3f1da94` (G2), diff `3b3042e..HEAD` (29 arquivos, ~2600 linhas). Produção não foi alterada: as sondas foram testes temporários, copiados para `docs/evolucao-musical/e01/sondas-revisao/` (fora de qualquer crate, não compilam) e removidos das árvores dos crates.
+
+### 1. Veredito
+
+**O item "Revisão de código independente sem achados P0/P1" do gate NÃO está atendido.** Há 1 achado P1 novo (N1), reproduzido por teste, que reabre por outro caminho o mesmo dano do R1 (perda do trabalho de uma sessão que caiu). Nenhum P0 novo. As correções de R1, R2, R3, R4, R6, R8, R10, G1, G2 e o bloqueio de edição **resistiram** aos cenários novos que tentei, com as ressalvas das seções 2 e 3: o P1 está numa borda do R1 que o bloqueio não cobre (Recuperar com uma Versão aberta em leitura), não no que as correções disseram cobrir.
+
+| Id | Sev. | Resumo | Reproduzido |
+| --- | --- | --- | --- |
+| N1 | **P1** | "Recuperar" com uma Versão aberta em leitura instala o rascunho como documento "(leitura)"; "Voltar à edição" o descarta, o banner some e o autosave sobrescreve o rascunho da sessão que caiu | sim (sonda) |
+| N2 | P2 | Recuperar (ou Descartar) que falha libera a edição mas deixa o autosave mudo na sessão inteira, sem aviso | sim (sonda) |
+| N3 | P2 | Exportar sobre um arquivo escolhido na lista de fontes (`escolher`) não é protegido: `arquivo_aberto` fica `None` | sim (sonda) |
+| N4 | P3 | "Sobrescrever" por rename substitui arquivo somente leitura e troca link simbólico por arquivo comum (mudança de comportamento) | sim (sonda; ver ressalva de root) |
+| N5 | P3 | G2: "o inverso nunca é recusado" é falso para acorde com altura repetida (uníssono, enarmônico) | sim (sonda) |
+| N6 | P3 | G1: `>` em valor de atributo do `<accidental>` faz `MudarAltura` e o inverso serem recusados; o inverso normaliza espaços da marca de abertura | sim (sonda) |
+| N7 | P3 | `AdicionarAltura` e `InserirNota` aceitam `acidente` livre sem `grafia_valida`: marcação entra no XML (só por API, inalcançável pela UI) | sim (sonda) |
+| N8 | P3 | `DefinirAltura` para a mesma altura, só com o nome, em acidente com atributos: `alterou = true` e entrada de histórico sem mudança | sim (sonda) |
+| N9 | P3 | Observações menores (mensagem enganosa, `metadata` por quadro, linhagem do recuperado sem `.ids`) | sim / leitura |
+
+### 2. Cada correção, atacada com cenário novo
+
+| Item | Resultado | O que tentei (e o que aconteceu) |
+| --- | --- | --- |
+| R1 + bloqueio de edição | **PASS parcial** (N1, N2) | Com rascunho pendente, 11 de 11 entradas de edição recusadas e documento intacto (altura, duração, ponto, inserir nota, inserir pausa, remover, acorde letra/intervalo/retirar, desfazer, refazer); salvar recusado; "Descartar" devolve a edição e o autosave volta a gravar. **Falha:** abrir uma Versão em leitura com o banner pendente e clicar "Recuperar" (N1); "Recuperar" que falha (N2). |
+| R2 | **PASS** com N3, N4 | Recusados: atalho de **pasta** para `partituras/`, caminho relativo (`ode.musicxml` e `./ode.musicxml` com cwd na pasta, `partituras/ode.musicxml`, `partituras/../partituras/ode.musicxml`, sem extensão), link simbólico para objeto de Versão, destino depois de "Continuar a partir desta Versão". Link físico de um objeto de Versão fora de `.versoes/` é aceito, mas o rename troca só o nome: o inode do objeto não mudou. Maiúsculas (`ODE.musicxml`, `ode.MUSICXML`): em Linux é outro arquivo e foi aceito (certo); em disco que ignora caixa a proteção depende do inode (macOS, Unix) ou do `canonicalize` (Windows): **NÃO VERIFICADO**. |
+| R3 | **PASS** | Três sessões (S1 salva v1; S2 reabre a Hipótese e salva v2; S3 "Continuar a partir de v1" salva v3 e depois v4; S4 continua de v2 e salva v5; S5 continua da Hipótese): `v1.pai = v2.pai = Hipótese`, `v3.pai = v1`, `v4.pai = v3`, `v5.pai = v2`, filha da Hipótese a partir da Hipótese. v3 contém a edição de v1 e não a de v2. Continuar a partir de uma leitura aberta devolve edição e a filha sai de v2; continuar de objeto adulterado vira aviso e não troca o documento. Recuperado de rascunho com `.ids` herda a linhagem (pai = v1). |
+| R4 | **PASS** | `proximo` exato no teto e a 1, 5, 2^20-1, 2^20 e 2^20+1 abaixo dele: abre; editar duração que cria ids recusa com "contador no limite" nas quatro primeiras folgas e passa a partir de 2^20; nunca pânico; a tabela regravada volta a ser aceita. |
+| R6 | **PASS** | Em 525 edições aplicadas sobre as 16 peças (fuzz misto grande) a tabela gerada por `tabela_ids_para` foi aceita por `de_texto` em 100 % dos casos e reabrir com ela devolve exatamente os mesmos ids (0 rejeições, 0 divergências): a regra "id repetido/chave repetida" não rejeita arquivo legítimo. |
+| R8 | **PASS por leitura** | `sincronizar_diretorio` depois do `rename` e do `hard_link`, objeto sincronizado antes de o índice o citar. Durabilidade em queda de energia: **NÃO VERIFICADA** (nenhum teste pode provar). |
+| R10 | **PASS** | Rodei a versão grande (40 edições por peça): 525 edições, 2669 recusas, verde. |
+| G1 | **PASS** com N6, N8 | 9 formas de atributo (aspas simples e duplas, aspas dentro de aspas, `&amp;`, espaços duplos, quebra de linha, conteúdo com espaços): 5 combinações de `MudarAltura` cada; o inverso aplicado como comando restaura byte a byte em todas, exceto o espaço atípico da marca de abertura e o espaço em volta do nome (normalizados; N6) e o `>` no valor (recusado; N6). O desfazer real (snapshot) restaurou byte a byte sempre. |
+| G2 | **PASS** com N5 | No fuzz misto grande o inverso de cada edição, aplicado como comando sobre o documento reaberto: **0 recusados em 525**, 350 restauram o texto byte a byte, 50 restauram a partitura (modelo musical) e 125 não restauram a partitura de forma idêntica (106 de `RemoverNota`/`RetirarAltura`, as ressalvas declaradas: principal volta como membro, pausas sobras não reagrupadas; 19 de `InserirNota`/`InserirPausa`/`AlternarPonto`/`MudarDuracao`, não aprofundados, ver seção 4). Falso para altura repetida no acorde (N5). |
+
+### 3. Achados
+
+**N1 (P1): "Recuperar" com uma Versão aberta em leitura perde o trabalho recuperado.**
+Onde: `crates/piano-tutor-app/src/tela_partitura.rs:1448-1478` (`recuperar_rascunho` não olha `self.leitura`: instala o documento recuperado com `instalar_documento` e deixa `self.leitura` com o `guardado` antigo), `:2183-2194` (`voltar_da_leitura` instala o `guardado`), `:3613-3640` (o banner e os botões "Recuperar/Descartar" e "Abrir" ficam ativos em leitura), `:1448` e `crates/piano-tutor-app/src/autosave.rs:369-381` (depois de `recuperar` o autosave volta a gravar na mesma pasta).
+Cenário (todas as ações são botões da tela):
+1. O app cai com edições não salvas e o autosave já gravou o rascunho. O usuário reabre a partitura: banner "Recuperar / Descartar".
+2. Para decidir, o usuário clica "Abrir" numa Versão da lista (nada o impede; é o gesto natural de comparar).
+3. Clica "Recuperar". Aviso: "Trabalho recuperado". A tela passa a mostrar o trabalho recuperado com o nome `ode.musicxml (leitura)`; o banner some (`rascunho_pendente = None`).
+4. Editar é recusado ("Versão aberta para leitura"). O usuário clica "Voltar à edição": o documento volta a ser o do arquivo, **sem** o trabalho; o aviso de recuperado e o banner não existem mais.
+5. Faz uma edição. No intervalo do autosave, `recuperado = true` + `decisao_pendente = false` deixam o autosave gravar por cima do `rascunho.musicxml.rec` da sessão que caiu; ou, antes disso, "Salvar como Versão" apaga a pasta de recuperação.
+Impacto: perda irrecuperável do trabalho da sessão que caiu, o mesmo dano do R1; passos a mais e ordem incomum, por isso P1 e não P0 (promova a P0 se o titular achar o caminho plausível).
+Sonda: `zz_revisao2_app_tela_partitura.rs::zz_r1_abrir_versao_em_leitura_e_recuperar`. Saída: `em_leitura=true nome=ode.musicxml (leitura) doc_e_o_rascunho=true pendente=false`; depois de voltar `doc_e_o_rascunho=false modificado=false banner=false rascunho_em_disco=true`; depois de uma edição e um tick `autosave sobrescreveu o rascunho da sessao que caiu: true`; e `salvar depois de voltar: ok=true rascunho_em_disco=false`.
+Por que a suíte não pega: nenhum teste abre uma Versão com o banner pendente (`testes_revisao.rs` e `testes_continuar.rs` só cobrem edição, salvar e continuar).
+Correção sugerida (não aplicada): recusar `recuperar_rascunho` (e desativar o botão com dica) enquanto `self.leitura.is_some()`, ou sair da leitura antes de instalar o recuperado; e tratar `abrir_versao` com rascunho pendente como o `continuar` já trata.
+
+**N2 (P2): Recuperar que falha libera a edição e deixa o autosave mudo.**
+Onde: `autosave.rs:369-381` (`recuperar` só zera `decisao_pendente` no sucesso), `autosave.rs:391-397` (`descartar` só depois de apagar), `tela_partitura.rs:1473-1475` (no erro, `rascunho_pendente = None` mesmo assim), `autosave.rs:407` (`devido` devolve `false` com a decisão pendente).
+Cenário: o rascunho existe com hash e tamanho íntegros mas não abre como MusicXML (por exemplo, gravado por outra versão do app). "Recuperar" mostra "Não foi possível recuperar: o rascunho não abre", o banner some, a edição é liberada, e o autosave **nunca mais grava nesta sessão**; o rascunho ruim fica em disco e é reoferecido na abertura seguinte, enquanto o trabalho novo não tem proteção. O texto do ticket 24 ("sem edição durante a decisão, nada fica sem proteção") não vale neste ramo. O mesmo vale, **por leitura do código e não reproduzido**, para "Descartar" que falha ao apagar (`descartar` retorna antes de zerar `decisao_pendente`, e a tela zera `rascunho_pendente` assim mesmo).
+Sonda: `zz_r1_recuperar_que_falha_deixa_autosave_mudo` (`rascunho em disco continua o lixo=true`).
+Correção sugerida: zerar `decisao_pendente` quando a decisão termina em erro (ou manter o banner e a edição bloqueada com o erro visível).
+
+**N3 (P2): Exportar sobre o arquivo escolhido na lista de fontes não é protegido.**
+Onde: `tela_partitura.rs:1348-1370` (`escolher` abre por `DocumentoPartitura::de_arquivo` e `carregar_documento`, que zera `arquivo_aberto`, `:547`; só `abrir_caminho` o preenche, `:1381`) e `:2632-2648` (`exportar` protege só `arquivo_aberto` e a Hipótese vinculada).
+Cenário: uma partitura solta em `<assets>/partituras/solta.musicxml` aparece na lista de fontes; o usuário a escolhe, edita, digita o mesmo caminho em "Exportar" com "Sobrescrever": o original é reescrito (`Ok`, `original_mudou=true`); o mesmo teste por `abrir_caminho` recusa. A Hipótese de um item da Oficina continua protegida (por `e_hipotese_da_oficina`); o que escapa é o arquivo solto, contra a frase "o arquivo aberto" do ticket 21 e do R2.
+Sonda: `zz_r2_escolher_arquivo_solto_da_pasta_de_assets_sobrescreve_o_original`.
+Correção sugerida: gravar `arquivo_aberto` também em `escolher` quando `f.caminho` é `Some`.
+
+**N4 (P3): "Sobrescrever" por rename muda o comportamento.** `documento_partitura.rs:394-410` passou a `gravar_atomico` (tmp + rename). Efeito: um arquivo `0444` é substituído (antes, um usuário comum receberia "permissão negada" ao abrir para escrita) e o novo arquivo sai com o modo do `umask` (`0644`); um link simbólico escolhido como destino vira arquivo comum e o alvo não muda (antes escrevia através do link). Sonda: `zz_r2_sobrescrever_arquivo_somente_leitura_e_atalho` (`Ok`, `conteudo_mudou=true modo_depois=644`; `atalho_ainda_e_link=false real_mudou=false`). **Ressalva:** a sessão roda como root, então "antes falhava" é raciocínio sobre o código antigo, não teste como usuário comum. É decisão de desenho aceitável (atomicidade vale mais), mas convém registrá-la.
+
+**N5 (P3): o inverso de `RemoverNota` em acorde com altura repetida é recusado.** `inserir_remover.rs:926-941` monta `AdicionarAltura{altura, nota: resto}`; `acorde.rs:300-308` recusa por `AlturaJaNoAcorde` (compara pelo MIDI). Acorde `Dó4 + Dó4` (uníssono) ou `Dó♯4 + Ré♭4` (enarmônico): remover qualquer membro dá `inverso` recusado: «Dó 4» já está no acorde (as quatro combinações). A garantia "o inverso nunca é recusado" da linha G2 da matriz é verdadeira no corpus (0 recusas em 525 edições) e falsa em geral. O desfazer real usa snapshot e não é afetado. Sonda: `zz_g2_acorde_com_unissono_e_enarmonico`. Corrigir a frase da matriz ou aceitar o duplicado no inverso.
+
+**N6 (P3): G1, bordas do atributo do `<accidental>`.** `edicao.rs:116-119` (`grafia_valida` recusa `<` e `>` nos atributos). `>` em valor de atributo é XML válido: `<accidental font-family="a>b">natural</accidental>` abre, mas `MudarAltura` que mantém o acidente e o inverso de qualquer edição são recusados («altura inválida: acidente 'natural font-family="a>b"'»). Antes do G1 só o conteúdo contava e a edição passava. Também: o inverso reescreve `<accidental   cautionary="yes">` como `<accidental cautionary="yes">` e ` natural ` como `natural` (a restauração byte a byte vem do desfazer por snapshot, como já diz a nota do G2). Sonda: `zz_g1_acidentes_com_atributos_exoticos`. Improvável em arquivo real.
+
+**N7 (P3): `acidente` livre sem validação (continuação do R7).** `acorde.rs:314-317` (`Some(t) => Some(t.to_owned())`) e `inserir_remover.rs` (`no_de_nota`) passam o texto a `leaf_acidente` (`edicao.rs:87-96`), que o põe na marca de abertura. `AdicionarAltura{acidente: Some("sharp a=\"1\"><injetado/")}` é **aceito** e o `<injetado/>` entra no texto exportado, que reabre sem erro; `DefinirAltura` e `definir_acidente` validam com `grafia_valida`, estes dois caminhos não. Alcançável só por API: a UI passa `None` ou a grafia vinda do próprio documento. Sonda: `zz_injecao_de_marcacao_pelo_acidente_em_inserir_nota_e_acorde` (a parte de `InserirNota` caiu numa recusa por posição ocupada, então só `AdicionarAltura` foi provado).
+
+**N8 (P3): `DefinirAltura` sem mudança conta como mudança.** `edicao.rs:244-250`: `acidente_atual` agora é a grafia completa (`natural cautionary="yes"`) e a comparação com o nome puro (`natural`) falha; `alterou = true`, texto igual, `entradas_de_desfazer 0 → 1`. Só por comando direto com nome puro; o inverso de `MudarAltura` usa a grafia completa. Sonda: `zz_g1_definir_altura_igual_com_nome_so_conta_como_mudanca`.
+
+**N9 (P3, observações):** (a) exportar para pasta inexistente responde "...No such file or directory (os error 2) (marque "Sobrescrever" para trocar um arquivo)", dica enganosa (`documento_partitura.rs:~398`); (b) `pdf_lateral.rs:171-176` chama `std::fs::metadata` a cada quadro enquanto o painel está visível (custo pequeno, no thread da interface); (c) recuperado **sem** o `.ids` do rascunho cai na Hipótese como pai (`pai == Hipótese`, medido), que é verdadeiro porém não o mais próximo (com `.ids`, pai = v1); (d) `salvar` com `JaExiste` não atualiza a base do documento (decisão aceitável, não é falsa linhagem: o histórico de edição é o que conta).
+
+### 4. O que correu bem e o que não aprofundei
+
+- Fuzz misto grande com verificações novas (round trip dos ids, inverso como comando): 525 edições, 2669 recusas, **0** tabelas rejeitadas, **0** divergências de ids, **0** inversos recusados.
+- `AlternarPonto`, `MudarDuracao`, `InserirPausa` e `InserirNota` têm 19 casos em que o inverso aplicado como comando não reproduz a partitura exatamente (agrupamento das pausas); não aprofundei e não classifiquei: o desfazer por snapshot é byte a byte nos mesmos 525 passos (já verificado pelo fuzz do repositório) e a UI não aplica o `inverso` como comando.
+- `pdf_lateral.rs` (567 linhas, R5): lido por inteiro; sem pânico, sem escrita em disco, rolagem só quando a textura é a da página; a cópia de `pdf_lateral` por `mem::take` é devolvida antes do corpo da tela.
+
+### 5. Comandos executados (e resultado)
+
+- `git fetch` + `git merge --ff-only origin/claude/project-thread-w8l1yp` (ponta `3f1da94`). Sem push.
+- `CARGO_PROFILE_DEV_DEBUG=0 cargo test --offline -p piano-tutor-app --lib zz_ -- --nocapture --test-threads=1`: 15 sondas, todas rodaram; as saídas citadas acima são dessas execuções (as sondas imprimem, não afirmam; os resultados que reproduzem achado estão em N1 a N5).
+- `CARGO_PROFILE_DEV_DEBUG=0 cargo test --offline -p piano-tutor-fixtures --test zz_sonda2_exoticos -- --nocapture --test-threads=1`: 5 sondas.
+- `CARGO_PROFILE_DEV_DEBUG=0 cargo test --offline -p piano-tutor-fixtures --test zz_sonda2_fuzz -- --ignored --nocapture mista_em_todo_o_corpus_grande`: 525 edições, 2669 recusas (23 s).
+- Árvore limpa (sem as sondas): `cargo test --workspace --offline -- --skip zz_`: exit 0, **1574 passaram, 0 falharam, 12 ignorados**. `cargo fmt --all --check`: sem diferenças. `cargo clippy --workspace --all-targets --offline -- -D warnings`: exit 0, sem avisos.
+- **Não executados por mim:** `cargo build --release`, `cargo deny`, os três exaustivos em release (`cargo test --release -p piano-tutor-fixtures -- --ignored`; a matriz registra 27,8 s, 378,9 s e 116,9 s). Verde na suíte padrão não prova o item 2 inteiro.
+
+### 6. NÃO VERIFICADO
+
+macOS e Windows (comparação de caixa em disco que ignora caixa, `canonicalize`, `fsync` de diretório, `hard_link` em FAT/exFAT com a volta por `rename`); "antes falhava" do N4 como usuário comum; durabilidade em queda de energia (R8); janela real, clique, teclado e leitor de tela para o banner, a lista de Versões e o botão "Continuar a partir desta Versão"; desempenho; REVAS, áudio e latência.
+
+### 7. Estado do item "sem P0/P1" e do gate
+
+- Item "revisão independente sem P0/P1": **NÃO atendido** (N1, P1). Passa a atendido quando N1 for corrigido, com teste que reproduza (abrir Versão com rascunho pendente, Recuperar, Voltar), e nova rodada de revisão; N2 e N3 (P2) devem ser corrigidos ou aceitos por escrito pelo titular antes do aceite.
+- Os demais itens do gate (3 a 7 do relatório da primeira revisão) não foram reauditados aqui.
+- O aceite humano do titular segue pendente e não é inferido deste relatório.
+
+### Apêndice. Sondas da segunda revisão
+
+Em `docs/evolucao-musical/e01/sondas-revisao/` (fora da compilação, como as da primeira revisão):
+
+- `zz_revisao2_app_tela_partitura.rs`: 15 sondas da tela (R1, R2, R3; N1 a N4). Para rodar, copiar para `crates/piano-tutor-app/src/tela_partitura/zz_sondas.rs`, acrescentar `#[cfg(test)] mod zz_sondas;` a `tela_partitura.rs` e rodar o comando acima (só Unix: usa `std::os::unix::fs::symlink`; `zz_r2_caminho_relativo_e_maiusculas` muda o cwd, por isso `--test-threads=1`).
+- `zz_revisao2_fixtures_exoticos.rs`: G1, G2, injeção de marcação e R4 no teto (N5 a N8), em `crates/piano-tutor-fixtures/tests/zz_sonda2_exoticos.rs`.
+- `zz_revisao2_fixtures_fuzz_inverso.rs`: cópia de `documento_fuzz_misto.rs` com o round trip dos ids (R6) e o inverso aplicado como comando (G1/G2), em `crates/piano-tutor-fixtures/tests/zz_sonda2_fuzz.rs`; só a versão grande está ativa (`--ignored`).
+
