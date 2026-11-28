@@ -7,6 +7,8 @@
 //! `agora + ANTECEDENCIA`) e [`EstadoPartitura::tocando`] para saber se há reprodução.
 
 pub use crate::atalhos_partitura::{AcaoAtalho, Destino, MapaAtalhos};
+
+mod acorde;
 use crate::autosave::{Autosave, ConfigAutosave, ErroAutosave, Rascunho};
 use crate::documento_partitura::Musica;
 use crate::documento_partitura::{DocumentoPartitura, destino_de_exportacao};
@@ -2434,6 +2436,9 @@ pub fn desenhar_corpo(
                         }
                         Destino::Apagar => {
                             e.remover_nota_selecionada();
+                        }
+                        Destino::Acorde(p) => {
+                            e.editar_acorde(p);
                         }
                         Destino::Pendente(a) => e.avisar_pendente(a),
                     }

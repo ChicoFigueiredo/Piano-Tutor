@@ -153,18 +153,18 @@ impl DocumentoAberto {
 // --- Localização ------------------------------------------------------------------------------
 
 /// O compasso alvo nos dois modelos.
-struct Alvo<'a> {
-    pd: usize,
-    ci: usize,
-    pt: usize,
-    comp0: &'a Compasso,
-    tocar0: &'a partitura::Compasso,
-    info: &'a partitura::InfoCompasso,
+pub(super) struct Alvo<'a> {
+    pub(super) pd: usize,
+    pub(super) ci: usize,
+    pub(super) pt: usize,
+    pub(super) comp0: &'a Compasso,
+    pub(super) tocar0: &'a partitura::Compasso,
+    pub(super) info: &'a partitura::InfoCompasso,
     /// Posição com o rótulo impresso do compasso.
-    pos: PosCompasso,
+    pub(super) pos: PosCompasso,
 }
 
-fn alvo_por_indice<'a>(
+pub(super) fn alvo_por_indice<'a>(
     doc: &'a Documento,
     partitura: &'a Partitura,
     pd: usize,
@@ -333,7 +333,7 @@ fn no_de_nota(
     montar_no(modelo, base, filhos)
 }
 
-fn nova_nota(
+pub(super) fn nova_nota(
     id: IdNota,
     altura: Option<Altura>,
     unidades: i64,
@@ -702,7 +702,7 @@ fn planejar_insercao(
 }
 
 /// Resultado de estrutura ainda sem avisos nem criadas e removidas.
-fn resultado_base(
+pub(super) fn resultado_base(
     aplicado: ComandoDeEdicao,
     alvo: IdNota,
     altura: Altura,
@@ -728,7 +728,7 @@ fn resultado_base(
 }
 
 /// Notas que passaram a ficar sem o sinal devido (acidente) por causa da edição.
-fn avisos_de_acidente(
+pub(super) fn avisos_de_acidente(
     a: &Alvo<'_>,
     comp: &Compasso,
     tocar: &partitura::Compasso,
@@ -890,7 +890,7 @@ fn avisos_das_marcas(nota: IdNota, m: &Marcas) -> Vec<AvisoDeEdicao> {
     v
 }
 
-fn planejar_remocao(
+pub(super) fn planejar_remocao(
     doc: &Documento,
     partitura: &Partitura,
     id: IdNota,

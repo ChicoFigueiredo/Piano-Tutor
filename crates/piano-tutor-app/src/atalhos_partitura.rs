@@ -28,6 +28,13 @@
 //!   monta o comando tipado de remover do serviço de documento (a nota vira pausa de mesma
 //!   duração). Inserir nota ou pausa por teclado ainda depende do cursor de entrada de notas:
 //!   o comando existe no serviço (posição pela coluna do layout), sem atalho novo no mapa.
+//! - **Acorde** (ticket 18): `Shift+letra` ([`AcaoAtalho::AcrescentarNota`]) acrescenta ao
+//!   acorde a letra na oitava mais próxima da nota selecionada; `Alt+2` a `Alt+9`
+//!   ([`AcaoAtalho::IntervaloAcima`], como no MuseScore) acrescentam o intervalo de segunda a
+//!   nona acima dela; `Ctrl+Delete` ([`AcaoAtalho::RetirarAltura`]) retira a altura selecionada
+//!   do acorde (a última vira pausa, como o `Delete`). Viram [`Destino::Acorde`]; a tela monta o
+//!   comando tipado do serviço de documento. Tudo remapeável como o resto do mapa; nenhum
+//!   atalho existente saiu.
 //! - **Pendentes**: ação sem comando ainda ([`AcaoAtalho::pendente`]) aparece em
 //!   [`MapaAtalhos::pendentes`]; ao apertar a tecla, a tela avisa em vez de calar.
 //! - **Persistência**: texto `id=Ctrl+Shift+Z` por linha (seção `tela.atalhos` do perfil,
@@ -64,10 +71,15 @@ pub enum AcaoAtalho {
     Cifra,
     /// Acrescenta ao acorde a nota de letra `A` a `G`.
     AcrescentarNota(char),
+    /// Acrescenta ao acorde a altura `2` (segunda) a `9` (nona) acima da nota selecionada
+    /// (ticket 18).
+    IntervaloAcima(u8),
+    /// Retira do acorde a altura da nota selecionada (ticket 18).
+    RetirarAltura,
 }
 
 /// Todas as ações, na ordem da lista de atalhos.
-pub const ACOES: [AcaoAtalho; 31] = [
+pub const ACOES: [AcaoAtalho; 40] = [
     AcaoAtalho::NotaAnterior,
     AcaoAtalho::NotaSeguinte,
     AcaoAtalho::TrilhaAnterior,
@@ -99,6 +111,15 @@ pub const ACOES: [AcaoAtalho; 31] = [
     AcaoAtalho::AcrescentarNota('E'),
     AcaoAtalho::AcrescentarNota('F'),
     AcaoAtalho::AcrescentarNota('G'),
+    AcaoAtalho::IntervaloAcima(2),
+    AcaoAtalho::IntervaloAcima(3),
+    AcaoAtalho::IntervaloAcima(4),
+    AcaoAtalho::IntervaloAcima(5),
+    AcaoAtalho::IntervaloAcima(6),
+    AcaoAtalho::IntervaloAcima(7),
+    AcaoAtalho::IntervaloAcima(8),
+    AcaoAtalho::IntervaloAcima(9),
+    AcaoAtalho::RetirarAltura,
 ];
 
 fn nome_da_duracao(n: u8) -> &'static str {
@@ -112,6 +133,19 @@ fn nome_da_duracao(n: u8) -> &'static str {
         7 => "semibreve (1)",
         8 => "breve (2)",
         _ => "longa (4)",
+    }
+}
+
+fn nome_do_intervalo(n: u8) -> &'static str {
+    match n {
+        2 => "segunda",
+        3 => "terça",
+        4 => "quarta",
+        5 => "quinta",
+        6 => "sexta",
+        7 => "sétima",
+        8 => "oitava",
+        _ => "nona",
     }
 }
 
@@ -174,6 +208,8 @@ impl AcaoAtalho {
             Self::Apagar => "apagar".into(),
             Self::Cifra => "cifra".into(),
             Self::AcrescentarNota(l) => format!("acorde_{}", l.to_ascii_lowercase()),
+            Self::IntervaloAcima(n) => format!("intervalo_acima_{n}"),
+            Self::RetirarAltura => "retirar_altura".into(),
         }
     }
 
@@ -199,6 +235,10 @@ impl AcaoAtalho {
             Self::AcrescentarNota(l) => {
                 format!("Acrescentar ao acorde a nota {} ({l})", nome_da_letra(l))
             }
+            Self::IntervaloAcima(n) => {
+                format!("Acrescentar ao acorde a {} acima", nome_do_intervalo(n))
+            }
+            Self::RetirarAltura => "Retirar a altura selecionada do acorde".into(),
         }
     }
 
@@ -222,6 +262,8 @@ impl AcaoAtalho {
             Self::Apagar => Atalho::tecla(Key::Delete),
             Self::Cifra => Atalho::ctrl(Key::K).com_shift(),
             Self::AcrescentarNota(l) => Atalho::tecla(tecla_da_letra(l)).com_shift(),
+            Self::IntervaloAcima(n) => Atalho::alt(tecla_numerica(n)),
+            Self::RetirarAltura => Atalho::ctrl(Key::Delete),
         }
     }
 
@@ -267,6 +309,16 @@ impl AcaoAtalho {
         }
     }
 
+    /// Ação de **acorde** (ticket 18): acrescentar uma altura ou retirá-la.
+    pub fn acorde(self) -> Option<Destino> {
+        match self {
+            Self::AcrescentarNota(l) => Some(Destino::Acorde(PedidoDeAcorde::Letra(l))),
+            Self::IntervaloAcima(n) => Some(Destino::Acorde(PedidoDeAcorde::Intervalo(n))),
+            Self::RetirarAltura => Some(Destino::Acorde(PedidoDeAcorde::Retirar)),
+            _ => None,
+        }
+    }
+
     /// Ação com atalho mas ainda sem comando nenhum (nem de navegação, nem de edição).
     pub fn pendente(self) -> bool {
         self.comando().is_none()
@@ -274,6 +326,7 @@ impl AcaoAtalho {
             && self.historico().is_none()
             && self.duracao().is_none()
             && self.apagar().is_none()
+            && self.acorde().is_none()
     }
 
     /// Comando de navegação ligado à ação; `None` = não é navegação (edição ou ainda pendente).
@@ -453,8 +506,21 @@ pub enum Destino {
     Ponto,
     /// Remover a nota selecionada, que vira pausa de mesma duração (ticket 17).
     Apagar,
+    /// Acrescentar ao acorde uma altura da nota selecionada, ou retirá-la (ticket 18).
+    Acorde(PedidoDeAcorde),
     /// Ação do perfil sem comando ainda: a tela avisa.
     Pendente(AcaoAtalho),
+}
+
+/// O que um atalho de acorde pede ao serviço de documento (ticket 18).
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum PedidoDeAcorde {
+    /// A letra `A` a `G` na oitava mais próxima da nota selecionada.
+    Letra(char),
+    /// O intervalo de `2` (segunda) a `9` (nona) acima da nota selecionada.
+    Intervalo(u8),
+    /// Retira a altura da nota selecionada do acorde.
+    Retirar,
 }
 
 /// O mapa ação para combinação. `None` = ação sem atalho.
@@ -590,6 +656,7 @@ impl MapaAtalhos {
                 .historico()
                 .or_else(|| acao.duracao())
                 .or_else(|| acao.apagar())
+                .or_else(|| acao.acorde())
                 .unwrap_or(Destino::Pendente(acao)),
         })
     }
@@ -672,6 +739,8 @@ mod testes {
             (AcaoAtalho::Cifra, "Ctrl+Shift+K"),
             (AcaoAtalho::Apagar, "Delete"),
             (AcaoAtalho::AcrescentarNota('C'), "Shift+C"),
+            (AcaoAtalho::IntervaloAcima(3), "Alt+3"),
+            (AcaoAtalho::RetirarAltura, "Ctrl+Delete"),
         ];
         for (a, txt) in esperado {
             assert_eq!(texto_canonico(m.atalho(a).expect("ok")), txt, "{a:?}");
@@ -770,7 +839,8 @@ mod testes {
         let p = m.pendentes();
         // Navegação (4), altura (6), histórico (2), duração (9 teclas e o ponto) e apagar (1)
         // têm comando; o resto segue pendente.
-        assert_eq!(p.len(), ACOES.len() - 4 - 6 - 2 - 10 - 1);
+        // O acorde (Shift+letra, Alt+2 a Alt+9 e retirar altura: 7 + 8 + 1) também tem comando.
+        assert_eq!(p.len(), ACOES.len() - 4 - 6 - 2 - 10 - 1 - 7 - 8 - 1);
         assert!(p.contains(&AcaoAtalho::Cifra));
         assert!(!p.contains(&AcaoAtalho::Apagar));
         assert!(!p.contains(&AcaoAtalho::Duracao(3)));
@@ -834,10 +904,84 @@ mod testes {
             Some(Destino::Duracao(4))
         );
         assert_eq!(m.rotear(Key::Num4, Modifiers::NONE, true), None);
-        // Nenhum atalho existente saiu do mapa: as 31 ações seguem com combinação própria.
+        // Nenhum atalho existente saiu do mapa: as ações seguem com combinação própria.
         let padrao = MapaAtalhos::padrao();
         assert_eq!(padrao.linhas().count(), ACOES.len());
         assert!(padrao.linhas().all(|(_, c)| c.is_some()));
+    }
+
+    #[test]
+    fn as_acoes_de_acorde_roteiam_e_sao_remapeaveis_sem_tirar_nenhum_atalho() {
+        let m = MapaAtalhos::padrao();
+        // Shift+letra: a letra na oitava mais próxima.
+        assert_eq!(
+            m.rotear(Key::G, Modifiers::SHIFT, true),
+            Some(Destino::Acorde(PedidoDeAcorde::Letra('G')))
+        );
+        // Alt+2 a Alt+9: o intervalo acima, como no MuseScore.
+        let alt = Modifiers {
+            alt: true,
+            ..Modifiers::NONE
+        };
+        for (tecla, n) in [
+            (Key::Num2, 2),
+            (Key::Num3, 3),
+            (Key::Num5, 5),
+            (Key::Num9, 9),
+        ] {
+            assert_eq!(
+                m.rotear(tecla, alt, true),
+                Some(Destino::Acorde(PedidoDeAcorde::Intervalo(n))),
+                "Alt+{n}"
+            );
+        }
+        // Ctrl+Delete retira a altura; o Delete continua apagando a nota.
+        assert_eq!(
+            m.rotear(Key::Delete, mods(true, false, false), true),
+            Some(Destino::Acorde(PedidoDeAcorde::Retirar))
+        );
+        assert_eq!(
+            m.rotear(Key::Delete, Modifiers::NONE, true),
+            Some(Destino::Apagar)
+        );
+        // As durações `1` a `9` sem Alt seguem sendo duração.
+        assert_eq!(
+            m.rotear(Key::Num3, Modifiers::NONE, true),
+            Some(Destino::Duracao(3))
+        );
+        // Nenhuma ação de acorde fica pendente nem colide com a casca ou a tela Teclado.
+        assert!(m.pendentes().iter().all(|a| a.acorde().is_none()));
+        assert!(
+            m.avisos_tela_teclado().iter().all(|(a, _)| !matches!(
+                a,
+                AcaoAtalho::IntervaloAcima(_) | AcaoAtalho::RetirarAltura
+            ))
+        );
+        // Remapear: a tecla nova passa a valer e a antiga fica livre.
+        let mut m = MapaAtalhos::padrao();
+        let nova = Atalho::ctrl(Key::J);
+        assert_eq!(m.remapear(AcaoAtalho::RetirarAltura, nova), Ok(None));
+        assert_eq!(
+            m.rotear(Key::J, Modifiers::COMMAND, true),
+            Some(Destino::Acorde(PedidoDeAcorde::Retirar))
+        );
+        assert_eq!(m.rotear(Key::Delete, mods(true, false, false), true), None);
+        // Reutilizar um atalho em uso é recusado, citando a ação.
+        let r = m.remapear(AcaoAtalho::IntervaloAcima(3), Atalho::tecla(Key::Delete));
+        assert!(matches!(
+            r,
+            Err(Recusa::EmUso {
+                por: AcaoAtalho::Apagar,
+                ..
+            })
+        ));
+        // Persistência: o remapeamento sobrevive ao texto do perfil.
+        let relido = MapaAtalhos::de_texto(&m.para_texto());
+        assert_eq!(relido.atalho(AcaoAtalho::RetirarAltura), Some(nova));
+        assert_eq!(
+            relido.atalho(AcaoAtalho::IntervaloAcima(4)),
+            Some(AcaoAtalho::IntervaloAcima(4).padrao())
+        );
     }
 
     #[test]

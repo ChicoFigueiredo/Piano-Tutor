@@ -34,6 +34,10 @@
 //!   e [`ComandoDeEdicao::RemoverNota`] mexem na estrutura do compasso; o contrato está em
 //!   `inserir_remover`. A posição de inserção é a coluna do layout (o início da nota no
 //!   compasso, em semínimas, `Fracao` exata), nunca um pixel.
+//! - **Acorde (ticket 18).** [`ComandoDeEdicao::AcrescentarLetra`],
+//!   [`ComandoDeEdicao::AcrescentarIntervalo`], [`ComandoDeEdicao::AdicionarAltura`] e
+//!   [`ComandoDeEdicao::RetirarAltura`] mexem nas alturas de um acorde; o contrato está em
+//!   `acorde`.
 //! - **Nada é gravado.** A edição vive em memória; exportar e gravar arquivo é decisão do
 //!   chamador (autosave e Versão são o ticket 21).
 
@@ -120,6 +124,24 @@ pub enum ComandoDeEdicao {
     /// Remove `nota`: ela vira pausa de mesma duração e posição (ticket 17). Nota de acorde que
     /// não é a última do acorde e nota de adorno simplesmente saem.
     RemoverNota { nota: IdNota },
+    /// Acrescenta ao acorde de `nota` a altura da `letra` (`A` a `G`) na oitava **mais próxima**
+    /// de `nota` (a tecla Shift+letra; ticket 18). A alteração é a da armadura. A **intenção**:
+    /// o serviço a resolve em [`Self::AdicionarAltura`].
+    AcrescentarLetra { nota: IdNota, letra: char },
+    /// Acrescenta ao acorde de `nota` a altura `graus` acima dela, na escala da armadura (2 =
+    /// segunda ... 9 = nona; Alt+número no perfil MuseScore; ticket 18). A **intenção**.
+    AcrescentarIntervalo { nota: IdNota, graus: u8 },
+    /// Acrescenta ao acorde de `nota` exatamente `altura`, com o `<accidental>` impresso dado
+    /// (`None` = o serviço imprime o que a armadura e o compasso pedem). A **forma resolvida**
+    /// (ticket 18): a nova nota tem a mesma posição, duração, voz e pauta do acorde.
+    AdicionarAltura {
+        nota: IdNota,
+        altura: Altura,
+        acidente: Option<String>,
+    },
+    /// Retira de um acorde a altura de `nota` (ticket 18). Com uma só altura (nota sem acorde),
+    /// equivale a [`Self::RemoverNota`] (a nota vira pausa).
+    RetirarAltura { nota: IdNota },
 }
 
 impl ComandoDeEdicao {
@@ -131,7 +153,11 @@ impl ComandoDeEdicao {
             | Self::MudarDuracao { nota, .. }
             | Self::AlternarPonto { nota }
             | Self::DefinirDuracao { nota, .. }
-            | Self::RemoverNota { nota } => Some(*nota),
+            | Self::RemoverNota { nota }
+            | Self::AcrescentarLetra { nota, .. }
+            | Self::AcrescentarIntervalo { nota, .. }
+            | Self::AdicionarAltura { nota, .. }
+            | Self::RetirarAltura { nota } => Some(*nota),
             Self::InserirNota { .. } | Self::InserirPausa { .. } => None,
         }
     }
@@ -141,6 +167,17 @@ impl ComandoDeEdicao {
         matches!(
             self,
             Self::InserirNota { .. } | Self::InserirPausa { .. } | Self::RemoverNota { .. }
+        )
+    }
+
+    /// O comando mexe nas alturas de um acorde (ticket 18).
+    pub(super) fn e_de_acorde(&self) -> bool {
+        matches!(
+            self,
+            Self::AcrescentarLetra { .. }
+                | Self::AcrescentarIntervalo { .. }
+                | Self::AdicionarAltura { .. }
+                | Self::RetirarAltura { .. }
         )
     }
 
@@ -310,6 +347,15 @@ pub enum ErroDeEdicao {
     },
     /// Remover uma pausa: não há o que remover (a pausa já é o vazio).
     PausaNaoRemovivel(IdNota),
+    /// A altura pedida já soa no acorde (ticket 18): `nota` é a que já a tem.
+    AlturaJaNoAcorde {
+        nota: IdNota,
+        altura: Altura,
+    },
+    /// Só nota que ocupa tempo forma acorde: pausa e nota de adorno são recusadas (ticket 18).
+    AcordeSoEmNota(IdNota),
+    /// Intervalo fora de 2 (segunda) a 9 (nona) (ticket 18).
+    IntervaloInvalido(u8),
 }
 
 impl fmt::Display for ErroDeEdicao {
@@ -413,6 +459,21 @@ impl fmt::Display for ErroDeEdicao {
                 f,
                 "Esta já é uma pausa: não há nota para remover. Nada foi alterado."
             ),
+            Self::AlturaJaNoAcorde { altura, .. } => write!(
+                f,
+                "«{}» já está no acorde: uma altura repetida não é acrescentada. Nada foi \
+                 alterado.",
+                nome_da_altura(*altura),
+            ),
+            Self::AcordeSoEmNota(_) => write!(
+                f,
+                "Só uma nota que ocupa tempo recebe outra altura: pausa e nota de adorno não \
+                 formam acorde. Nada foi alterado."
+            ),
+            Self::IntervaloInvalido(n) => write!(
+                f,
+                "O intervalo {n} não existe aqui: use de 2 (segunda) a 9 (nona). Nada foi alterado."
+            ),
         }
     }
 }
@@ -467,6 +528,9 @@ pub enum AvisoDeEdicao {
     LigaduraDeValorRemovida { nota: IdNota },
     /// A nota removida abria ou fechava uma ligadura de expressão.
     LigaduraDeExpressaoRemovida { nota: IdNota },
+    /// A nota do acorde estava ligada à seguinte (ligadura de prolongamento): a altura nova entra
+    /// **sem** ligadura (a ligadura é por altura; ticket 18).
+    AlturaNovaSemLigadura { nota: IdNota },
 }
 
 impl AvisoDeEdicao {
@@ -523,6 +587,11 @@ impl AvisoDeEdicao {
             }
             Self::LigaduraDeExpressaoRemovida { .. } => {
                 "A nota removida abria ou fechava uma ligadura de expressão: confira a outra ponta."
+                    .to_owned()
+            }
+            Self::AlturaNovaSemLigadura { .. } => {
+                "O acorde estava ligado ao seguinte: a altura nova entra sem ligadura (ela só \
+                 dura este acorde). Ligue-a à seguinte se for o caso."
                     .to_owned()
             }
         }
@@ -620,6 +689,9 @@ impl DocumentoAberto {
         if comando.e_de_estrutura() {
             return self.aplicar_estrutura(&comando);
         }
+        if comando.e_de_acorde() {
+            return self.aplicar_acorde(&comando);
+        }
         let id = comando.nota().ok_or_else(|| {
             ErroDeEdicao::Documento(ErroDocumento::NaoSuportado(
                 "comando sem nota fora do caminho de estrutura".into(),
@@ -665,9 +737,13 @@ impl DocumentoAberto {
             | ComandoDeEdicao::DefinirDuracao { .. }
             | ComandoDeEdicao::InserirNota { .. }
             | ComandoDeEdicao::InserirPausa { .. }
-            | ComandoDeEdicao::RemoverNota { .. } => {
+            | ComandoDeEdicao::RemoverNota { .. }
+            | ComandoDeEdicao::AcrescentarLetra { .. }
+            | ComandoDeEdicao::AcrescentarIntervalo { .. }
+            | ComandoDeEdicao::AdicionarAltura { .. }
+            | ComandoDeEdicao::RetirarAltura { .. } => {
                 return Err(ErroDeEdicao::Documento(ErroDocumento::NaoSuportado(
-                    "comando de duração ou de estrutura fora do caminho dele".into(),
+                    "comando de duração, de estrutura ou de acorde fora do caminho dele".into(),
                 )));
             }
         };

@@ -12,6 +12,7 @@
 //! identidades de nota do layout, e exporta. Sem janela, áudio, rede nem disco: quem grava
 //! arquivos é o chamador. Nada aqui é interface (seam S1).
 
+mod acorde;
 mod comando;
 pub mod diff;
 mod duracao;
