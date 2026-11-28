@@ -4,7 +4,10 @@
 
 use super::duracao::{mmc, mmc_dos_denominadores, para_divisions};
 use super::erro::ErroDocumento;
-use super::grafia::separar_acidente;
+use super::grafia::{
+    SEPARADOR_BRUTO, grafia_de_acidente_valida, nome_do_acidente, partes_do_acidente,
+    separar_acidente,
+};
 use super::texto::{Abertura, No, Peca, fim_da_abertura};
 use super::{Altura, Documento, IdNota};
 use crate::partitura::Fracao;
@@ -83,51 +86,106 @@ pub(super) fn leaf(nome: &str, conteudo: &str) -> No {
     No::novo(nome, format!("<{nome}>{conteudo}</{nome}>"))
 }
 
-/// `<accidental>` novo a partir da grafia completa (`nome` ou `nome atributos`).
+/// `<accidental>` novo a partir da grafia completa (`nome`, `nome atributos` ou a forma bruta).
+/// **A grafia já passou por [`validar_grafia`]**: aqui ela vai ao XML como está (conteúdo e marca
+/// de abertura exatos).
 pub(super) fn leaf_acidente(grafia: &str) -> No {
-    let (nome, atributos) = separar_acidente(grafia);
-    if atributos.is_empty() {
-        leaf("accidental", nome)
-    } else {
-        No::novo(
-            "accidental",
-            format!("<accidental {atributos}>{nome}</accidental>"),
-        )
-    }
+    debug_assert!(grafia_de_acidente_valida(grafia), "grafia sem validar");
+    let (conteudo, abertura) = partes_do_acidente(grafia);
+    No::novo(
+        "accidental",
+        format!("<accidental{abertura}>{conteudo}</accidental>"),
+    )
 }
 
-/// Grafia completa de um `<accidental>` existente: o conteúdo e, se houver, os atributos.
+/// Grafia completa de um `<accidental>` existente. Forma simples (`nome` ou `nome atributos`)
+/// quando o elemento está "normal"; forma **bruta** ([`SEPARADOR_BRUTO`]) quando tem espaço
+/// atípico, para o inverso devolver os bytes originais da marca de abertura e do conteúdo.
 fn grafia_do_acidente(a: &No, base: &str) -> Option<String> {
     let texto = a.texto(base);
-    let nome = a.conteudo_folha(base)?;
+    let conteudo = a.conteudo_folha(base)?;
     let fim = match fim_da_abertura(&texto, 0)? {
         Abertura::Aberta(i) => i - 1,
         Abertura::AutoFechada => return None,
     };
-    let atributos = texto["<accidental".len()..fim].trim();
-    Some(if atributos.is_empty() {
-        nome.trim().to_owned()
+    let abertura = &texto["<accidental".len()..fim];
+    let nome_limpo = conteudo == conteudo.trim() && !conteudo.contains(char::is_whitespace);
+    let abertura_limpa = abertura.is_empty()
+        || abertura
+            .strip_prefix(' ')
+            .is_some_and(|r| !r.is_empty() && r == r.trim());
+    Some(if nome_limpo && abertura_limpa {
+        format!("{conteudo}{abertura}")
     } else {
-        format!("{} {atributos}", nome.trim())
+        format!("{conteudo}{SEPARADOR_BRUTO}{abertura}")
     })
 }
 
-/// A grafia é aceitável? Nome não vazio e sem marcação; atributos sem `<` nem `>`.
-fn grafia_valida(grafia: &str) -> bool {
-    let (nome, atributos) = separar_acidente(grafia);
-    !nome.is_empty() && !nome.contains(['<', '>', '&']) && !atributos.contains(['<', '>'])
+/// A grafia é aceitável? Validação estrita: nome de acidente da lista fechada do MusicXML,
+/// atributos da lista permitida, valores entre aspas e escapados (`>` dentro do valor vale).
+pub(super) fn validar_grafia(grafia: &str) -> Result<(), ErroDocumento> {
+    if grafia_de_acidente_valida(grafia) {
+        Ok(())
+    } else {
+        Err(ErroDocumento::AlturaInvalida(format!(
+            "acidente '{}'",
+            grafia.replace(SEPARADOR_BRUTO, " | ")
+        )))
+    }
+}
+
+/// Voz ou pauta que vai ao XML como texto: só letras e dígitos ASCII, `-`, `_` e `.`, até 32
+/// caracteres. Nada que feche ou abra elemento.
+pub(super) fn validar_rotulo(rotulo: &str, qual: &str) -> Result<(), ErroDocumento> {
+    let ok = !rotulo.is_empty()
+        && rotulo.len() <= 32
+        && rotulo
+            .bytes()
+            .all(|b| b.is_ascii_alphanumeric() || matches!(b, b'-' | b'_' | b'.'));
+    if ok {
+        Ok(())
+    } else {
+        Err(ErroDocumento::AlturaInvalida(format!(
+            "{qual} «{rotulo}» não é aceita (só letras, dígitos, '-', '_' e '.')"
+        )))
+    }
+}
+
+/// A grafia pedida deixa o `<accidental>` como está? Um nome só (sem atributos) vale para o
+/// mesmo nome, mantendo os atributos e o espaço que o elemento já tinha.
+fn acidente_equivalente(atual: Option<&str>, pedido: Option<&str>) -> bool {
+    match (atual, pedido) {
+        (None, None) => true,
+        (Some(a), Some(p)) => {
+            if p.contains(SEPARADOR_BRUTO) {
+                a == p
+            } else if separar_acidente(p).1.is_empty() {
+                nome_do_acidente(a) == nome_do_acidente(p)
+            } else {
+                a == p.trim()
+            }
+        }
+        _ => false,
+    }
 }
 
 /// Põe o `<accidental>` na grafia `t`. Grafia só com o nome troca o conteúdo e mantém os
-/// atributos que o elemento já tinha; com atributos, o elemento vira exatamente o pedido.
+/// atributos que o elemento já tinha; com atributos (ou na forma bruta), o elemento vira
+/// exatamente o pedido. Se já está como pedido, nada é tocado (nem o espaço do conteúdo).
 fn troca_acidente(no: &mut No, base: &str, t: &str) -> Result<(), ErroDocumento> {
-    let (nome, atributos) = separar_acidente(t);
+    let (nome, _) = separar_acidente(t);
+    let atual = no
+        .filho("accidental")
+        .and_then(|a| grafia_do_acidente(a, base));
+    if no.filho("accidental").is_some() && acidente_equivalente(atual.as_deref(), Some(t)) {
+        return Ok(());
+    }
     match no.filho_mut("accidental") {
-        Some(a) if atributos.is_empty() => a.definir_conteudo(base, nome),
+        Some(a) if !t.contains(SEPARADOR_BRUTO) && separar_acidente(t).1.is_empty() => {
+            a.definir_conteudo(base, nome)
+        }
         Some(a) => {
-            if grafia_do_acidente(a, base).as_deref() != Some(t.trim()) {
-                *a = leaf_acidente(t);
-            }
+            *a = leaf_acidente(t);
             Ok(())
         }
         None => no.inserir_em_ordem(leaf_acidente(t), &posto_nota),
@@ -233,10 +291,8 @@ impl Documento {
         acidente: Option<&str>,
     ) -> Result<bool, ErroDocumento> {
         validar(nova)?;
-        if let Some(t) = acidente
-            && !grafia_valida(t)
-        {
-            return Err(ErroDocumento::AlturaInvalida(format!("acidente '{t}'")));
+        if let Some(t) = acidente {
+            validar_grafia(t)?;
         }
         let loc = self.local(id)?;
         let atual = self.partes[loc.0].compassos[loc.1].notas[loc.2]
@@ -247,7 +303,7 @@ impl Documento {
         let acidente_atual = no
             .filho("accidental")
             .and_then(|a| grafia_do_acidente(a, base));
-        if atual == nova && acidente_atual.as_deref() == acidente {
+        if atual == nova && acidente_equivalente(acidente_atual.as_deref(), acidente) {
             return Ok(false);
         }
         let pitch = no
@@ -297,9 +353,7 @@ impl Documento {
         let base = &self.original;
         match acidente {
             Some(t) => {
-                if !grafia_valida(t) {
-                    return Err(ErroDocumento::AlturaInvalida(format!("acidente '{t}'")));
-                }
+                validar_grafia(t)?;
                 troca_acidente(&mut no, base, t)?;
             }
             None => {

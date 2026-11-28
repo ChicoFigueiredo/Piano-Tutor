@@ -20,6 +20,20 @@
 //!   altura fora dos limites ([`LimitesDeAltura`]: MIDI 0 a 127, a oitava 0 a 9 do MusicXML e o
 //!   teclado de referência) são recusadas com [`ErroDeEdicao`] e **nada muda**: o documento, o
 //!   modelo de tocar e as identidades ficam como estavam.
+//! - **Nenhum comando injeta marcação (N7; a API vai ser exposta por MCP).** Todo texto livre
+//!   que entra no XML por comando passa por validação estrita **antes** de qualquer mudança:
+//!   o `acidente`/grafia de [`ComandoDeEdicao::DefinirAltura`], [`ComandoDeEdicao::InserirNota`],
+//!   [`ComandoDeEdicao::AdicionarAltura`] e [`ComandoDeEdicao::RestaurarAltura`] (lista fechada de
+//!   nomes `accidental-value` e de atributos do `<accidental>`; valor entre aspas, sem `<`, com
+//!   `&` só em entidade; `>` dentro do valor vale) e a `voz` e a `pauta` de
+//!   [`ComandoDeEdicao::InserirNota`] e [`ComandoDeEdicao::InserirPausa`] (letras, dígitos, `-`,
+//!   `_`, `.`). Os demais comandos só carregam números, enums e `char` de `A` a `G`. Grafia
+//!   inválida, inclusive a que vem do próprio arquivo (atributo fora do esquema), é recusada com
+//!   [`ErroDeEdicao`] e nada muda. A grafia que o `inverso` guarda preserva os bytes da marca de
+//!   abertura do `<accidental>` (espaços atípicos incluídos; ver `SEPARADOR_BRUTO` em `grafia`).
+//! - **`DefinirAltura` sem efeito não é edição.** Mesma altura e a mesma grafia efetiva (um nome
+//!   só vale para o mesmo nome, com os atributos que o elemento já tinha) devolve `alterou =
+//!   false`, não suja o compasso e não cria entrada de histórico (N8).
 //! - **Só o compasso da nota é sujo e regenerado.** O resultado lista o compasso afetado; o
 //!   modelo de tocar é atualizado só na nota editada e é igual ao que sairia de reabrir o
 //!   texto exportado (conferido em teste no corpus).
@@ -140,6 +154,16 @@ pub enum ComandoDeEdicao {
         altura: Altura,
         acidente: Option<String>,
     },
+    /// **Só como `inverso`** de [`Self::RemoverNota`] e [`Self::RetirarAltura`] num acorde de altura
+    /// repetida (uníssono ou enarmônico): igual a [`Self::AdicionarAltura`], mas aceita a altura
+    /// que já soa no acorde, porque o acorde que se restaura a tinha (N5 da segunda revisão da
+    /// E01). Quem edita pela tela ou pela API usa `AdicionarAltura`, que continua recusando a
+    /// altura repetida. A validação do acidente é a mesma.
+    RestaurarAltura {
+        nota: IdNota,
+        altura: Altura,
+        acidente: Option<String>,
+    },
     /// Retira de um acorde a altura de `nota` (ticket 18). Com uma só altura (nota sem acorde),
     /// equivale a [`Self::RemoverNota`] (a nota vira pausa).
     RetirarAltura { nota: IdNota },
@@ -158,6 +182,7 @@ impl ComandoDeEdicao {
             | Self::AcrescentarLetra { nota, .. }
             | Self::AcrescentarIntervalo { nota, .. }
             | Self::AdicionarAltura { nota, .. }
+            | Self::RestaurarAltura { nota, .. }
             | Self::RetirarAltura { nota } => Some(*nota),
             Self::InserirNota { .. } | Self::InserirPausa { .. } => None,
         }
@@ -178,6 +203,7 @@ impl ComandoDeEdicao {
             Self::AcrescentarLetra { .. }
                 | Self::AcrescentarIntervalo { .. }
                 | Self::AdicionarAltura { .. }
+                | Self::RestaurarAltura { .. }
                 | Self::RetirarAltura { .. }
         )
     }
@@ -742,6 +768,7 @@ impl DocumentoAberto {
             | ComandoDeEdicao::AcrescentarLetra { .. }
             | ComandoDeEdicao::AcrescentarIntervalo { .. }
             | ComandoDeEdicao::AdicionarAltura { .. }
+            | ComandoDeEdicao::RestaurarAltura { .. }
             | ComandoDeEdicao::RetirarAltura { .. } => {
                 return Err(ErroDeEdicao::Documento(ErroDocumento::NaoSuportado(
                     "comando de duração, de estrutura ou de acorde fora do caminho dele".into(),
