@@ -59,7 +59,7 @@ use super::comando::{
     ALTURA_NEUTRA, AvisoDeEdicao, ComandoDeEdicao, ErroDeEdicao, MudancaDeEstrutura,
     ResultadoDaEdicao, acidente_devido, sem_sinal_devido_em,
 };
-use super::edicao::{leaf, posto_nota, validar};
+use super::edicao::{leaf, leaf_acidente, posto_nota, validar};
 use super::editar_duracao::{
     Aplicacao, Planejado, decompor, derivar_e_vigar, duracao_real, grupo_do_acorde, inconsistente,
     inserir_nota_antes, montar_no, no_da_nota, no_da_nota_mut, no_de_pausa, remover_nota, unidades,
@@ -322,7 +322,7 @@ fn no_de_nota(
         filhos.push(No::novo("dot", "<dot/>".to_owned()));
     }
     if let Some(a) = acidente {
-        filhos.push(leaf("accidental", a));
+        filhos.push(leaf_acidente(a));
     }
     if quialtera && let Some(t) = modelo.filho("time-modification") {
         filhos.push(t.clone());

@@ -1054,3 +1054,76 @@ fn o_mesmo_comando_dos_dois_lados_da_porta_da_o_mesmo_resultado() {
         }
     }
 }
+
+/// Ré maior: o fá bequadro leva um `<accidental>` com atributos (cautionary, parentheses).
+const BEQUADRO_COM_ATRIBUTOS: &str = "<?xml version=\"1.0\" encoding=\"UTF-8\"?>
+<score-partwise version=\"4.0\">
+  <part-list><score-part id=\"P1\"><part-name>Pf</part-name></score-part></part-list>
+  <part id=\"P1\">
+    <measure number=\"1\"><attributes><divisions>1</divisions><key><fifths>2</fifths></key><time><beats>4</beats><beat-type>4</beat-type></time><clef><sign>G</sign><line>2</line></clef></attributes>
+      <note><pitch><step>F</step><octave>4</octave></pitch><duration>2</duration><voice>1</voice><type>half</type><accidental cautionary=\"yes\" parentheses=\"no\">natural</accidental></note>
+      <note><pitch><step>G</step><octave>4</octave></pitch><duration>2</duration><voice>1</voice><type>half</type></note>
+    </measure>
+  </part>
+</score-partwise>
+";
+
+/// G1 do gate da E01: o `inverso` regrava o `<accidental>` com os atributos que o original tinha.
+#[test]
+fn inverso_restaura_o_acidente_com_seus_atributos() {
+    let d = DocumentoAberto::abrir_texto("bq", BEQUADRO_COM_ATRIBUTOS).expect("abre");
+    let id = notas_afinadas(&d)[0];
+    let r = editar_e_conferir(
+        "bq",
+        BEQUADRO_COM_ATRIBUTOS,
+        mudar(id, UnidadeDeAltura::Semitom, SentidoDaAltura::Acima),
+    )
+    .expect("edita");
+    assert!(r.alterou);
+}
+
+/// Acorde de fá bequadro (com atributos) e lá, seguido de uma nota só com o mesmo acidente.
+const ACORDE_COM_ATRIBUTOS: &str = "<?xml version=\"1.0\" encoding=\"UTF-8\"?>
+<score-partwise version=\"4.0\">
+  <part-list><score-part id=\"P1\"><part-name>Pf</part-name></score-part></part-list>
+  <part id=\"P1\">
+    <measure number=\"1\"><attributes><divisions>1</divisions><key><fifths>2</fifths></key><time><beats>4</beats><beat-type>4</beat-type></time><clef><sign>G</sign><line>2</line></clef></attributes>
+      <note><pitch><step>F</step><octave>4</octave></pitch><duration>2</duration><voice>1</voice><type>half</type><accidental cautionary=\"yes\" parentheses=\"no\">natural</accidental></note>
+      <note><chord/><pitch><step>A</step><octave>4</octave></pitch><duration>2</duration><voice>1</voice><type>half</type></note>
+      <note><pitch><step>F</step><octave>4</octave></pitch><duration>2</duration><voice>1</voice><type>half</type><accidental cautionary=\"yes\" parentheses=\"no\">natural</accidental></note>
+    </measure>
+  </part>
+</score-partwise>
+";
+
+/// Os inversos de duração, de remover e de acorde também devolvem o `<accidental>` com atributos.
+#[test]
+fn inversos_de_duracao_remocao_e_acorde_guardam_os_atributos_do_acidente() {
+    use piano_tutor_core::partitura::Figura;
+    const ACIDENTE: &str = "<accidental cautionary=\"yes\" parentheses=\"no\">natural</accidental>";
+    let d = DocumentoAberto::abrir_texto("ac", ACORDE_COM_ATRIBUTOS).expect("abre");
+    let ids = notas_afinadas(&d);
+    assert_eq!(ids.len(), 3);
+    let comandos = [
+        ComandoDeEdicao::RetirarAltura { nota: ids[0] },
+        ComandoDeEdicao::RemoverNota { nota: ids[2] },
+        ComandoDeEdicao::MudarDuracao {
+            nota: ids[2],
+            figura: Figura::Seminima,
+        },
+    ];
+    for cmd in comandos {
+        let mut d = DocumentoAberto::abrir_texto("ac", ACORDE_COM_ATRIBUTOS).expect("abre");
+        let r = d
+            .aplicar(cmd.clone())
+            .unwrap_or_else(|e| panic!("{cmd:?}: {e}"));
+        d.aplicar(r.inverso.clone())
+            .unwrap_or_else(|e| panic!("{cmd:?}: inverso: {e}"));
+        let saida = d.exportar().expect("exporta");
+        assert_eq!(
+            contar(&saida, ACIDENTE),
+            2,
+            "{cmd:?}: o inverso perdeu os atributos do acidente:\n{saida}"
+        );
+    }
+}

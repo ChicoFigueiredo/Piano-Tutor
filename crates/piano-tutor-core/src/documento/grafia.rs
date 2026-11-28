@@ -65,10 +65,27 @@ pub fn acidente_de(alter: i8) -> &'static str {
     }
 }
 
+/// Separa a **grafia completa** de um `<accidental>` em nome (o conteúdo do elemento, ex.:
+/// `natural`) e atributos (o texto da marca de abertura depois do nome do elemento, ex.:
+/// `cautionary="yes" parentheses="no"`; vazio se não há). A grafia é `nome` ou
+/// `nome atributos`: é o que o `inverso` guarda para restaurar o acidente sem perder nada.
+pub fn separar_acidente(grafia: &str) -> (&str, &str) {
+    let g = grafia.trim();
+    match g.split_once(char::is_whitespace) {
+        Some((nome, atributos)) => (nome, atributos.trim()),
+        None => (g, ""),
+    }
+}
+
+/// O nome do acidente (`natural`, `sharp`...) de uma grafia completa.
+pub fn nome_do_acidente(grafia: &str) -> &str {
+    separar_acidente(grafia).0
+}
+
 /// Alteração que um texto de `<accidental>` expressa; `None` para os que a grafia não entende
 /// (quarto de tom, setas, etc.).
 pub fn alter_do_acidente(texto: &str) -> Option<i8> {
-    Some(match texto.trim() {
+    Some(match nome_do_acidente(texto) {
         "sharp" => 1,
         "flat" => -1,
         "natural" => 0,

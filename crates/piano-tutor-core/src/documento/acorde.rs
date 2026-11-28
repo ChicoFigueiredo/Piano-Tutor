@@ -51,7 +51,7 @@
 
 use super::comando::acidente_devido;
 use super::comando::{AvisoDeEdicao, ComandoDeEdicao, ErroDeEdicao, ResultadoDaEdicao};
-use super::edicao::{leaf, validar};
+use super::edicao::{leaf, leaf_acidente, validar};
 use super::editar_duracao::{
     Aplicacao, Planejado, derivar_e_vigar, grupo_do_acorde, inconsistente, inserir_nota_apos,
     montar_no, no_da_nota,
@@ -264,7 +264,7 @@ fn no_de_nota_de_acorde(principal: &No, base: &str, altura: Altura, acidente: Op
         filhos.push(n.clone());
     }
     if let Some(t) = acidente {
-        filhos.push(leaf("accidental", t));
+        filhos.push(leaf_acidente(t));
     }
     for nome in ["time-modification", "stem", "staff"] {
         if let Some(n) = principal.filho(nome) {
