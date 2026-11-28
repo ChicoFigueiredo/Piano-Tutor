@@ -30,3 +30,12 @@
 - Sem dependência nova: usa os PNG da Oficina. Rasterizar PDF (pdftoppm) NÃO foi implementado; fica como opcional futuro.
 - Limite de memória: só a página em foco vira textura; PNG acima de 40 milhões de pixels ou 64 MiB vira mensagem na coluna (a tela e a partitura seguem); no máximo 400 páginas por partitura.
 - Captura de tela: NÃO VERIFICADO (sem display no ambiente); o visual real do destaque e da rolagem não foi visto.
+
+## Complemento: PDF ao lado na aba Partitura (achado R5 da revisão E01)
+
+- A edição agora acontece com o PDF ao lado: na aba Partitura, quando o documento é de um item da Oficina com PDF/páginas, um painel lateral redimensionável (e com "Esconder"/"Mostrar PDF ao lado") mostra a página do PDF levada ao compasso da seleção de nota ou do cursor de entrada (`compasso_em_foco`). Região destacada quando o mapa tem região; senão página inteira e o aviso "Mapa por página". Zoom e rolagem independentes.
+- Código novo em `crates/piano-tutor-app/src/tela_partitura/pdf_lateral.rs` (estado do painel, desenho e testes). A regra compasso→página/região segue em `pdf_sincronizado.rs` (`MapaCompassos`, `Destino`, `compasso_na_pagina`), a mesma da aba Revisão; só o estado do painel e o desenho têm uma segunda implementação, porque o da Revisão é privado de `EstadoRevisao`. O arquivo principal ganhou 4 pontos mínimos: `mod`, um campo, a ligação em `vincular_a_oficina` e `desenhar_tela` delegando ao submódulo.
+- Sem PDF no item ou arquivo solto: não há painel; uma dica discreta diz por quê. O painel só vale com o vínculo da Oficina (`versoes`).
+- PDF e páginas só são lidos (teste com SHA-256 antes e depois de apontar compassos, trocar página e esconder/mostrar). Mesmos limites de memória de `ler_png`.
+- Testes egui sem janela (7, em `pdf_lateral::testes`): painel acompanha nota selecionada; cursor de entrada leva o PDF; região x por página; esconder/mostrar; larguras estreita e larga sem pânico; sem PDF; arquivo solto; hash. Os testes foram escritos junto com o código, não antes (sem registro de "red").
+- NÃO VERIFICADO: legibilidade do painel e do destaque numa janela real, arrastar a borda com o mouse, HiDPI e captura de tela (sem display neste ambiente). O roteiro de demonstração (`docs/evolucao-musical/e01/ROTEIRO-DEMONSTRACAO.md`) não existe no repositório; nada foi alterado nele.
