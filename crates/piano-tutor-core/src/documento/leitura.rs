@@ -155,8 +155,17 @@ impl Documento {
                 nome(raiz)
             )));
         }
+        // A série nasce no primeiro texto sem tabela e é herdada por quem abre com tabela.
+        let serie = match previa {
+            Some(t) => t
+                .serie
+                .or_else(|| t.base.as_ref().map(|b| b.fnv))
+                .or_else(|| Some(impressao_de(texto).fnv)),
+            None => Some(impressao_de(texto).fnv),
+        };
         let mut tabela = TabelaIds {
             proximo: previa.map_or(1, |t| t.proximo),
+            serie,
             ..TabelaIds::default()
         };
         let mut usadas: BTreeSet<ChaveNota> = BTreeSet::new();

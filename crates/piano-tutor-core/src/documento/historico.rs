@@ -193,8 +193,16 @@ impl DocumentoAberto {
     /// entrada** no histórico. Em sucesso, a edição entra na pilha de desfazer (ou no grupo
     /// aberto) e o ramo de refazer é descartado. Ver o contrato do módulo.
     pub fn aplicar(&mut self, comando: ComandoDeEdicao) -> Result<ResultadoDaEdicao, ErroDeEdicao> {
-        let nota = comando.nota();
-        let antes = self.instantaneo_da_nota(nota);
+        let antes = match &comando {
+            ComandoDeEdicao::InserirNota { compasso, .. }
+            | ComandoDeEdicao::InserirPausa { compasso, .. } => self
+                .documento
+                .partes
+                .iter()
+                .position(|p| p.id == compasso.parte)
+                .and_then(|pd| self.instantaneo_do_compasso(pd, compasso.indice)),
+            outro => outro.nota().and_then(|n| self.instantaneo_da_nota(n)),
+        };
         let mut resultado = self.aplicar_sem_historico(comando)?;
         if resultado.alterou {
             let fora = self.registrar(antes, resultado.nota);
@@ -356,6 +364,12 @@ impl DocumentoAberto {
     /// Instantâneo do compasso da nota, a menos que o grupo aberto já o tenha.
     fn instantaneo_da_nota(&self, nota: IdNota) -> Option<Instantaneo> {
         let &(parte, compasso, _) = self.documento.indice.get(&nota)?;
+        self.instantaneo_do_compasso(parte, compasso)
+    }
+
+    /// Instantâneo do compasso `compasso` da parte `parte` (índices do documento), a menos que
+    /// o grupo aberto já o tenha.
+    fn instantaneo_do_compasso(&self, parte: usize, compasso: usize) -> Option<Instantaneo> {
         let ja_guardado = self.historico.grupo.as_ref().is_some_and(|g| {
             g.instantaneos
                 .iter()

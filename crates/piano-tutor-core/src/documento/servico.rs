@@ -13,9 +13,13 @@
 //! - **Conferir** reabre o texto que foi gravado e confirma que é o mesmo documento (a "releitura
 //!   de conferência" da exportação).
 //! - **Identidade das notas:** atribuída na abertura, monotônica a partir de 1, na ordem do
-//!   arquivo. O serviço **não lê nem grava arquivo lateral de ids** (decisão do supervisor: só no
-//!   ticket 17, quando houver edição estrutural); sem edição, reabrir o mesmo texto devolve as
-//!   mesmas identidades.
+//!   arquivo; sem edição, reabrir o mesmo texto devolve as mesmas identidades. Depois de uma
+//!   edição que cria ou tira notas (ticket 16 e 17), a ordem do arquivo já não reproduz as
+//!   identidades: o **arquivo lateral de ids** (decisão do supervisor, ticket 17) as guarda. O
+//!   serviço entrega a tabela ([`DocumentoAberto::tabela_ids_para`], texto em
+//!   [`super::TabelaIds::para_texto`]) para o chamador gravar ao lado do texto exportado, e abre
+//!   com ela ([`DocumentoAberto::abrir_texto_com_ids`]); a tabela é ligada ao texto por impressão
+//!   digital e é recusada se o texto for outro. O serviço continua sem tocar o disco.
 //! - **Ciclo de vida:** um documento aberto sem edição ([`DocumentoAberto::editado`] falso) não
 //!   gera nada: o serviço não grava arquivo algum (nem autosave nem Versão); quem escolhe e grava o
 //!   destino é o chamador, sempre com confirmação antes de sobrescrever.
@@ -29,7 +33,7 @@
 //! decisão de importação posterior (a exportação passaria a valer sobre o derivado).
 
 use super::historico::Historico;
-use super::{Documento, ErroDocumento, IdNota, LimitesDeAltura};
+use super::{Documento, ErroDocumento, IdNota, LimitesDeAltura, TabelaIds};
 use crate::mxl::extrair_musicxml;
 use crate::partitura::{ErroPartitura, Partitura};
 use std::fmt;
@@ -144,37 +148,62 @@ pub struct DocumentoAberto {
     pub(super) limites: LimitesDeAltura,
     /// Pilhas de desfazer e refazer (ticket 15).
     pub(super) historico: Historico,
-    /// Alguma edição criou ou tirou notas (ticket 16): as identidades deixam de seguir a ordem
-    /// do arquivo, então a releitura de conferência só confere o total delas.
-    pub(super) estrutura_editada: bool,
 }
 
 impl DocumentoAberto {
     /// Abre um texto MusicXML (`score-partwise`). `nome` é só rótulo para a interface.
     pub fn abrir_texto(nome: &str, texto: &str) -> Result<Self, ErroServico> {
-        Self::abrir_com_formato(nome, texto, Formato::MusicXml)
+        Self::abrir_com_formato(nome, texto, Formato::MusicXml, None)
+    }
+
+    /// Como [`Self::abrir_texto`], reaproveitando a tabela do arquivo lateral de ids (ticket 17):
+    /// as notas reencontram as identidades de antes e as novas recebem ids que nunca se repetem.
+    /// A tabela precisa ter sido gravada para este texto (impressão digital); senão a abertura é
+    /// recusada com [`ErroDocumento::TabelaIdsDeOutroTexto`].
+    pub fn abrir_texto_com_ids(
+        nome: &str,
+        texto: &str,
+        ids: Option<&TabelaIds>,
+    ) -> Result<Self, ErroServico> {
+        Self::abrir_com_formato(nome, texto, Formato::MusicXml, ids)
     }
 
     /// Abre os bytes de um arquivo no `formato` dado. Em `.mxl` extrai o XML (com as defesas do
     /// módulo `mxl`); em MusicXML exige UTF-8 (com ou sem BOM).
     pub fn abrir_bytes(nome: &str, bytes: &[u8], formato: Formato) -> Result<Self, ErroServico> {
+        Self::abrir_bytes_com_ids(nome, bytes, formato, None)
+    }
+
+    /// Como [`Self::abrir_bytes`], com a tabela do arquivo lateral de ids (ver
+    /// [`Self::abrir_texto_com_ids`]). Em `.mxl` a tabela vale para o XML de dentro do zip.
+    pub fn abrir_bytes_com_ids(
+        nome: &str,
+        bytes: &[u8],
+        formato: Formato,
+        ids: Option<&TabelaIds>,
+    ) -> Result<Self, ErroServico> {
         match formato {
             Formato::Mxl => {
                 let texto = extrair_musicxml(bytes)?;
-                Self::abrir_com_formato(nome, &texto, Formato::Mxl)
+                Self::abrir_com_formato(nome, &texto, Formato::Mxl, ids)
             }
             Formato::MusicXml => {
                 let texto =
                     std::str::from_utf8(bytes).map_err(|e| ErroDocumento::nao_utf8(bytes, &e))?;
-                Self::abrir_com_formato(nome, texto, Formato::MusicXml)
+                Self::abrir_com_formato(nome, texto, Formato::MusicXml, ids)
             }
         }
     }
 
-    fn abrir_com_formato(nome: &str, texto: &str, formato: Formato) -> Result<Self, ErroServico> {
+    fn abrir_com_formato(
+        nome: &str,
+        texto: &str,
+        formato: Formato,
+        previa: Option<&TabelaIds>,
+    ) -> Result<Self, ErroServico> {
         // O leitor de partitura vai primeiro: as recusas e mensagens de sempre não mudam.
         let partitura = Partitura::de_musicxml(texto)?;
-        let documento = Documento::abrir(texto)?;
+        let documento = Documento::abrir_com_ids(texto, previa)?;
         let ids = montar_ids(&partitura, &documento)?;
         Ok(Self {
             nome: nome.to_owned(),
@@ -184,7 +213,6 @@ impl DocumentoAberto {
             ids,
             limites: LimitesDeAltura::default(),
             historico: Historico::default(),
-            estrutura_editada: false,
         })
     }
 
@@ -216,6 +244,17 @@ impl DocumentoAberto {
         self.documento.original()
     }
 
+    /// Tabela de ids do texto original aberto (para o arquivo lateral dele).
+    pub fn tabela_ids(&self) -> TabelaIds {
+        self.documento.tabela_ids()
+    }
+
+    /// Tabela de ids para gravar ao lado de `texto_exportado` (o que [`Self::exportar`] devolveu):
+    /// reabrir esse texto com a tabela devolve as mesmas identidades (ticket 17).
+    pub fn tabela_ids_para(&self, texto_exportado: &str) -> TabelaIds {
+        self.documento.tabela_ids_para(texto_exportado)
+    }
+
     /// Há algum compasso editado (sujo)? Sem edição, exportar devolve o original.
     pub fn editado(&self) -> bool {
         !self.documento.compassos_sujos().is_empty()
@@ -226,26 +265,19 @@ impl DocumentoAberto {
         Ok(self.documento.exportar()?)
     }
 
-    /// Releitura de conferência: reabre `texto_gravado` pelo próprio serviço e confirma que dá o
-    /// mesmo modelo de partitura e as mesmas identidades de nota (e, sem edição, os mesmos bytes
-    /// do original).
+    /// Releitura de conferência: reabre `texto_gravado` pelo próprio serviço, **com o arquivo
+    /// lateral de ids que acompanha esse texto** ([`Self::tabela_ids_para`]), e confirma que dá o
+    /// mesmo modelo de partitura e **as mesmas identidades de nota**, inclusive depois de edições
+    /// que criam ou tiram notas (e, sem edição, os mesmos bytes do original).
     pub fn conferir_exportacao(&self, texto_gravado: &str) -> Result<(), ErroServico> {
-        let relido = Self::abrir_texto(&self.nome, texto_gravado)?;
+        let lateral = self.tabela_ids_para(texto_gravado);
+        let relido = Self::abrir_texto_com_ids(&self.nome, texto_gravado, Some(&lateral))?;
         if relido.partitura != self.partitura {
             return Err(ErroServico::ReleituraDifere(
                 "o modelo da partitura mudou".into(),
             ));
         }
-        // Edição que cria ou tira notas (pausa de preenchimento, ticket 16) deixa ids que a
-        // releitura, que numera na ordem do arquivo, não reproduz: sem o arquivo lateral de ids
-        // (ticket 17) só se confere que o total bate.
-        if self.estrutura_editada {
-            if relido.ids.total() != self.ids.total() {
-                return Err(ErroServico::ReleituraDifere(
-                    "o número de notas mudou".into(),
-                ));
-            }
-        } else if relido.ids != self.ids {
+        if relido.ids != self.ids {
             return Err(ErroServico::ReleituraDifere(
                 "as identidades das notas mudaram".into(),
             ));

@@ -30,6 +30,10 @@
 //!   expressão, viga, letra, cifra e dedilhado ficam intocados (não dependem da altura).
 //! - **A identidade da nota não muda:** o mesmo [`IdNota`] continua apontando para a nota
 //!   editada.
+//! - **Estrutura (ticket 17).** [`ComandoDeEdicao::InserirNota`], [`ComandoDeEdicao::InserirPausa`]
+//!   e [`ComandoDeEdicao::RemoverNota`] mexem na estrutura do compasso; o contrato está em
+//!   `inserir_remover`. A posição de inserção é a coluna do layout (o início da nota no
+//!   compasso, em semínimas, `Fracao` exata), nunca um pixel.
 //! - **Nada é gravado.** A edição vive em memória; exportar e gravar arquivo é decisão do
 //!   chamador (autosave e Versão são o ticket 21).
 
@@ -40,7 +44,7 @@ use super::grafia::{
 };
 use super::servico::DocumentoAberto;
 use super::{Altura, ErroDocumento, IdNota, PosCompasso};
-use crate::partitura::{Acidente, Figura, Fracao};
+use crate::partitura::{self, Acidente, Figura, Fracao};
 use std::fmt;
 
 /// De quanto a altura muda.
@@ -89,18 +93,55 @@ pub enum ComandoDeEdicao {
         figura: Figura,
         pontos: u8,
     },
+    /// Insere uma nota na voz `voz` e pauta `pauta` do compasso `compasso`, começando em
+    /// `posicao` (semínimas desde o início do compasso: a coluna do layout), com a `altura` e a
+    /// figura dadas (ticket 17). O espaço tem de ser de pausas da mesma voz, que a nota substitui;
+    /// o que sobrar delas continua pausa exata. `acidente` `None` = o serviço imprime o que a
+    /// armadura e o compasso pedem. Quiáltera: herda a das pausas que ocupa.
+    InserirNota {
+        compasso: PosCompasso,
+        voz: String,
+        pauta: String,
+        posicao: Fracao,
+        altura: Altura,
+        acidente: Option<String>,
+        figura: Figura,
+        pontos: u8,
+    },
+    /// Insere uma pausa (regrupa pausas livres; em cima de nota é recusado, ticket 17).
+    InserirPausa {
+        compasso: PosCompasso,
+        voz: String,
+        pauta: String,
+        posicao: Fracao,
+        figura: Figura,
+        pontos: u8,
+    },
+    /// Remove `nota`: ela vira pausa de mesma duração e posição (ticket 17). Nota de acorde que
+    /// não é a última do acorde e nota de adorno simplesmente saem.
+    RemoverNota { nota: IdNota },
 }
 
 impl ComandoDeEdicao {
-    /// A nota que o comando edita.
-    pub fn nota(&self) -> IdNota {
+    /// A nota que o comando edita; `None` nos comandos de inserção (a nota ainda não existe).
+    pub fn nota(&self) -> Option<IdNota> {
         match self {
             Self::MudarAltura { nota, .. }
             | Self::DefinirAltura { nota, .. }
             | Self::MudarDuracao { nota, .. }
             | Self::AlternarPonto { nota }
-            | Self::DefinirDuracao { nota, .. } => *nota,
+            | Self::DefinirDuracao { nota, .. }
+            | Self::RemoverNota { nota } => Some(*nota),
+            Self::InserirNota { .. } | Self::InserirPausa { .. } => None,
         }
+    }
+
+    /// O comando muda a estrutura do compasso (ticket 17): insere ou remove nota ou pausa.
+    pub(super) fn e_de_estrutura(&self) -> bool {
+        matches!(
+            self,
+            Self::InserirNota { .. } | Self::InserirPausa { .. } | Self::RemoverNota { .. }
+        )
     }
 
     /// O comando muda a duração (ticket 16) em vez da altura?
@@ -247,6 +288,28 @@ pub enum ErroDeEdicao {
     FiguraNaoSuportada(u8),
     /// Não se sabe a figura escrita da nota (sem `<type>` reconhecível nem dedução possível).
     ValorEscritoDesconhecido(IdNota),
+    /// A posição pedida não existe: parte ou compasso inexistente, pauta fora das da parte,
+    /// posição negativa ou depois do fim do compasso (ticket 17).
+    PosicaoInvalida {
+        compasso: PosCompasso,
+        motivo: String,
+    },
+    /// Inserir não cabe ali: o lugar é de nota, ou a figura passa das pausas livres da voz
+    /// (ticket 17). A soma do compasso não é tocada.
+    SemEspacoParaInserir {
+        compasso: PosCompasso,
+        voz: String,
+        posicao: Fracao,
+        motivo: String,
+    },
+    /// Decisão do ticket 17: pausa sobre nota é recusada; a nota sai só por remoção explícita.
+    PausaSobreNota {
+        compasso: PosCompasso,
+        voz: String,
+        posicao: Fracao,
+    },
+    /// Remover uma pausa: não há o que remover (a pausa já é o vazio).
+    PausaNaoRemovivel(IdNota),
 }
 
 impl fmt::Display for ErroDeEdicao {
@@ -322,6 +385,34 @@ impl fmt::Display for ErroDeEdicao {
                 f,
                 "Não foi possível saber a figura escrita desta nota. A duração não foi alterada."
             ),
+            Self::PosicaoInvalida { compasso, motivo } => write!(
+                f,
+                "Posição inválida no compasso {}: {motivo}. Nada foi alterado.",
+                rotulo_do_compasso(compasso),
+            ),
+            Self::SemEspacoParaInserir {
+                compasso,
+                voz,
+                posicao,
+                motivo,
+            } => write!(
+                f,
+                "Não há espaço para inserir no compasso {} (voz {voz}, tempo {posicao}): {motivo}. \
+                 Nada foi alterado.",
+                rotulo_do_compasso(compasso),
+            ),
+            Self::PausaSobreNota {
+                compasso, posicao, ..
+            } => write!(
+                f,
+                "No compasso {}, o tempo {posicao} é de uma nota: uma pausa não pode ser inserida \
+                 em cima dela. Remova a nota antes (ela vira pausa). Nada foi alterado.",
+                rotulo_do_compasso(compasso),
+            ),
+            Self::PausaNaoRemovivel(_) => write!(
+                f,
+                "Esta já é uma pausa: não há nota para remover. Nada foi alterado."
+            ),
         }
     }
 }
@@ -365,6 +456,17 @@ pub enum AvisoDeEdicao {
     TuplaPodeTerFicadoIncompleta { nota: IdNota },
     /// As vigas do compasso ficariam inconsistentes e foram refeitas.
     VigasRefeitas { compasso: PosCompasso },
+    /// A nota removida tinha letra: a sílaba (estrofe e texto) saiu junto com ela (ticket 17).
+    LetraRemovida { nota: IdNota, texto: String },
+    /// A nota removida tinha dedilhado.
+    DedilhadoRemovido { nota: IdNota, texto: String },
+    /// A nota removida tinha ornamento, articulação, fermata ou outra marca (`nome` no MusicXML).
+    OrnamentoRemovido { nota: IdNota, nome: String },
+    /// A nota removida estava numa ligadura de prolongamento: a outra nota ligada ficou com a
+    /// ligadura solta.
+    LigaduraDeValorRemovida { nota: IdNota },
+    /// A nota removida abria ou fechava uma ligadura de expressão.
+    LigaduraDeExpressaoRemovida { nota: IdNota },
 }
 
 impl AvisoDeEdicao {
@@ -404,6 +506,25 @@ impl AvisoDeEdicao {
                 "As vigas do compasso {} ficariam inconsistentes e foram refeitas.",
                 rotulo_do_compasso(compasso)
             ),
+            Self::LetraRemovida { texto, .. } => format!(
+                "A nota removida tinha letra («{texto}»): a sílaba saiu junto com ela. Desfazer a \
+                 devolve."
+            ),
+            Self::DedilhadoRemovido { texto, .. } => format!(
+                "A nota removida tinha dedilhado ({texto}): o dedilhado saiu junto com ela."
+            ),
+            Self::OrnamentoRemovido { nome, .. } => {
+                format!("A nota removida tinha uma marca ({nome}): ela saiu junto com a nota.")
+            }
+            Self::LigaduraDeValorRemovida { .. } => {
+                "A nota removida estava numa ligadura de prolongamento: a outra nota ligada ficou \
+                 com a ligadura solta. Confira."
+                    .to_owned()
+            }
+            Self::LigaduraDeExpressaoRemovida { .. } => {
+                "A nota removida abria ou fechava uma ligadura de expressão: confira a outra ponta."
+                    .to_owned()
+            }
         }
     }
 }
@@ -427,14 +548,42 @@ pub struct ResultadoDaEdicao {
     /// O que mudou na duração (`Some` só nos comandos de duração, ticket 16). Nesses comandos
     /// `antes` e `depois` são a altura da nota, que não muda.
     pub duracao: Option<MudancaDeDuracao>,
+    /// O que mudou na estrutura (`Some` só nos comandos de inserir e remover, ticket 17). Neles
+    /// `antes` e `depois` são a altura da nota (Dó4 neutro quando o alvo é uma pausa).
+    pub estrutura: Option<MudancaDeEstrutura>,
+}
+
+/// O que um comando de inserir ou remover mudou (ticket 17).
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct MudancaDeEstrutura {
+    /// A nota ou pausa inserida; na remoção, a nota que virou pausa (a mesma identidade) ou que
+    /// saiu (nota de acorde ou de adorno).
+    pub alvo: IdNota,
+    /// O alvo soa (é uma nota inserida)? Pausa e nota removida não soam.
+    pub alvo_soa: bool,
+    /// Pausas que nasceram para preencher o espaço que sobrou (na ordem do compasso).
+    pub criadas: Vec<IdNota>,
+    /// Identidades que deixaram de existir: as pausas que a nota ocupou, ou a própria nota que
+    /// saiu sem virar pausa.
+    pub removidas: Vec<IdNota>,
 }
 
 impl ResultadoDaEdicao {
-    /// Número MIDI da altura nova, para ouvir a nota editada.
+    /// Número MIDI da altura nova, para ouvir a nota editada (`None` se o resultado não soa).
     pub fn midi_depois(&self) -> Option<u8> {
+        if self.estrutura.as_ref().is_some_and(|e| !e.alvo_soa) {
+            return None;
+        }
         self.depois.numero_midi().and_then(|m| u8::try_from(m).ok())
     }
 }
+
+/// Altura de enfeite dos resultados cujo alvo é uma pausa (nunca soa: ver `midi_depois`).
+pub(super) const ALTURA_NEUTRA: Altura = Altura {
+    passo: 'C',
+    alter: 0,
+    oitava: 4,
+};
 
 /// Onde a nota está nos dois modelos.
 #[derive(Clone, Copy)]
@@ -468,7 +617,14 @@ impl DocumentoAberto {
         if comando.e_de_duracao() {
             return self.aplicar_duracao(&comando);
         }
-        let id = comando.nota();
+        if comando.e_de_estrutura() {
+            return self.aplicar_estrutura(&comando);
+        }
+        let id = comando.nota().ok_or_else(|| {
+            ErroDeEdicao::Documento(ErroDocumento::NaoSuportado(
+                "comando sem nota fora do caminho de estrutura".into(),
+            ))
+        })?;
         let local = self.local_da_nota(id)?;
         let antes_altura = self
             .documento
@@ -506,9 +662,12 @@ impl DocumentoAberto {
             // Já despachado no começo da função.
             ComandoDeEdicao::MudarDuracao { .. }
             | ComandoDeEdicao::AlternarPonto { .. }
-            | ComandoDeEdicao::DefinirDuracao { .. } => {
+            | ComandoDeEdicao::DefinirDuracao { .. }
+            | ComandoDeEdicao::InserirNota { .. }
+            | ComandoDeEdicao::InserirPausa { .. }
+            | ComandoDeEdicao::RemoverNota { .. } => {
                 return Err(ErroDeEdicao::Documento(ErroDocumento::NaoSuportado(
-                    "comando de duração fora do caminho de duração".into(),
+                    "comando de duração ou de estrutura fora do caminho dele".into(),
                 )));
             }
         };
@@ -534,6 +693,7 @@ impl DocumentoAberto {
             compassos_afetados: Vec::new(),
             avisos: Vec::new(),
             duracao: None,
+            estrutura: None,
         };
         if !alterou {
             return Ok(resultado);
@@ -594,7 +754,7 @@ impl DocumentoAberto {
         })
     }
 
-    fn conferir_limites(&self, altura: Altura) -> Result<(), ErroDeEdicao> {
+    pub(super) fn conferir_limites(&self, altura: Altura) -> Result<(), ErroDeEdicao> {
         let (grave, agudo) = self.limites.efetivos();
         let m = midi(altura).ok_or_else(|| {
             ErroDeEdicao::Documento(ErroDocumento::AlturaInvalida(format!(
@@ -615,28 +775,13 @@ impl DocumentoAberto {
 
     /// Notas da mesma pauta que começam antes de `ate` no compasso (menos a de ordinal
     /// `excluir`), com o que vale para o acidente em vigor.
-    fn anteriores(
-        &self,
-        l: Local,
-        excluir: usize,
-        pauta: u8,
-        ate: crate::partitura::Fracao,
-    ) -> Vec<Anterior> {
-        let comp = &self.partitura.partes[l.parte].compassos[l.compasso];
-        comp.notas
-            .iter()
-            .enumerate()
-            .filter(|(i, n)| *i != excluir && n.pauta == pauta && antes(n.posicao, ate))
-            .filter_map(|(_, n)| {
-                let a = n.altura?;
-                Some(Anterior {
-                    letra: de_partitura(a).passo,
-                    oitava: a.oitava,
-                    alter: a.alteracao,
-                    posicao: n.posicao,
-                })
-            })
-            .collect()
+    fn anteriores(&self, l: Local, excluir: usize, pauta: u8, ate: Fracao) -> Vec<Anterior> {
+        anteriores_em(
+            &self.partitura.partes[l.parte].compassos[l.compasso],
+            excluir,
+            pauta,
+            ate,
+        )
     }
 
     /// O `<accidental>` que a nota deve ter na altura nova: o que já tem, se significa a mesma
@@ -655,21 +800,10 @@ impl DocumentoAberto {
     /// Ordinais das notas do compasso que não têm acidente impresso e cuja alteração difere da
     /// que está em vigor naquele ponto (leitura errada na pauta).
     fn sem_sinal_devido(&self, l: Local) -> Vec<usize> {
-        let comp = &self.partitura.partes[l.parte].compassos[l.compasso];
-        comp.notas
-            .iter()
-            .enumerate()
-            .filter_map(|(i, n)| {
-                let a = n.altura?;
-                if n.acidente.is_some() {
-                    return None;
-                }
-                let anteriores = self.anteriores(l, i, n.pauta, n.posicao);
-                let vigor =
-                    alteracao_em_vigor(l.quintas, de_partitura(a).passo, a.oitava, &anteriores);
-                (a.alteracao != vigor).then_some(i)
-            })
-            .collect()
+        sem_sinal_devido_em(
+            &self.partitura.partes[l.parte].compassos[l.compasso],
+            l.quintas,
+        )
     }
 
     /// Reflete a edição no modelo de tocar, só na nota editada.
@@ -682,4 +816,60 @@ impl DocumentoAberto {
         nota.midi = pa.numero_midi();
         nota.acidente = acidente.and_then(Acidente::de_texto);
     }
+}
+
+/// Notas da mesma pauta que começam antes de `ate` no compasso (menos a de ordinal `excluir`),
+/// com o que vale para o acidente em vigor.
+pub(super) fn anteriores_em(
+    comp: &partitura::Compasso,
+    excluir: usize,
+    pauta: u8,
+    ate: Fracao,
+) -> Vec<Anterior> {
+    comp.notas
+        .iter()
+        .enumerate()
+        .filter(|(i, n)| *i != excluir && n.pauta == pauta && antes(n.posicao, ate))
+        .filter_map(|(_, n)| {
+            let a = n.altura?;
+            Some(Anterior {
+                letra: de_partitura(a).passo,
+                oitava: a.oitava,
+                alter: a.alteracao,
+                posicao: n.posicao,
+            })
+        })
+        .collect()
+}
+
+/// Ordinais das notas do compasso sem acidente impresso cuja alteração difere da que está em
+/// vigor naquele ponto.
+pub(super) fn sem_sinal_devido_em(comp: &partitura::Compasso, quintas: i8) -> Vec<usize> {
+    comp.notas
+        .iter()
+        .enumerate()
+        .filter_map(|(i, n)| {
+            let a = n.altura?;
+            if n.acidente.is_some() {
+                return None;
+            }
+            let anteriores = anteriores_em(comp, i, n.pauta, n.posicao);
+            let vigor = alteracao_em_vigor(quintas, de_partitura(a).passo, a.oitava, &anteriores);
+            (a.alteracao != vigor).then_some(i)
+        })
+        .collect()
+}
+
+/// O `<accidental>` que uma nota **nova** em `altura`, na pauta e posição dadas, precisa para ser
+/// lida certo: o sinal devido (ou `None` se a armadura e as notas antes dela já o explicam).
+pub(super) fn acidente_devido(
+    comp: &partitura::Compasso,
+    quintas: i8,
+    altura: Altura,
+    pauta: u8,
+    posicao: Fracao,
+) -> Option<String> {
+    let anteriores = anteriores_em(comp, usize::MAX, pauta, posicao);
+    let em_vigor = alteracao_em_vigor(quintas, altura.passo, altura.oitava, &anteriores);
+    (altura.alter != em_vigor).then(|| acidente_de(altura.alter).to_owned())
 }

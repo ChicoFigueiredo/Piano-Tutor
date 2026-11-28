@@ -5,9 +5,9 @@
 //! Tudo aqui é **leitura**: nada deste módulo altera o documento. A preservação no arquivo é
 //! garantida pelo modelo híbrido (ADR-0017): o texto original é copiado byte a byte e só os
 //! compassos sujos são regenerados, por peças, mantendo os filhos que o editor não conhece. Este
-//! módulo lê o texto original e liga cada letra, cada dedilhado e cada cifra à **identidade da
-//! nota** a que pertencem ([`IdNota`]), que é o que o render precisa para desenhá-los junto das
-//! notas certas.
+//! módulo lê o texto **atual** (o exportável: o original, ou com os compassos editados) e liga
+//! cada letra, cada dedilhado e cada cifra à **identidade da nota** a que pertencem
+//! ([`IdNota`]), que é o que o render precisa para desenhá-los junto das notas certas.
 //!
 //! # Regras de associação
 //!
@@ -564,7 +564,11 @@ impl Documento {
     /// uma vez por abertura. Texto que não analisa devolve uma exibição vazia (o documento já
     /// foi aberto antes, então isso não acontece na prática).
     pub fn exibicao(&self) -> Exibicao {
-        let Ok(doc) = crate::xml_seguro::analisar(self.original()) else {
+        // O texto **atual** (o exportável): depois de inserir ou remover notas, os ordinais das
+        // notas do original já não são os do compasso editado. Sem edição, é o próprio original.
+        let atual = self.exportar().ok();
+        let texto = atual.as_deref().unwrap_or_else(|| self.original());
+        let Ok(doc) = crate::xml_seguro::analisar(texto) else {
             return Exibicao::default();
         };
         let mut ex = Exibicao::default();

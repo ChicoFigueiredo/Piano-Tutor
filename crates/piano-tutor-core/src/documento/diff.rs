@@ -5,17 +5,24 @@
 //! (por nota) e cifra (por compasso). Formatação (posição, espaços, `<print>`, ordem de
 //! atributos, comentários) não entra no resumo e portanto não gera diferença.
 //!
-//! Pareamento de notas num compasso: primeiro pelo `id` do MusicXML (quando os dois lados têm o
-//! mesmo `id` único); o resto por subsequência comum de conteúdo igual; o que sobra entre duas
-//! âncoras é pareado em ordem como "alterada" e o excedente vira inserida/removida. Não depende
-//! de `IdNota`, que é atribuído por leitura e não é comparável entre dois textos.
+//! Pareamento de notas num compasso, em dois modos:
+//!
+//! - **Por `IdNota` estável** (ticket 17): quando os dois documentos são da mesma série de
+//!   identidades ([`Documento::ids_comparaveis`]: o "depois" foi aberto com o arquivo lateral de
+//!   ids que descende do "antes"), a nota que tem o mesmo `IdNota` nos dois lados é a mesma nota;
+//!   as demais são exatamente inseridas ou removidas, sem adivinhação. É o que mantém a inserção
+//!   no meio de um compasso sem `id` no MusicXML legível.
+//! - **Por conteúdo** (sem série comum): primeiro pelo `id` do MusicXML (quando os dois lados têm
+//!   o mesmo `id` único); o resto por subsequência comum de conteúdo igual; o que sobra entre
+//!   duas âncoras é pareado em ordem como "alterada" e o excedente vira inserida/removida. Aqui o
+//!   `IdNota` não serve: numerado por leitura, não é comparável entre dois textos soltos.
 //!
 //! Só leitura, sem janela, áudio, rede nem disco (seam S1): reutilizável pelo MCP sem mudar o
 //! contrato. A lista de compassos alterados é simétrica: `diff(a, b)` e `diff(b, a)` apontam os
 //! mesmos compassos (com antes e depois trocados).
 
 use super::grafia::nome_da_altura;
-use super::{Documento, Nota, PosCompasso};
+use super::{Documento, IdNota, Nota, PosCompasso};
 use crate::partitura::Fracao;
 use std::collections::HashMap;
 use std::ops::Range;
@@ -23,6 +30,8 @@ use std::ops::Range;
 /// Resumo musical de uma nota, o que o diff compara.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct ResumoDeNota {
+    /// Identidade da nota no documento (só comparável entre documentos da mesma série).
+    pub id: IdNota,
     /// Ordinal da nota no compasso (0 = primeira).
     pub ordinal: usize,
     /// Atributo `id` da nota no MusicXML, quando existir.
@@ -157,6 +166,7 @@ impl DiffDeDocumentos {
 
 /// Compara dois documentos, por compasso, de forma semântica.
 pub fn diff_de_documentos(antes: &Documento, depois: &Documento) -> DiffDeDocumentos {
+    let por_id = antes.ids_comparaveis(depois);
     let mut compassos = Vec::new();
     let mut ids_partes: Vec<&str> = antes.partes().iter().map(|p| p.id.as_str()).collect();
     for p in depois.partes() {
@@ -178,7 +188,7 @@ pub fn diff_de_documentos(antes: &Documento, depois: &Documento) -> DiffDeDocume
             let (rd, hd) = cd.map_or((Vec::new(), Vec::new()), |c| {
                 resumir(depois.original(), &c.notas, &c.faixa)
             });
-            let mudancas = parear(&ra, &rd);
+            let mudancas = parear(&ra, &rd, por_id);
             let cifra_difere = ha != hd;
             if ca.is_some() == cd.is_some() && mudancas.is_empty() && !cifra_difere {
                 continue;
@@ -213,6 +223,7 @@ fn resumir(
         .map(|(i, n)| {
             let (letra, dedilhado) = marcas_da_nota(original.get(n.faixa.clone()).unwrap_or(""));
             ResumoDeNota {
+                id: n.id,
                 ordinal: i,
                 id_xml: n.id_xml.clone(),
                 altura: n.altura.map(nome_da_altura),
@@ -311,10 +322,23 @@ fn alterada(a: &ResumoDeNota, d: &ResumoDeNota) -> MudancaDeNota {
     }
 }
 
-/// Pareia as notas dos dois lados e devolve só o que mudou, na ordem do compasso.
-fn parear(a: &[ResumoDeNota], d: &[ResumoDeNota]) -> Vec<MudancaDeNota> {
+/// Pareia as notas dos dois lados e devolve só o que mudou, na ordem do compasso. Com `por_id`
+/// (identidades comparáveis) o pareamento é só pelo `IdNota`; sem, o de conteúdo.
+fn parear(a: &[ResumoDeNota], d: &[ResumoDeNota], por_id: bool) -> Vec<MudancaDeNota> {
     let mut par_a: Vec<Option<usize>> = vec![None; a.len()];
     let mut par_d: Vec<Option<usize>> = vec![None; d.len()];
+
+    if por_id {
+        let no_depois: HashMap<IdNota, usize> =
+            d.iter().enumerate().map(|(j, n)| (n.id, j)).collect();
+        for (i, n) in a.iter().enumerate() {
+            if let Some(&j) = no_depois.get(&n.id) {
+                par_a[i] = Some(j);
+                par_d[j] = Some(i);
+            }
+        }
+        return mudancas_do_pareamento(a, d, &par_a, &par_d, false);
+    }
 
     // 1) mesmo id do MusicXML, único nos dois lados.
     let unicos = |r: &[ResumoDeNota]| {
@@ -363,8 +387,20 @@ fn parear(a: &[ResumoDeNota], d: &[ResumoDeNota]) -> Vec<MudancaDeNota> {
         }
     }
 
-    // 3) pares com conteúdo diferente (mesmo id) são alterados; entre âncoras, as sobras são
-    //    pareadas em ordem como alteradas e o excedente é inserido/removido.
+    mudancas_do_pareamento(a, d, &par_a, &par_d, true)
+}
+
+/// Monta as mudanças a partir do pareamento. Pares com conteúdo diferente são alterados; entre
+/// âncoras, as sobras são pareadas em ordem como alteradas (`parear_sobras`) e o excedente é
+/// inserido ou removido; sem `parear_sobras` (identidades estáveis) toda sobra é inserida ou
+/// removida.
+fn mudancas_do_pareamento(
+    a: &[ResumoDeNota],
+    d: &[ResumoDeNota],
+    par_a: &[Option<usize>],
+    par_d: &[Option<usize>],
+    parear_sobras: bool,
+) -> Vec<MudancaDeNota> {
     // Chave de ordenação: (posição no "depois", desempate, ordinal no "antes").
     let mut saida: Vec<((usize, u8, usize), MudancaDeNota)> = Vec::new();
     for (i, p) in par_a.iter().enumerate() {
@@ -381,12 +417,12 @@ fn parear(a: &[ResumoDeNota], d: &[ResumoDeNota]) -> Vec<MudancaDeNota> {
     let mut sobras_d: HashMap<usize, Vec<usize>> = HashMap::new();
     for (k, p) in par_a.iter().enumerate() {
         if p.is_none() {
-            sobras_a.entry(segmento(&par_a, k)).or_default().push(k);
+            sobras_a.entry(segmento(par_a, k)).or_default().push(k);
         }
     }
     for (k, p) in par_d.iter().enumerate() {
         if p.is_none() {
-            sobras_d.entry(segmento(&par_d, k)).or_default().push(k);
+            sobras_d.entry(segmento(par_d, k)).or_default().push(k);
         }
     }
     // Posição no "depois" da pareada que fecha o segmento s (ou o fim).
@@ -397,7 +433,11 @@ fn parear(a: &[ResumoDeNota], d: &[ResumoDeNota]) -> Vec<MudancaDeNota> {
     for s in segmentos {
         let ga = sobras_a.get(&s).cloned().unwrap_or_default();
         let gd = sobras_d.get(&s).cloned().unwrap_or_default();
-        let n = ga.len().min(gd.len());
+        let n = if parear_sobras {
+            ga.len().min(gd.len())
+        } else {
+            0
+        };
         for k in 0..n {
             saida.push(((gd[k], 0, ga[k]), alterada(&a[ga[k]], &d[gd[k]])));
         }
