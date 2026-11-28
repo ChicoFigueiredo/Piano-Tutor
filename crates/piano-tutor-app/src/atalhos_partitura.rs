@@ -26,8 +26,14 @@
 //!   recusa com o motivo (o modelo de partitura não tem a longa). Remapear continua valendo.
 //! - **Apagar** (ticket 17): `Delete` ([`AcaoAtalho::Apagar`]) vira [`Destino::Apagar`]; a tela
 //!   monta o comando tipado de remover do serviço de documento (a nota vira pausa de mesma
-//!   duração). Inserir nota ou pausa por teclado ainda depende do cursor de entrada de notas:
-//!   o comando existe no serviço (posição pela coluna do layout), sem atalho novo no mapa.
+//!   duração).
+//! - **Entrada de notas** (ticket 17b): as letras `A` a `G` ([`AcaoAtalho::InserirNota`]) viram
+//!   [`Destino::InserirNota`] (a altura sai da letra, como no MuseScore, e a duração é a atual das
+//!   teclas `1` a `8`) e `0` ([`AcaoAtalho::InserirPausa`]) vira [`Destino::InserirPausa`]; a tela
+//!   monta o comando tipado de inserir do serviço de documento na posição do cursor de entrada
+//!   (`cursor_entrada`). `Ctrl+←` e `Ctrl+→` movem o cursor pelas posições da voz (inclusive
+//!   pausas) e `Alt+↑` e `Alt+↓` trocam de voz ou pauta ([`Destino::Entrada`]). São ações novas, no
+//!   fim da lista: nenhum atalho existente saiu do mapa, e todas são remapeáveis como as demais.
 //! - **Pendentes**: ação sem comando ainda ([`AcaoAtalho::pendente`]) aparece em
 //!   [`MapaAtalhos::pendentes`]; ao apertar a tecla, a tela avisa em vez de calar.
 //! - **Persistência**: texto `id=Ctrl+Shift+Z` por linha (seção `tela.atalhos` do perfil,
@@ -64,10 +70,31 @@ pub enum AcaoAtalho {
     Cifra,
     /// Acrescenta ao acorde a nota de letra `A` a `G`.
     AcrescentarNota(char),
+    /// Insere, na posição do cursor de entrada, a nota de letra `A` a `G` (ticket 17b).
+    InserirNota(char),
+    /// Insere, na posição do cursor de entrada, uma pausa com a duração atual (ticket 17b).
+    InserirPausa,
+    /// Cursor de entrada para a posição anterior da voz, pausas incluídas (ticket 17b).
+    EntradaAnterior,
+    /// Cursor de entrada para a posição seguinte da voz, pausas incluídas (ticket 17b).
+    EntradaSeguinte,
+    /// Cursor de entrada para a voz ou pauta de cima (ticket 17b).
+    EntradaAcima,
+    /// Cursor de entrada para a voz ou pauta de baixo (ticket 17b).
+    EntradaAbaixo,
+}
+
+/// Movimento do cursor de entrada (ticket 17b).
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum MovimentoDeEntrada {
+    Anterior,
+    Seguinte,
+    Acima,
+    Abaixo,
 }
 
 /// Todas as ações, na ordem da lista de atalhos.
-pub const ACOES: [AcaoAtalho; 31] = [
+pub const ACOES: [AcaoAtalho; 43] = [
     AcaoAtalho::NotaAnterior,
     AcaoAtalho::NotaSeguinte,
     AcaoAtalho::TrilhaAnterior,
@@ -99,6 +126,18 @@ pub const ACOES: [AcaoAtalho; 31] = [
     AcaoAtalho::AcrescentarNota('E'),
     AcaoAtalho::AcrescentarNota('F'),
     AcaoAtalho::AcrescentarNota('G'),
+    AcaoAtalho::InserirNota('A'),
+    AcaoAtalho::InserirNota('B'),
+    AcaoAtalho::InserirNota('C'),
+    AcaoAtalho::InserirNota('D'),
+    AcaoAtalho::InserirNota('E'),
+    AcaoAtalho::InserirNota('F'),
+    AcaoAtalho::InserirNota('G'),
+    AcaoAtalho::InserirPausa,
+    AcaoAtalho::EntradaAnterior,
+    AcaoAtalho::EntradaSeguinte,
+    AcaoAtalho::EntradaAcima,
+    AcaoAtalho::EntradaAbaixo,
 ];
 
 fn nome_da_duracao(n: u8) -> &'static str {
@@ -174,6 +213,12 @@ impl AcaoAtalho {
             Self::Apagar => "apagar".into(),
             Self::Cifra => "cifra".into(),
             Self::AcrescentarNota(l) => format!("acorde_{}", l.to_ascii_lowercase()),
+            Self::InserirNota(l) => format!("inserir_{}", l.to_ascii_lowercase()),
+            Self::InserirPausa => "inserir_pausa".into(),
+            Self::EntradaAnterior => "entrada_anterior".into(),
+            Self::EntradaSeguinte => "entrada_seguinte".into(),
+            Self::EntradaAcima => "entrada_acima".into(),
+            Self::EntradaAbaixo => "entrada_abaixo".into(),
         }
     }
 
@@ -199,6 +244,17 @@ impl AcaoAtalho {
             Self::AcrescentarNota(l) => {
                 format!("Acrescentar ao acorde a nota {} ({l})", nome_da_letra(l))
             }
+            Self::InserirNota(l) => {
+                format!(
+                    "Inserir a nota {} ({l}) na posição de entrada",
+                    nome_da_letra(l)
+                )
+            }
+            Self::InserirPausa => "Inserir uma pausa na posição de entrada".into(),
+            Self::EntradaAnterior => "Posição de entrada anterior (pausas incluídas)".into(),
+            Self::EntradaSeguinte => "Próxima posição de entrada (pausas incluídas)".into(),
+            Self::EntradaAcima => "Posição de entrada na voz ou pauta de cima".into(),
+            Self::EntradaAbaixo => "Posição de entrada na voz ou pauta de baixo".into(),
         }
     }
 
@@ -222,6 +278,12 @@ impl AcaoAtalho {
             Self::Apagar => Atalho::tecla(Key::Delete),
             Self::Cifra => Atalho::ctrl(Key::K).com_shift(),
             Self::AcrescentarNota(l) => Atalho::tecla(tecla_da_letra(l)).com_shift(),
+            Self::InserirNota(l) => Atalho::tecla(tecla_da_letra(l)),
+            Self::InserirPausa => Atalho::tecla(Key::Num0),
+            Self::EntradaAnterior => Atalho::ctrl(Key::ArrowLeft),
+            Self::EntradaSeguinte => Atalho::ctrl(Key::ArrowRight),
+            Self::EntradaAcima => Atalho::alt(Key::ArrowUp),
+            Self::EntradaAbaixo => Atalho::alt(Key::ArrowDown),
         }
     }
 
@@ -267,6 +329,20 @@ impl AcaoAtalho {
         }
     }
 
+    /// Ação de **entrada de notas** (ticket 17b): inserir nota ou pausa e mover o cursor de
+    /// entrada.
+    pub fn entrada(self) -> Option<Destino> {
+        match self {
+            Self::InserirNota(l) => Some(Destino::InserirNota(l)),
+            Self::InserirPausa => Some(Destino::InserirPausa),
+            Self::EntradaAnterior => Some(Destino::Entrada(MovimentoDeEntrada::Anterior)),
+            Self::EntradaSeguinte => Some(Destino::Entrada(MovimentoDeEntrada::Seguinte)),
+            Self::EntradaAcima => Some(Destino::Entrada(MovimentoDeEntrada::Acima)),
+            Self::EntradaAbaixo => Some(Destino::Entrada(MovimentoDeEntrada::Abaixo)),
+            _ => None,
+        }
+    }
+
     /// Ação com atalho mas ainda sem comando nenhum (nem de navegação, nem de edição).
     pub fn pendente(self) -> bool {
         self.comando().is_none()
@@ -274,6 +350,7 @@ impl AcaoAtalho {
             && self.historico().is_none()
             && self.duracao().is_none()
             && self.apagar().is_none()
+            && self.entrada().is_none()
     }
 
     /// Comando de navegação ligado à ação; `None` = não é navegação (edição ou ainda pendente).
@@ -453,6 +530,12 @@ pub enum Destino {
     Ponto,
     /// Remover a nota selecionada, que vira pausa de mesma duração (ticket 17).
     Apagar,
+    /// Inserir a nota da letra `A` a `G` na posição do cursor de entrada (ticket 17b).
+    InserirNota(char),
+    /// Inserir uma pausa na posição do cursor de entrada (ticket 17b).
+    InserirPausa,
+    /// Mover o cursor de entrada (ticket 17b).
+    Entrada(MovimentoDeEntrada),
     /// Ação do perfil sem comando ainda: a tela avisa.
     Pendente(AcaoAtalho),
 }
@@ -590,6 +673,7 @@ impl MapaAtalhos {
                 .historico()
                 .or_else(|| acao.duracao())
                 .or_else(|| acao.apagar())
+                .or_else(|| acao.entrada())
                 .unwrap_or(Destino::Pendente(acao)),
         })
     }
@@ -768,9 +852,11 @@ mod testes {
     fn acoes_sem_comando_ficam_registradas_como_pendentes_e_roteiam_como_pendente() {
         let m = MapaAtalhos::padrao();
         let p = m.pendentes();
-        // Navegação (4), altura (6), histórico (2), duração (9 teclas e o ponto) e apagar (1)
-        // têm comando; o resto segue pendente.
-        assert_eq!(p.len(), ACOES.len() - 4 - 6 - 2 - 10 - 1);
+        // Navegação (4), altura (6), histórico (2), duração (9 teclas e o ponto), apagar (1) e
+        // entrada de notas (7 letras, a pausa e 4 movimentos do cursor) têm comando; o resto
+        // (a cifra e as sete letras do acorde, do ticket 18) segue pendente.
+        assert_eq!(p.len(), ACOES.len() - 4 - 6 - 2 - 10 - 1 - 12);
+        assert_eq!(p.len(), 8);
         assert!(p.contains(&AcaoAtalho::Cifra));
         assert!(!p.contains(&AcaoAtalho::Apagar));
         assert!(!p.contains(&AcaoAtalho::Duracao(3)));
@@ -834,10 +920,94 @@ mod testes {
             Some(Destino::Duracao(4))
         );
         assert_eq!(m.rotear(Key::Num4, Modifiers::NONE, true), None);
-        // Nenhum atalho existente saiu do mapa: as 31 ações seguem com combinação própria.
+        // Nenhum atalho existente saiu do mapa: as ações seguem com combinação própria.
         let padrao = MapaAtalhos::padrao();
         assert_eq!(padrao.linhas().count(), ACOES.len());
         assert!(padrao.linhas().all(|(_, c)| c.is_some()));
+    }
+
+    #[test]
+    fn as_letras_a_g_e_o_zero_roteiam_para_a_entrada_de_notas_sem_tirar_nenhum_atalho() {
+        let m = MapaAtalhos::padrao();
+        let letras = [
+            (Key::A, 'A'),
+            (Key::B, 'B'),
+            (Key::C, 'C'),
+            (Key::D, 'D'),
+            (Key::E, 'E'),
+            (Key::F, 'F'),
+            (Key::G, 'G'),
+        ];
+        for (tecla, l) in letras {
+            assert_eq!(
+                m.rotear(tecla, Modifiers::NONE, true),
+                Some(Destino::InserirNota(l)),
+                "{tecla:?}"
+            );
+            // Shift+letra continua sendo "acrescentar ao acorde" (ticket 18), ainda pendente.
+            assert_eq!(
+                m.rotear(tecla, Modifiers::SHIFT, true),
+                Some(Destino::Pendente(AcaoAtalho::AcrescentarNota(l))),
+                "{tecla:?}"
+            );
+        }
+        assert_eq!(
+            m.rotear(Key::Num0, Modifiers::NONE, true),
+            Some(Destino::InserirPausa)
+        );
+        use MovimentoDeEntrada::{Abaixo, Acima, Anterior, Seguinte};
+        let movimentos = [
+            (Key::ArrowLeft, mods(true, false, false), Anterior),
+            (Key::ArrowRight, mods(true, false, false), Seguinte),
+            (Key::ArrowUp, mods(false, true, false), Acima),
+            (Key::ArrowDown, mods(false, true, false), Abaixo),
+        ];
+        for (tecla, m_, mov) in movimentos {
+            assert_eq!(m.rotear(tecla, m_, true), Some(Destino::Entrada(mov)));
+        }
+        // As setas de antes seguem iguais (navegação por notas e altura).
+        assert_eq!(
+            m.rotear(Key::ArrowLeft, Modifiers::NONE, true),
+            Some(Destino::Comando(Comando::Anterior))
+        );
+        assert_eq!(
+            m.rotear(Key::ArrowUp, Modifiers::NONE, true),
+            Some(Destino::Altura(
+                UnidadeDeAltura::Semitom,
+                SentidoDaAltura::Acima
+            ))
+        );
+        // Todas as ações novas são remapeáveis e as antigas ficam onde estavam.
+        let mut r = MapaAtalhos::padrao();
+        let novo = Atalho::ctrl(Key::J);
+        assert_eq!(r.remapear(AcaoAtalho::InserirNota('C'), novo), Ok(None));
+        assert_eq!(
+            r.rotear(Key::J, Modifiers::COMMAND, true),
+            Some(Destino::InserirNota('C'))
+        );
+        assert_eq!(r.rotear(Key::C, Modifiers::NONE, true), None);
+        assert!(
+            r.remapear(AcaoAtalho::InserirPausa, Atalho::tecla(Key::R))
+                .is_ok()
+        );
+        assert_eq!(
+            r.rotear(Key::R, Modifiers::NONE, true),
+            Some(Destino::InserirPausa)
+        );
+        // Uma combinação em uso continua sendo recusada, citando a outra ação.
+        assert!(matches!(
+            r.remapear(AcaoAtalho::EntradaAcima, Atalho::tecla(Key::Delete)),
+            Err(Recusa::EmUso {
+                por: AcaoAtalho::Apagar,
+                ..
+            })
+        ));
+        // Os 31 atalhos de antes do 17b continuam todos no mapa, com o mesmo padrão.
+        let antigos: Vec<AcaoAtalho> = ACOES[..31].to_vec();
+        for a in antigos {
+            assert_eq!(MapaAtalhos::padrao().atalho(a), Some(a.padrao()), "{a:?}");
+        }
+        assert_eq!(ACOES.len(), 43);
     }
 
     #[test]
@@ -865,8 +1035,12 @@ mod testes {
                 "{tecla:?} {mods:?}"
             );
         }
-        // Alt sem Shift, Shift sem Alt e Ctrl+Shift não são ações de altura.
-        assert_eq!(m.rotear(Key::ArrowUp, mods(false, true, false), true), None);
+        // Alt sem Shift, Shift sem Alt e Ctrl+Shift não são ações de altura (Alt+↑ é, desde o
+        // ticket 17b, a posição de entrada na voz de cima).
+        assert_eq!(
+            m.rotear(Key::ArrowUp, mods(false, true, false), true),
+            Some(Destino::Entrada(MovimentoDeEntrada::Acima))
+        );
         assert_eq!(m.rotear(Key::ArrowUp, mods(false, false, true), true), None);
         // Remapeada, a ação de altura segue a nova tecla.
         let mut m = MapaAtalhos::padrao();
@@ -963,23 +1137,24 @@ mod testes {
     fn conflito_com_a_tela_teclado_e_sinalizado_mas_aceito() {
         let mut m = MapaAtalhos::padrao();
         let r = m
-            .remapear(AcaoAtalho::Ponto, Atalho::tecla(Key::A))
+            .remapear(AcaoAtalho::Ponto, Atalho::tecla(Key::K))
             .expect("ok");
         let aviso = r.expect("aviso da tela Teclado");
-        assert_eq!(aviso.letra, "A");
+        assert_eq!(aviso.letra, "K");
         assert!(aviso.to_string().contains("tela Teclado"));
         // Com Ctrl não há conflito.
         assert_eq!(
             m.remapear(AcaoAtalho::Apagar, Atalho::ctrl(Key::A)),
             Ok(None)
         );
-        // O padrão já sinaliza Shift+A, D, E, F, G (a tela Teclado ignora o Shift).
+        // O padrão já sinaliza Shift+A, D, E, F, G (a tela Teclado ignora o Shift) e, desde o
+        // ticket 17b, as mesmas letras sem Shift (inserir nota).
         let letras: Vec<&str> = MapaAtalhos::padrao()
             .avisos_tela_teclado()
             .iter()
             .map(|(_, a)| a.letra)
             .collect();
-        assert_eq!(letras, ["A", "D", "E", "F", "G"]);
+        assert_eq!(letras, ["A", "D", "E", "F", "G", "A", "D", "E", "F", "G"]);
     }
 
     #[test]

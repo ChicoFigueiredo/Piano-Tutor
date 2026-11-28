@@ -289,6 +289,22 @@ impl Layout {
         }
     }
 
+    /// Coluna do compasso `c` (índice em [`CompassoLay::colunas`]) mais próxima de `x`, em sp
+    /// (ticket 17b: o clique no compasso vira posição de entrada por coluna, não por pixel).
+    pub fn coluna_mais_proxima(&self, c: usize, x: f32) -> Option<usize> {
+        let cl = self.compassos.get(c)?;
+        cl.colunas
+            .iter()
+            .enumerate()
+            .min_by(|(_, a), (_, b)| (a.1 - x).abs().total_cmp(&(b.1 - x).abs()))
+            .map(|(i, _)| i)
+    }
+
+    /// Centro x (sp) da coluna `coluna` do compasso `c`.
+    pub fn x_da_coluna(&self, c: usize, coluna: usize) -> Option<f32> {
+        self.compassos.get(c)?.colunas.get(coluna).map(|(_, x)| *x)
+    }
+
     /// Compasso sob o ponto `(x, y)` em sp, se houver.
     pub fn compasso_em(&self, x: f32, y: f32) -> Option<usize> {
         let s = self

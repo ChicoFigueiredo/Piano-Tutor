@@ -381,10 +381,23 @@ pub struct RespostaPartitura {
     pub compasso_clicado: Option<usize>,
     /// Alvo do clique: a nota sob o ponteiro (se o layout tiver identidades) ou o compasso.
     pub acerto: Option<Acerto>,
+    /// Compasso e coluna do layout mais próxima do clique (ticket 17b): a posição de entrada
+    /// de notas, em coluna e não em pixel.
+    pub coluna_clicada: Option<(usize, usize)>,
     /// A vista da partitura tem o foco do teclado neste quadro (só com `Marcas::selecao`).
     pub com_foco: bool,
     /// Identidade do widget da vista (para pedir foco por programa e em testes).
     pub id: Option<Id>,
+}
+
+/// Cursor de entrada de notas (ticket 17b): compasso e coluna do layout. Desenhado como uma
+/// barra em "I" (forma, além da cor); sobre uma pausa, mais larga e com preenchimento.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct MarcaEntrada {
+    pub compasso: usize,
+    pub coluna: usize,
+    /// Há uma pausa selecionada sob o cursor.
+    pub pausa: bool,
 }
 
 /// Seleção de nota e foco do teclado nesta vista (ticket 12). Sem ela a vista só mostra e
@@ -401,6 +414,8 @@ pub struct MarcaSelecao<'a> {
     pub alto_contraste: bool,
     /// Descrição em texto da nota selecionada (rótulo de acessibilidade).
     pub descricao: &'a str,
+    /// Cursor de entrada de notas, se houver (ticket 17b).
+    pub entrada: Option<MarcaEntrada>,
 }
 
 /// Compasso em seleção (ponto de partida) e destaque de execução.
@@ -605,6 +620,28 @@ pub fn desenhar_partitura(
                     ),
                 );
             }
+            // Cursor de entrada de notas (ticket 17b): barra em "I" na coluna do layout.
+            if let Some(en) = marcas.selecao.and_then(|s| s.entrada)
+                && (s.primeiro..s.fim).contains(&en.compasso)
+                && let Some(x) = layout.x_da_coluna(en.compasso, en.coluna)
+            {
+                let xp = origem.x + x * esp;
+                let (y0, y1) = (
+                    origem.y + (s.y_topo - 1.5) * esp,
+                    origem.y + (s.y_base + 1.5) * esp,
+                );
+                let (r, g, b) = (pal.selecao.r(), pal.selecao.g(), pal.selecao.b());
+                if en.pausa {
+                    let faixa =
+                        Rect::from_min_max(pos2(xp - 1.6 * esp, y0), pos2(xp + 1.6 * esp, y1));
+                    painter.rect_filled(faixa, 2.0, Color32::from_rgba_unmultiplied(r, g, b, 48));
+                }
+                let traco = Stroke::new(if en.pausa { 3.0 } else { 2.0 }, pal.selecao);
+                painter.line_segment([pos2(xp, y0), pos2(xp, y1)], traco);
+                let serifa = 0.6 * esp;
+                painter.line_segment([pos2(xp - serifa, y0), pos2(xp + serifa, y0)], traco);
+                painter.line_segment([pos2(xp - serifa, y1), pos2(xp + serifa, y1)], traco);
+            }
             // Anel da nota selecionada, sob as notas: forma além da cor (mais grosso com foco).
             if let Some((sis, c)) = cabeca_selecionada
                 && sis == i
@@ -659,6 +696,9 @@ pub fn desenhar_partitura(
         {
             let (x, y) = ((pos.x - origem.x) / esp, (pos.y - origem.y) / esp);
             resposta.compasso_clicado = layout.compasso_em(x, y);
+            resposta.coluna_clicada = resposta
+                .compasso_clicado
+                .and_then(|c| layout.coluna_mais_proxima(c, x).map(|k| (c, k)));
             resposta.acerto = layout.acertar(ponto(x, y), TOLERANCIA_NOTA_SP);
         }
     });

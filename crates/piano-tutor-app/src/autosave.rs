@@ -31,11 +31,18 @@
 //! - **Decisão registrada: recupera só o documento.** O histórico de desfazer não é gravado; ao
 //!   recuperar, [`Recuperado::aviso_undo`] traz o aviso explícito de que o desfazer foi perdido.
 //!   O documento recuperado difere do arquivo salvo e o chamador deve tratá-lo como modificado.
+//! - **Identidades das notas** (ticket 17b). Ao lado do rascunho vai `rascunho.ids`: a tabela de
+//!   `IdNota` do texto gravado (formato do núcleo e a linha opcional `derivada-de=<hash>` da
+//!   Versão de que o documento descende; ver [`crate::ids_lateral`]). Ao recuperar, o documento
+//!   reabre **com** a tabela, então as identidades (e o contador, que nunca volta) seguem as de
+//!   antes da queda. Tabela ausente, de outro texto (queda entre as duas gravações) ou ilegível
+//!   é recusada sem erro: o rascunho abre sem ela, e o motivo fica em [`Recuperado::ids`].
 //! - **Configuração.** [`ConfigAutosave`]: intervalo (padrão 30 s, mínimo 1 s) e pasta base
 //!   (padrão: ao lado da partitura; sempre `<id>.recuperacao` dentro dela). Desligar = não
 //!   chamar `tick`. A ligação à tela e às Preferências não faz parte deste ticket.
 
-use piano_tutor_core::documento::DocumentoAberto;
+use crate::ids_lateral::{self, IdsGravados, SituacaoDosIds, abrir_tolerante};
+use piano_tutor_core::documento::{DocumentoAberto, Formato};
 use sha2::{Digest, Sha256};
 use std::fmt;
 use std::fs;
@@ -48,6 +55,8 @@ pub const INTERVALO_PADRAO_MS: u64 = 30_000;
 pub const INTERVALO_MINIMO_MS: u64 = 1_000;
 /// Nome do arquivo de rascunho dentro da pasta de recuperação.
 pub const ARQUIVO_DO_RASCUNHO: &str = "rascunho.musicxml.rec";
+/// Arquivo lateral de identidades do rascunho (ticket 17b).
+pub const ARQUIVO_DAS_IDS: &str = "rascunho.ids";
 /// Tamanho máximo de um rascunho.
 pub const MAX_BYTES_DO_RASCUNHO: usize = 64 * 1024 * 1024;
 const MAGICA: &str = "PIANO-TUTOR-RASCUNHO 1";
@@ -127,6 +136,10 @@ pub struct Rascunho {
 pub struct Recuperado {
     pub documento: DocumentoAberto,
     pub aviso_undo: &'static str,
+    /// O que houve com o arquivo de identidades do rascunho (ticket 17b).
+    pub ids: SituacaoDosIds,
+    /// Versão de que as identidades do documento descendem, se o arquivo as trazia.
+    pub derivada_de: Option<String>,
 }
 
 /// O que um `tick` fez.
@@ -150,9 +163,36 @@ impl GravadorDeRascunho {
         self.pasta.join(ARQUIVO_DO_RASCUNHO)
     }
 
+    fn arquivo_das_ids(&self) -> PathBuf {
+        self.pasta.join(ARQUIVO_DAS_IDS)
+    }
+
     /// Grava `texto` atomicamente; devolve o hash gravado.
     pub fn gravar(&self, texto: &str, em: &str) -> Result<String, ErroAutosave> {
         self.gravar_com(texto, em, Queda::Nenhuma)
+    }
+
+    /// Grava `texto` e, ao lado, as identidades das notas dele (ticket 17b). O rascunho vai
+    /// primeiro (é o que importa); se só as identidades falharem o erro volta e a próxima
+    /// gravação tenta de novo. Sem `ids`, um arquivo de identidades antigo é apagado: ele não é
+    /// deste texto.
+    pub fn gravar_com_ids(
+        &self,
+        texto: &str,
+        ids: Option<&IdsGravados>,
+        em: &str,
+    ) -> Result<String, ErroAutosave> {
+        let hash = self.gravar_com(texto, em, Queda::Nenhuma)?;
+        match ids {
+            Some(i) => ids_lateral::gravar(&self.arquivo_das_ids(), i)
+                .map_err(|e| ErroAutosave::Disco(format!("identidades das notas: {e}")))?,
+            None => match fs::remove_file(self.arquivo_das_ids()) {
+                Ok(()) => {}
+                Err(e) if e.kind() == std::io::ErrorKind::NotFound => {}
+                Err(e) => return Err(disco(&e)),
+            },
+        }
+        Ok(hash)
     }
 
     pub(crate) fn gravar_com(
@@ -235,10 +275,12 @@ impl GravadorDeRascunho {
     }
 
     fn apagar(&self) -> Result<(), ErroAutosave> {
-        match fs::remove_file(self.arquivo()) {
-            Ok(()) => {}
-            Err(e) if e.kind() == std::io::ErrorKind::NotFound => {}
-            Err(e) => return Err(disco(&e)),
+        for arquivo in [self.arquivo(), self.arquivo_das_ids()] {
+            match fs::remove_file(arquivo) {
+                Ok(()) => {}
+                Err(e) if e.kind() == std::io::ErrorKind::NotFound => {}
+                Err(e) => return Err(disco(&e)),
+            }
         }
         self.limpar_temporarios();
         Ok(())
@@ -326,8 +368,12 @@ impl Autosave {
     /// uma Versão ou descartar.
     pub fn recuperar(&mut self, nome: &str) -> Result<Recuperado, ErroAutosave> {
         let r = self.gravador.ler().ok_or(ErroAutosave::SemRascunho)?;
-        let documento = DocumentoAberto::abrir_texto(nome, &r.texto)
-            .map_err(|e| ErroAutosave::NaoAbre(e.to_string()))?;
+        // As identidades do rascunho voltam com ele; sem elas (ou de outro texto) abre sem.
+        let lateral = ids_lateral::ler(&self.gravador.arquivo_das_ids());
+        let (documento, ids, derivada_de) = abrir_tolerante(lateral, |t| {
+            DocumentoAberto::abrir_bytes_com_ids(nome, r.texto.as_bytes(), Formato::MusicXml, t)
+        })
+        .map_err(|e| ErroAutosave::NaoAbre(e.to_string()))?;
         self.decisao_pendente = false;
         self.recuperado = true;
         self.ultimo_hash = Some(r.hash);
@@ -335,6 +381,8 @@ impl Autosave {
         Ok(Recuperado {
             documento,
             aviso_undo: AVISO_UNDO_PERDIDO,
+            ids,
+            derivada_de,
         })
     }
 
@@ -384,10 +432,33 @@ impl Autosave {
         self.tick_com(agora_ms, documento, em, Queda::Nenhuma)
     }
 
+    /// Como [`Self::tick`], informando a Versão de que as identidades do documento descendem
+    /// (vai na linha `derivada-de` do arquivo de identidades; ticket 17b).
+    pub fn tick_com_linhagem(
+        &mut self,
+        agora_ms: u64,
+        documento: &DocumentoAberto,
+        derivada_de: Option<&str>,
+        em: &str,
+    ) -> Result<ResultadoDoTick, ErroAutosave> {
+        self.tick_completo(agora_ms, documento, derivada_de, em, Queda::Nenhuma)
+    }
+
     pub(crate) fn tick_com(
         &mut self,
         agora_ms: u64,
         documento: &DocumentoAberto,
+        em: &str,
+        queda: Queda,
+    ) -> Result<ResultadoDoTick, ErroAutosave> {
+        self.tick_completo(agora_ms, documento, None, em, queda)
+    }
+
+    fn tick_completo(
+        &mut self,
+        agora_ms: u64,
+        documento: &DocumentoAberto,
+        derivada_de: Option<&str>,
         em: &str,
         queda: Queda,
     ) -> Result<ResultadoDoTick, ErroAutosave> {
@@ -407,6 +478,10 @@ impl Autosave {
             return Ok(ResultadoDoTick::SemMudanca);
         }
         let hash = self.gravador.gravar_com(&texto, em, queda)?;
+        // As identidades do texto gravado vão ao lado (ticket 17b).
+        let ids = IdsGravados::nova(documento.tabela_ids_para(&texto), derivada_de);
+        ids_lateral::gravar(&self.gravador.arquivo_das_ids(), &ids)
+            .map_err(|e| ErroAutosave::Disco(format!("identidades das notas: {e}")))?;
         self.ultimo_hash = Some(hash);
         Ok(ResultadoDoTick::Gravado)
     }
