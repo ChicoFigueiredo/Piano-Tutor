@@ -38,8 +38,9 @@
 //!   de reabrir o texto exportado (conferido em teste no corpus).
 //! - **Identidade.** A nota editada mantém o `IdNota`. Pausas criadas ganham `IdNota` novo
 //!   (monotônico, nunca reutilizado); pausas consumidas deixam de existir. Pausa só parcialmente
-//!   consumida é substituída por pausas novas com o resto. A tabela de ids em arquivo lateral só
-//!   será refeita na edição estrutural (ticket 17).
+//!   consumida é substituída por pausas novas com o resto. O arquivo lateral de ids (ticket 17,
+//!   [`DocumentoAberto::tabela_ids_para`]) guarda quem é quem para a releitura, e a conferência da
+//!   exportação confere as identidades por inteiro.
 //!
 //! # Fora de escopo
 //!
@@ -76,26 +77,26 @@ pub struct MudancaDeDuracao {
 }
 
 /// Resultado do cálculo, antes de trocar o compasso.
-enum Planejado {
+pub(super) enum Planejado {
     /// Nada a mudar (a nota já estava assim).
     SemMudanca(Box<ResultadoDaEdicao>),
     Muda(Box<Aplicacao>),
 }
 
 /// O compasso novo, completo, pronto para trocar.
-struct Aplicacao {
-    pd: usize,
-    ci: usize,
-    pt: usize,
-    comp: Compasso,
-    tocar: partitura::Compasso,
-    ids: Vec<IdNota>,
+pub(super) struct Aplicacao {
+    pub(super) pd: usize,
+    pub(super) ci: usize,
+    pub(super) pt: usize,
+    pub(super) comp: Compasso,
+    pub(super) tocar: partitura::Compasso,
+    pub(super) ids: Vec<IdNota>,
     /// Quantos ids novos foram usados (o contador anda tantos).
-    novos: u64,
-    resultado: Box<ResultadoDaEdicao>,
+    pub(super) novos: u64,
+    pub(super) resultado: Box<ResultadoDaEdicao>,
 }
 
-fn inconsistente(m: &str) -> ErroDeEdicao {
+pub(super) fn inconsistente(m: &str) -> ErroDeEdicao {
     ErroDeEdicao::Documento(ErroDocumento::FaixaInconsistente(m.to_owned()))
 }
 
@@ -109,6 +110,12 @@ impl DocumentoAberto {
             Planejado::SemMudanca(r) => return Ok(*r),
             Planejado::Muda(ap) => *ap,
         };
+        Ok(self.trocar_compasso(ap))
+    }
+
+    /// Tudo certo: troca o compasso (documento, índice, modelo de tocar e identidades) pelo
+    /// planejado. Só aqui o documento muda, e a troca não falha.
+    pub(super) fn trocar_compasso(&mut self, ap: Aplicacao) -> ResultadoDaEdicao {
         let Aplicacao {
             pd,
             ci,
@@ -119,12 +126,6 @@ impl DocumentoAberto {
             novos,
             mut resultado,
         } = ap;
-        let estrutural = novos > 0
-            || resultado
-                .duracao
-                .as_ref()
-                .is_some_and(|m| !m.pausas_removidas.is_empty());
-        // Tudo certo: troca o compasso (documento, índice, modelo de tocar e identidades).
         let antigas: Vec<IdNota> = self.documento.partes[pd].compassos[ci]
             .notas
             .iter()
@@ -136,21 +137,23 @@ impl DocumentoAberto {
         for (i, n) in comp.notas.iter().enumerate() {
             self.documento.indice.insert(n.id, (pd, ci, i));
         }
+        let numero = comp.numero.clone();
         self.documento.partes[pd].compassos[ci] = comp;
         self.documento.ids.proximo += novos;
-        self.estrutura_editada |= estrutural;
         self.partitura.partes[pt].compassos[ci] = tocar;
         self.ids.definir_compasso(pt, ci, ids);
-        resultado
-            .compassos_afetados
-            .extend(self.documento.posicao_da_nota(resultado.nota));
-        Ok(*resultado)
+        resultado.compassos_afetados.push(PosCompasso {
+            parte: self.documento.partes[pd].id.clone(),
+            indice: ci,
+            numero,
+        });
+        *resultado
     }
 }
 
 /// Valor escrito da nota (figura e pontos) como o arquivo diz; se não houver `<type>`
 /// reconhecível, deduz da duração (desfazendo a quiáltera).
-fn valor_atual(
+pub(super) fn valor_atual(
     no: &No,
     base: &str,
     duracao: Fracao,
@@ -172,7 +175,7 @@ fn valor_atual(
 }
 
 /// Duração real: nominal com pontos, vezes `normais/reais` da quiáltera.
-fn duracao_real(figura: Figura, pontos: u8, tuplo: Option<(u32, u32)>) -> Fracao {
+pub(super) fn duracao_real(figura: Figura, pontos: u8, tuplo: Option<(u32, u32)>) -> Fracao {
     let nominal = figura.com_pontos(pontos);
     match tuplo {
         Some((a, n)) => nominal.vezes(i64::from(n), i64::from(a)),
@@ -181,7 +184,7 @@ fn duracao_real(figura: Figura, pontos: u8, tuplo: Option<(u32, u32)>) -> Fracao
 }
 
 /// Unidades de `1/divisions`; erro explícito se não for inteiro (nunca arredonda).
-fn unidades(valor: Fracao, divisions: i64) -> Result<i64, ErroDeEdicao> {
+pub(super) fn unidades(valor: Fracao, divisions: i64) -> Result<i64, ErroDeEdicao> {
     para_divisions(valor, divisions).map_err(|e| match e {
         ErroDocumento::DuracaoNaoRepresentavel {
             valor,
@@ -199,7 +202,7 @@ fn unidades(valor: Fracao, divisions: i64) -> Result<i64, ErroDeEdicao> {
 /// Parte `real` em figuras (com no máximo um ponto), as maiores primeiro. As figuras são
 /// nominais (a quiáltera, se houver, é aplicada por quem escreve a pausa). `None` se o espaço não
 /// se escreve com figuras.
-fn decompor(real: Fracao, tuplo: Option<(u32, u32)>) -> Option<Vec<(Figura, u8)>> {
+pub(super) fn decompor(real: Fracao, tuplo: Option<(u32, u32)>) -> Option<Vec<(Figura, u8)>> {
     let mut resto = match tuplo {
         Some((a, n)) => real.vezes(i64::from(a), i64::from(n)),
         None => real,
@@ -225,7 +228,7 @@ fn decompor(real: Fracao, tuplo: Option<(u32, u32)>) -> Option<Vec<(Figura, u8)>
     Some(v)
 }
 
-fn texto_da_peca(p: &Peca, base: &str) -> String {
+pub(super) fn texto_da_peca(p: &Peca, base: &str) -> String {
     match p {
         Peca::Txt(Texto::Original(r)) => base[r.clone()].to_owned(),
         Peca::Txt(Texto::Novo(s)) => s.clone(),
@@ -235,7 +238,7 @@ fn texto_da_peca(p: &Peca, base: &str) -> String {
 
 /// `<note>` novo, já decomposto em peças (para ser editável depois), com a formatação do `modelo`
 /// (o espaço entre os filhos e o fecho).
-fn montar_no(modelo: &No, base: &str, filhos: Vec<No>) -> No {
+pub(super) fn montar_no(modelo: &No, base: &str, filhos: Vec<No>) -> No {
     let espaco = modelo.pecas.get(1).map(|p| texto_da_peca(p, base));
     let fecho = modelo
         .pecas
@@ -256,7 +259,7 @@ fn montar_no(modelo: &No, base: &str, filhos: Vec<No>) -> No {
 
 /// Pausa nova: filhos na ordem do esquema (`rest`, `duration`, `voice`, `type`, `dot`...,
 /// `time-modification`, `staff`), copiando voz, pauta e quiáltera da nota `modelo`.
-fn no_de_pausa(
+pub(super) fn no_de_pausa(
     modelo: &No,
     base: &str,
     figura: Figura,
@@ -284,14 +287,14 @@ fn no_de_pausa(
     montar_no(modelo, base, filhos)
 }
 
-fn no_da_nota(comp: &Compasso, ordinal: usize) -> Result<&No, ErroDeEdicao> {
+pub(super) fn no_da_nota(comp: &Compasso, ordinal: usize) -> Result<&No, ErroDeEdicao> {
     match comp.no.pecas.get(comp.notas[ordinal].idx) {
         Some(Peca::Elem(e)) => Ok(e),
         _ => Err(inconsistente("peça da nota")),
     }
 }
 
-fn no_da_nota_mut(comp: &mut Compasso, ordinal: usize) -> Result<&mut No, ErroDeEdicao> {
+pub(super) fn no_da_nota_mut(comp: &mut Compasso, ordinal: usize) -> Result<&mut No, ErroDeEdicao> {
     let idx = comp.notas[ordinal].idx;
     match comp.no.pecas.get_mut(idx) {
         Some(Peca::Elem(e)) => Ok(e),
@@ -300,7 +303,12 @@ fn no_da_nota_mut(comp: &mut Compasso, ordinal: usize) -> Result<&mut No, ErroDe
 }
 
 /// Põe o novo `<note>` logo depois da nota `ordinal_ref`; devolve o ordinal da nova.
-fn inserir_nota_apos(comp: &mut Compasso, ordinal_ref: usize, no: No, nota: Nota) -> usize {
+pub(super) fn inserir_nota_apos(
+    comp: &mut Compasso,
+    ordinal_ref: usize,
+    no: No,
+    nota: Nota,
+) -> usize {
     let idx_ref = comp.notas[ordinal_ref].idx;
     let espaco = match comp.no.pecas.get(idx_ref.wrapping_sub(1)) {
         Some(Peca::Txt(t)) => t.clone(),
@@ -319,8 +327,34 @@ fn inserir_nota_apos(comp: &mut Compasso, ordinal_ref: usize, no: No, nota: Nota
     ordinal_ref + 1
 }
 
+/// Põe o novo `<note>` logo **antes** da nota `ordinal_ref` (que passa a ter o ordinal seguinte);
+/// devolve o ordinal da nova, que é o `ordinal_ref` de antes.
+pub(super) fn inserir_nota_antes(
+    comp: &mut Compasso,
+    ordinal_ref: usize,
+    no: No,
+    nota: Nota,
+) -> usize {
+    let idx_ref = comp.notas[ordinal_ref].idx;
+    let espaco = match comp.no.pecas.get(idx_ref.wrapping_sub(1)) {
+        Some(Peca::Txt(t)) => t.clone(),
+        _ => Texto::Novo(String::new()),
+    };
+    comp.no.pecas.insert(idx_ref, Peca::Elem(no));
+    comp.no.pecas.insert(idx_ref + 1, Peca::Txt(espaco));
+    for n in &mut comp.notas {
+        if n.idx >= idx_ref {
+            n.idx += 2;
+        }
+    }
+    let mut nota = nota;
+    nota.idx = idx_ref;
+    comp.notas.insert(ordinal_ref, nota);
+    ordinal_ref
+}
+
 /// Tira o `<note>` (com o espaço que o precedia).
-fn remover_nota(comp: &mut Compasso, ordinal: usize) {
+pub(super) fn remover_nota(comp: &mut Compasso, ordinal: usize) {
     let idx = comp.notas[ordinal].idx;
     comp.no.pecas.remove(idx);
     comp.no.pecas.remove(idx - 1);
@@ -333,7 +367,7 @@ fn remover_nota(comp: &mut Compasso, ordinal: usize) {
 }
 
 /// Há `<backup>` ou `<forward>` entre as peças `de` e `ate` (exclusive)?
-fn ha_salto_entre(comp: &Compasso, de: usize, ate: usize) -> bool {
+pub(super) fn ha_salto_entre(comp: &Compasso, de: usize, ate: usize) -> bool {
     comp.no.pecas[de + 1..ate]
         .iter()
         .any(|p| matches!(p, Peca::Elem(e) if e.nome == "backup" || e.nome == "forward"))
@@ -381,7 +415,7 @@ fn total_da_voz(comp: &Compasso, voz: &str, divisions: i64, base: &str) -> Fraca
 }
 
 /// Grupo de notas que soam juntas (acorde) em torno de `ordinal`: primeira e última.
-fn grupo_do_acorde(comp: &Compasso, ordinal: usize) -> (usize, usize) {
+pub(super) fn grupo_do_acorde(comp: &Compasso, ordinal: usize) -> (usize, usize) {
     let mut p0 = ordinal;
     while p0 > 0 && comp.notas[p0].acorde {
         p0 -= 1;
@@ -394,7 +428,7 @@ fn grupo_do_acorde(comp: &Compasso, ordinal: usize) -> (usize, usize) {
 }
 
 /// Vigas de cada nota da voz formam grupos fechados, só em nota com bandeirola e nunca em pausa?
-fn vigas_consistentes(comp: &partitura::Compasso, pauta: u8, voz: u8) -> bool {
+pub(super) fn vigas_consistentes(comp: &partitura::Compasso, pauta: u8, voz: u8) -> bool {
     let notas: Vec<_> = comp
         .notas
         .iter()
@@ -442,7 +476,7 @@ fn vigas_consistentes(comp: &partitura::Compasso, pauta: u8, voz: u8) -> bool {
     true
 }
 
-fn texto_da_viga(e: EstadoViga) -> &'static str {
+pub(super) fn texto_da_viga(e: EstadoViga) -> &'static str {
     match e {
         EstadoViga::Inicio => "begin",
         EstadoViga::Continua => "continue",
@@ -453,7 +487,7 @@ fn texto_da_viga(e: EstadoViga) -> &'static str {
 }
 
 /// O modelo de tocar do compasso, relido do texto que o compasso do documento produziria.
-fn derivar(
+pub(super) fn derivar(
     comp: &Compasso,
     base: &str,
     divisions: i64,
@@ -471,8 +505,70 @@ fn derivar(
     Ok(tocar)
 }
 
+/// Relê o modelo de tocar do compasso editado e confere as vigas da voz `(pauta, voz)` que o
+/// comando mexeu: arquivo sem nenhum `<beam>` ganha as vigas automáticas por pulso (como a
+/// leitura); em arquivo com vigas, se a voz era consistente e deixou de ser (grupo aberto, pausa
+/// vigada, viga demais para a figura), as vigas da voz são **refeitas** (grupos por pulso, as
+/// mesmas regras da leitura) e escritas no texto, com o aviso [`AvisoDeEdicao::VigasRefeitas`].
+/// Vigas que já eram inconsistentes antes ficam como estão.
+pub(super) fn derivar_e_vigar(
+    comp: &mut Compasso,
+    base: &str,
+    divisions: i64,
+    info: &partitura::InfoCompasso,
+    tocar0: &partitura::Compasso,
+    (pauta, voz_n): (u8, u8),
+    pos: &PosCompasso,
+) -> Result<(partitura::Compasso, Vec<AvisoDeEdicao>), ErroDeEdicao> {
+    let pulso = info.forma.duracao_do_pulso();
+    // Arquivo sem nenhum `<beam>`: a leitura vigia sozinha por pulso (o modelo de tocar já traz
+    // essas vigas automáticas, então a decisão olha o texto, não o modelo).
+    let sem_vigas_no_arquivo = !base.contains("<beam");
+    let mut tocar = derivar(comp, base, divisions, info)?;
+    let mut avisos: Vec<AvisoDeEdicao> = Vec::new();
+    if sem_vigas_no_arquivo {
+        vigar_tudo(&mut tocar, pulso);
+    } else if vigas_consistentes(tocar0, pauta, voz_n) && !vigas_consistentes(&tocar, pauta, voz_n)
+    {
+        for n in &mut tocar.notas {
+            if n.pauta == pauta && n.voz == voz_n && !n.adorno {
+                n.vigas.clear();
+            }
+        }
+        if pulso.numerador() > 0 {
+            partitura::vigar_voz(&mut tocar, pulso, pauta, voz_n);
+        }
+        for i in 0..comp.notas.len() {
+            let (np, nv, ad) = (
+                tocar.notas[i].pauta,
+                tocar.notas[i].voz,
+                tocar.notas[i].adorno,
+            );
+            if np != pauta || nv != voz_n || ad {
+                continue;
+            }
+            let estados = tocar.notas[i].vigas.clone();
+            let no = no_da_nota_mut(comp, i)?;
+            while no.remover_filho("beam") {}
+            for (nivel, e) in estados.iter().enumerate() {
+                let t = format!(
+                    "<beam number=\"{}\">{}</beam>",
+                    nivel + 1,
+                    texto_da_viga(*e)
+                );
+                no.inserir_em_ordem(No::novo("beam", t), &posto_nota)?;
+            }
+        }
+        tocar = derivar(comp, base, divisions, info)?;
+        avisos.push(AvisoDeEdicao::VigasRefeitas {
+            compasso: pos.clone(),
+        });
+    }
+    Ok((tocar, avisos))
+}
+
 /// Vigas automáticas por pulso em todas as vozes (só nos arquivos sem nenhuma viga).
-fn vigar_tudo(tocar: &mut partitura::Compasso, pulso: Fracao) {
+pub(super) fn vigar_tudo(tocar: &mut partitura::Compasso, pulso: Fracao) {
     if pulso.numerador() <= 0 {
         return;
     }
@@ -499,7 +595,9 @@ fn planejar(
     partitura: &Partitura,
     comando: &ComandoDeEdicao,
 ) -> Result<Planejado, ErroDeEdicao> {
-    let id = comando.nota();
+    let id = comando
+        .nota()
+        .ok_or_else(|| inconsistente("comando de duração sem nota"))?;
     let &(pd, ci, ord) = doc
         .indice
         .get(&id)
@@ -600,6 +698,7 @@ fn planejar(
             pausas_criadas: Vec::new(),
             pausas_removidas: Vec::new(),
         }),
+        estrutura: None,
     };
     if figura == fig_antes && pontos == pontos_antes && d_novo == d_antes {
         return Ok(Planejado::SemMudanca(Box::new(resultado)));
@@ -779,53 +878,16 @@ fn planejar(
     comp.sujo = true;
 
     // --- Modelo de tocar e vigas -----------------------------------------------------------------
-    let pulso = info.forma.duracao_do_pulso();
-    // Arquivo sem nenhum `<beam>`: a leitura vigia sozinha por pulso (o modelo de tocar já traz
-    // essas vigas automáticas, então a decisão olha o texto, não o modelo).
-    let sem_vigas_no_arquivo = !base.contains("<beam");
-    let mut tocar = derivar(&comp, base, divisions, info)?;
-    let mut avisos: Vec<AvisoDeEdicao> = Vec::new();
-    if sem_vigas_no_arquivo {
-        vigar_tudo(&mut tocar, pulso);
-    } else {
-        let (pauta, voz_n) = (tocar0.notas[p0].pauta, tocar0.notas[p0].voz);
-        if vigas_consistentes(tocar0, pauta, voz_n) && !vigas_consistentes(&tocar, pauta, voz_n) {
-            // Refaz as vigas da voz (grupos por pulso) e escreve-as no texto.
-            for n in &mut tocar.notas {
-                if n.pauta == pauta && n.voz == voz_n && !n.adorno {
-                    n.vigas.clear();
-                }
-            }
-            if pulso.numerador() > 0 {
-                partitura::vigar_voz(&mut tocar, pulso, pauta, voz_n);
-            }
-            for i in 0..comp.notas.len() {
-                let (np, nv, ad) = (
-                    tocar.notas[i].pauta,
-                    tocar.notas[i].voz,
-                    tocar.notas[i].adorno,
-                );
-                if np != pauta || nv != voz_n || ad {
-                    continue;
-                }
-                let estados = tocar.notas[i].vigas.clone();
-                let no = no_da_nota_mut(&mut comp, i)?;
-                while no.remover_filho("beam") {}
-                for (nivel, e) in estados.iter().enumerate() {
-                    let t = format!(
-                        "<beam number=\"{}\">{}</beam>",
-                        nivel + 1,
-                        texto_da_viga(*e)
-                    );
-                    no.inserir_em_ordem(No::novo("beam", t), &posto_nota)?;
-                }
-            }
-            tocar = derivar(&comp, base, divisions, info)?;
-            avisos.push(AvisoDeEdicao::VigasRefeitas {
-                compasso: pos.clone(),
-            });
-        }
-    }
+    let (pauta, voz_n) = (tocar0.notas[p0].pauta, tocar0.notas[p0].voz);
+    let (tocar, avisos) = derivar_e_vigar(
+        &mut comp,
+        base,
+        divisions,
+        info,
+        tocar0,
+        (pauta, voz_n),
+        &pos,
+    )?;
 
     // --- Avisos e resultado ----------------------------------------------------------------------
     for (pausa, figura, pontos) in &criadas {

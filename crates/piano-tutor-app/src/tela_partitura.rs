@@ -761,6 +761,55 @@ impl EstadoPartitura {
         }
     }
 
+    /// Remove a nota selecionada pelo comando tipado do serviço de documento (ticket 17): ela
+    /// vira pausa de mesma duração e posição. Letra, dedilhado e ornamento que saírem com ela
+    /// aparecem na mensagem (nunca em silêncio). Recusa, com mensagem, sem nota selecionada e
+    /// durante a reprodução ou a prática.
+    pub fn remover_nota_selecionada(&mut self) -> Option<ResultadoDaEdicao> {
+        let r = self.aplicar_remocao();
+        self.conferir_originais();
+        r
+    }
+
+    fn aplicar_remocao(&mut self) -> Option<ResultadoDaEdicao> {
+        self.documento.as_ref()?;
+        if self.recusar_em_leitura() {
+            return None;
+        }
+        let Some(nota) = self.selecao.nota() else {
+            self.ultima_edicao =
+                Some("Selecione uma nota (clique nela ou use as setas) antes de apagar.".into());
+            return None;
+        };
+        if self.tocando() || self.praticando() {
+            self.ultima_edicao =
+                Some("Pare a reprodução ou a prática antes de editar a partitura.".into());
+            return None;
+        }
+        let d = self.documento.as_mut()?;
+        match d.aplicar(ComandoDeEdicao::RemoverNota { nota }) {
+            Ok(r) => {
+                if r.alterou {
+                    self.selecao.reancorar(&d.leitura);
+                    self.selecao.pedir_rolagem();
+                    self.pratica = None;
+                    self.visual.invalidar();
+                }
+                let mut texto = "Nota removida: virou pausa.".to_owned();
+                for a in &r.avisos {
+                    texto.push(' ');
+                    texto.push_str(&a.texto());
+                }
+                self.ultima_edicao = Some(texto);
+                Some(r)
+            }
+            Err(e) => {
+                self.ultima_edicao = Some(e.to_string());
+                None
+            }
+        }
+    }
+
     /// Desfaz a última edição pelo histórico do serviço de documento (ticket 15) e devolve a
     /// seleção à nota do gesto desfeito (a mesma identidade). Recusa, com mensagem, durante a
     /// reprodução ou a prática. `true` se desfez.
@@ -2382,6 +2431,9 @@ pub fn desenhar_corpo(
                         }
                         Destino::Ponto => {
                             e.alternar_ponto();
+                        }
+                        Destino::Apagar => {
+                            e.remover_nota_selecionada();
                         }
                         Destino::Pendente(a) => e.avisar_pendente(a),
                     }
@@ -4098,12 +4150,61 @@ mod testes {
         partitura_em_foco(&ctx, &mut e, &mut som);
         apertar(&ctx, &mut e, &mut som, Key::ArrowRight, Modifiers::NONE);
         let sel = e.nota_selecionada();
-        apertar(&ctx, &mut e, &mut som, Key::Delete, Modifiers::NONE);
+        apertar(&ctx, &mut e, &mut som, Key::K, ctrl_shift());
         let aviso = e.aviso_de_atalho().expect("aviso de pendente");
-        assert!(aviso.contains("Apagar"), "{aviso}");
+        assert!(aviso.contains("Cifra"), "{aviso}");
         assert!(aviso.contains("ainda não tem comando"), "{aviso}");
         assert_eq!(e.nota_selecionada(), sel);
         assert!(!e.documento.as_ref().expect("doc").editado());
+    }
+
+    // --- Ticket 17: Delete remove a nota selecionada (vira pausa) ------------------------------
+
+    #[test]
+    fn delete_remove_a_nota_selecionada_que_vira_pausa_e_ctrl_z_devolve_byte_a_byte() {
+        let (mut som, ctx) = banco();
+        let mut e = ode();
+        partitura_em_foco(&ctx, &mut e, &mut som);
+        // Sem nota selecionada: avisa e nada muda.
+        apertar(&ctx, &mut e, &mut som, Key::Delete, Modifiers::NONE);
+        assert!(
+            e.ultima_edicao()
+                .expect("msg")
+                .contains("Selecione uma nota"),
+            "{:?}",
+            e.ultima_edicao()
+        );
+        assert!(!e.documento.as_ref().expect("doc").editado());
+        for _ in 0..3 {
+            apertar(&ctx, &mut e, &mut som, Key::ArrowRight, Modifiers::NONE);
+        }
+        let original = e.documento.as_ref().expect("doc").xml().to_owned();
+        let notas_antes = e.documento.as_ref().expect("doc").partitura().partes[0]
+            .compassos
+            .iter()
+            .map(|c| c.notas.len())
+            .collect::<Vec<_>>();
+        apertar(&ctx, &mut e, &mut som, Key::Delete, Modifiers::NONE);
+        let d = e.documento.as_ref().expect("doc");
+        assert!(d.editado() && d.modificado());
+        assert_eq!(d.compassos_editados().len(), 1);
+        let notas_depois = d.partitura().partes[0]
+            .compassos
+            .iter()
+            .map(|c| c.notas.len())
+            .collect::<Vec<_>>();
+        assert_eq!(notas_depois, notas_antes, "a nota vira pausa, não some");
+        assert!(d.exportado().expect("ok").contains("<rest/>"));
+        assert!(
+            e.ultima_edicao().expect("msg").starts_with("Nota removida"),
+            "{:?}",
+            e.ultima_edicao()
+        );
+        // Ctrl+Z devolve o arquivo original, byte a byte.
+        apertar(&ctx, &mut e, &mut som, Key::Z, Modifiers::COMMAND);
+        let d = e.documento.as_ref().expect("doc");
+        assert_eq!(d.exportado().expect("ok"), original);
+        assert!(!d.editado() && !d.modificado());
     }
 
     // --- Ticket 14: mudar a altura da nota selecionada pelas setas ---------------------------

@@ -24,6 +24,10 @@
 //!   [`Destino::Duracao`] e o ponto ([`AcaoAtalho::Ponto`]) vira [`Destino::Ponto`]; a tela monta
 //!   o comando tipado de duração do serviço de documento. A `9` (longa) chega ao serviço, que a
 //!   recusa com o motivo (o modelo de partitura não tem a longa). Remapear continua valendo.
+//! - **Apagar** (ticket 17): `Delete` ([`AcaoAtalho::Apagar`]) vira [`Destino::Apagar`]; a tela
+//!   monta o comando tipado de remover do serviço de documento (a nota vira pausa de mesma
+//!   duração). Inserir nota ou pausa por teclado ainda depende do cursor de entrada de notas:
+//!   o comando existe no serviço (posição pela coluna do layout), sem atalho novo no mapa.
 //! - **Pendentes**: ação sem comando ainda ([`AcaoAtalho::pendente`]) aparece em
 //!   [`MapaAtalhos::pendentes`]; ao apertar a tecla, a tela avisa em vez de calar.
 //! - **Persistência**: texto `id=Ctrl+Shift+Z` por linha (seção `tela.atalhos` do perfil,
@@ -255,12 +259,21 @@ impl AcaoAtalho {
         }
     }
 
+    /// Ação de **apagar** (ticket 17): remove a nota selecionada (ela vira pausa).
+    pub fn apagar(self) -> Option<Destino> {
+        match self {
+            Self::Apagar => Some(Destino::Apagar),
+            _ => None,
+        }
+    }
+
     /// Ação com atalho mas ainda sem comando nenhum (nem de navegação, nem de edição).
     pub fn pendente(self) -> bool {
         self.comando().is_none()
             && self.altura().is_none()
             && self.historico().is_none()
             && self.duracao().is_none()
+            && self.apagar().is_none()
     }
 
     /// Comando de navegação ligado à ação; `None` = não é navegação (edição ou ainda pendente).
@@ -438,6 +451,8 @@ pub enum Destino {
     Duracao(u8),
     /// Alternar o ponto de aumento da nota selecionada (ticket 16).
     Ponto,
+    /// Remover a nota selecionada, que vira pausa de mesma duração (ticket 17).
+    Apagar,
     /// Ação do perfil sem comando ainda: a tela avisa.
     Pendente(AcaoAtalho),
 }
@@ -574,6 +589,7 @@ impl MapaAtalhos {
             (None, None) => acao
                 .historico()
                 .or_else(|| acao.duracao())
+                .or_else(|| acao.apagar())
                 .unwrap_or(Destino::Pendente(acao)),
         })
     }
@@ -752,12 +768,11 @@ mod testes {
     fn acoes_sem_comando_ficam_registradas_como_pendentes_e_roteiam_como_pendente() {
         let m = MapaAtalhos::padrao();
         let p = m.pendentes();
-        // Navegação (4), altura (6), histórico (2) e duração (9 teclas e o ponto) têm comando; o
-        // resto segue pendente.
-        assert_eq!(p.len(), ACOES.len() - 4 - 6 - 2 - 10);
-        for a in [AcaoAtalho::Apagar, AcaoAtalho::Cifra] {
-            assert!(p.contains(&a), "{a:?}");
-        }
+        // Navegação (4), altura (6), histórico (2), duração (9 teclas e o ponto) e apagar (1)
+        // têm comando; o resto segue pendente.
+        assert_eq!(p.len(), ACOES.len() - 4 - 6 - 2 - 10 - 1);
+        assert!(p.contains(&AcaoAtalho::Cifra));
+        assert!(!p.contains(&AcaoAtalho::Apagar));
         assert!(!p.contains(&AcaoAtalho::Duracao(3)));
         assert!(!p.contains(&AcaoAtalho::Ponto));
         assert!(!p.contains(&AcaoAtalho::NotaSeguinte));
@@ -774,7 +789,11 @@ mod testes {
         );
         assert_eq!(
             m.rotear(Key::Delete, Modifiers::NONE, true),
-            Some(Destino::Pendente(AcaoAtalho::Apagar))
+            Some(Destino::Apagar)
+        );
+        assert_eq!(
+            m.rotear(Key::K, mods(true, false, true), true),
+            Some(Destino::Pendente(AcaoAtalho::Cifra))
         );
     }
 

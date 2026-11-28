@@ -59,7 +59,7 @@ fn acidente_de(alter: i8) -> &'static str {
     }
 }
 
-fn validar(a: Altura) -> Result<(), ErroDocumento> {
+pub(super) fn validar(a: Altura) -> Result<(), ErroDocumento> {
     if !('A'..='G').contains(&a.passo) {
         return Err(ErroDocumento::AlturaInvalida(format!(
             "passo '{}'",

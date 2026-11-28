@@ -175,7 +175,7 @@ fn editar_e_conferir(
     d.conferir_exportacao(&saida).expect("conferência");
 
     // A nota continua sendo a mesma identidade, agora na altura nova.
-    assert_eq!(r.nota, cmd.nota());
+    assert_eq!(r.nota, cmd.nota().expect("comando de nota"));
     assert_eq!(
         d.documento().nota(r.nota).and_then(|n| n.altura),
         Some(r.depois)

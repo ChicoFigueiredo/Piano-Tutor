@@ -23,13 +23,14 @@ mod exportar;
 mod grafia;
 mod historico;
 mod ids;
+mod inserir_remover;
 mod leitura;
 pub mod servico;
 mod texto;
 
 pub use comando::{
-    AvisoDeEdicao, ComandoDeEdicao, ErroDeEdicao, LimitesDeAltura, ResultadoDaEdicao,
-    SentidoDaAltura, UnidadeDeAltura, figura_da_tecla, nome_da_figura,
+    AvisoDeEdicao, ComandoDeEdicao, ErroDeEdicao, LimitesDeAltura, MudancaDeEstrutura,
+    ResultadoDaEdicao, SentidoDaAltura, UnidadeDeAltura, figura_da_tecla, nome_da_figura,
 };
 pub use diff::{
     CampoAlterado, CompassoAlterado, DiffDeDocumentos, MudancaDeNota, ResumoDeNota,
