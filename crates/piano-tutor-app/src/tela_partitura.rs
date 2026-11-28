@@ -1060,6 +1060,9 @@ impl EstadoPartitura {
         comando: impl FnOnce(IdNota) -> ComandoDeEdicao,
     ) -> Option<ResultadoDaEdicao> {
         self.documento.as_ref()?;
+        if self.recusar_em_leitura() {
+            return None;
+        }
         let Some(nota) = self.selecao.nota() else {
             self.ultima_edicao = Some(
                 "Selecione uma nota (clique nela ou use as setas) antes de mudar a duração.".into(),
@@ -2189,11 +2192,20 @@ impl EstadoPartitura {
         self.conferir_originais();
     }
 
-    /// Em modo leitura a partitura não se edita: avisa e recusa.
+    /// Guarda único dos comandos de edição: em modo leitura, ou com rascunho de recuperação
+    /// pendente de decisão, a partitura não se edita (avisa e recusa). Sem a segunda regra, as
+    /// edições não teriam autosave e "Recuperar" as substituiria (perda de dados; lacuna do R1).
     fn recusar_em_leitura(&mut self) -> bool {
         if self.leitura.is_some() {
             self.ultima_edicao =
                 Some("Versão aberta para leitura: volte à edição para alterar a partitura.".into());
+            true
+        } else if self.rascunho_pendente.is_some() {
+            self.ultima_edicao = Some(
+                "Recupere ou descarte o rascunho antes de editar (veja o aviso no topo da \
+                 partitura)."
+                    .into(),
+            );
             true
         } else {
             false
@@ -3604,9 +3616,11 @@ fn desenhar_versoes(ui: &mut Ui, e: &mut EstadoPartitura, som: &mut ServicoSom) 
             .map(|r| r.em.clone())
             .unwrap_or_default();
         ui.horizontal_wrapped(|ui| {
-            ui.label(
+            ui.colored_label(
+                ui.visuals().warn_fg_color,
                 RichText::new(format!(
-                    "Há trabalho não salvo de uma sessão anterior ({em}). O desfazer não foi guardado."
+                    "Há trabalho não salvo de uma sessão anterior ({em}). O desfazer não foi \
+                     guardado. Recupere ou descarte o rascunho antes de editar."
                 ))
                 .strong(),
             );

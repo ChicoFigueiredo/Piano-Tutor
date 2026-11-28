@@ -3,6 +3,7 @@
 
 use super::testes::{arquivo_do_rascunho, com_oficina, editar_uma_nota, tick_ate_gravar};
 use super::*;
+use crate::atalhos_partitura::PedidoDeAcorde;
 
 /// Edita uma nota diferente da de `editar_uma_nota` (a segunda, para baixo).
 pub(super) fn editar_outra_nota(e: &mut EstadoPartitura) {
@@ -54,9 +55,10 @@ fn r1_salvar_versao_fica_bloqueado_com_dica_enquanto_ha_rascunho_pendente() {
     let (_d, mut e, xml, editado) = reabrir_com_rascunho_pendente();
     e.navegar(Comando::Seguinte);
     e.navegar(Comando::Seguinte);
+    // Editar com rascunho pendente é recusado (lacuna do R1): o salvar fica bloqueado do mesmo jeito.
     assert!(
         e.mudar_altura(UnidadeDeAltura::Semitom, SentidoDaAltura::Abaixo)
-            .is_some()
+            .is_none()
     );
     assert!(!e.pode_salvar_versao(), "salvar fica bloqueado");
     let dica = e.motivo_sem_salvar_versao().expect("dica");
@@ -146,4 +148,88 @@ fn r3_salvar_sem_mudar_a_partir_da_hipotese_nao_cria_versao_mesmo_com_ponta_dife
         ResultadoDoSalvar::SemMudancas { .. }
     ));
     assert_eq!(e2.lista_de_versoes().len(), 2, "só Hipótese e v1");
+}
+
+// --- Lacuna do R1: com rascunho pendente, nenhuma edição é aceita --------------------------------
+
+const AVISO_RASCUNHO: &str = "Recupere ou descarte o rascunho antes de editar";
+
+fn texto_do_documento(e: &EstadoPartitura) -> String {
+    e.documento.as_ref().expect("doc").exportado().expect("x")
+}
+
+#[test]
+fn rascunho_pendente_recusa_todo_comando_de_edicao_e_o_documento_nao_muda() {
+    let (_d, mut e, _xml, _) = reabrir_com_rascunho_pendente();
+    let antes = texto_do_documento(&e);
+    e.navegar(Comando::Seguinte);
+    e.navegar(Comando::Seguinte);
+    let hipotese = hash_do_conteudo(EMBUTIDAS[3].1.as_bytes());
+    macro_rules! recusa {
+        ($nome:expr, $cmd:expr) => {{
+            e.ultima_edicao = None;
+            let _ = $cmd;
+            assert!(
+                e.ultima_edicao()
+                    .is_some_and(|a| a.contains(AVISO_RASCUNHO)),
+                "{}: aviso claro, veio {:?}",
+                $nome,
+                e.ultima_edicao()
+            );
+            assert_eq!(texto_do_documento(&e), antes, "{} mudou o documento", $nome);
+        }};
+    }
+    recusa!(
+        "altura",
+        e.mudar_altura(UnidadeDeAltura::Semitom, SentidoDaAltura::Acima)
+    );
+    recusa!("duração", e.mudar_duracao(3));
+    recusa!("ponto", e.alternar_ponto());
+    recusa!("nota", e.inserir_nota_na_entrada('C'));
+    recusa!("pausa", e.inserir_pausa_na_entrada());
+    recusa!("apagar", e.remover_nota_selecionada());
+    recusa!("desfazer", e.desfazer());
+    recusa!("refazer", e.refazer());
+    recusa!("acorde", e.editar_acorde(PedidoDeAcorde::Retirar));
+    e.continuar_a_partir_da_versao(&hipotese);
+    assert_eq!(texto_do_documento(&e), antes);
+    assert!(e.rascunho_pendente().is_some(), "o banner segue");
+}
+
+#[test]
+fn depois_de_descartar_edita_normalmente() {
+    let (_d, mut e, _xml, _) = reabrir_com_rascunho_pendente();
+    e.descartar_rascunho();
+    let antes = texto_do_documento(&e);
+    editar_uma_nota(&mut e);
+    assert_ne!(texto_do_documento(&e), antes);
+    assert!(e.desfazer());
+    assert_eq!(texto_do_documento(&e), antes);
+}
+
+#[test]
+fn depois_de_recuperar_edita_normalmente() {
+    let (_d, mut e, _xml, editado) = reabrir_com_rascunho_pendente();
+    e.recuperar_rascunho();
+    assert_eq!(texto_do_documento(&e), editado);
+    editar_outra_nota(&mut e);
+    assert_ne!(texto_do_documento(&e), editado);
+}
+
+#[test]
+fn cair_reabrir_tentar_editar_recuperar_nao_perde_nada() {
+    let (_d, mut e, xml, editado) = reabrir_com_rascunho_pendente();
+    e.navegar(Comando::Seguinte);
+    e.navegar(Comando::Seguinte);
+    assert!(
+        e.mudar_altura(UnidadeDeAltura::Semitom, SentidoDaAltura::Abaixo)
+            .is_none()
+    );
+    assert!(arquivo_do_rascunho(&xml).is_file(), "o rascunho segue");
+    e.recuperar_rascunho();
+    assert_eq!(
+        texto_do_documento(&e),
+        editado,
+        "o trabalho da sessão que caiu volta inteiro"
+    );
 }
