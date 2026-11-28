@@ -17,7 +17,6 @@ use bancada_casca::egui::{
     TextureHandle, TextureOptions, Ui, load::SizedTexture, vec2,
 };
 use std::path::PathBuf;
-use std::time::SystemTime;
 
 const ZOOM_MIN: f32 = 0.1;
 const ZOOM_MAX: f32 = 4.0;
@@ -43,7 +42,8 @@ pub struct PdfLateral {
     y_visivel: f32,
     zoom: f32,
     ajustar: bool,
-    chave: Option<(PathBuf, Option<SystemTime>)>,
+    /// Página (arquivo) a que a textura atual corresponde.
+    chave: Option<PathBuf>,
     textura: Option<TextureHandle>,
     tamanho: [usize; 2],
     erro: Option<String>,
@@ -172,12 +172,12 @@ impl PdfLateral {
         let Some(caminho) = self.paginas.get(self.pagina_atual).cloned() else {
             return;
         };
-        let mtime = std::fs::metadata(&caminho).and_then(|m| m.modified()).ok();
-        let chave = (caminho.clone(), mtime);
-        if self.chave.as_ref() == Some(&chave) {
+        // Cache por mudança: a página já carregada não é conferida no disco a cada quadro (achado
+        // N9 da segunda revisão); o disco só é lido quando a página pedida muda.
+        if self.chave.as_ref() == Some(&caminho) {
             return;
         }
-        self.chave = Some(chave);
+        self.chave = Some(caminho.clone());
         self.textura = None;
         self.erro = None;
         self.tamanho = [0, 0];
@@ -279,8 +279,7 @@ impl PdfLateral {
             .id_salt("pdf-lateral-pagina")
             .auto_shrink([false, false]);
         // A rolagem só vale quando a textura mostrada já é a da página pedida.
-        let textura_e_da_pagina =
-            self.paginas.get(self.pagina_atual) == self.chave.as_ref().map(|(c, _)| c);
+        let textura_e_da_pagina = self.paginas.get(self.pagina_atual) == self.chave.as_ref();
         if textura_e_da_pagina && let Some(p) = self.rolar.take() {
             area = area.vertical_scroll_offset(p.y * tam.y);
         }
@@ -499,6 +498,35 @@ mod testes {
         e.pdf_lateral.alternar();
         quadro(&ctx, &mut e, &mut som, 1280.0);
         assert!(e.pdf_lateral.visivel());
+    }
+
+    /// N9b (segunda revisão): a página já carregada não é conferida no disco a cada quadro. Sem o
+    /// `metadata` por quadro, apagar o PNG depois de carregado não derruba a textura; a conferência
+    /// só acontece quando a página muda.
+    #[test]
+    fn pagina_carregada_nao_consulta_o_disco_a_cada_quadro() {
+        let (_d, mut e, raiz) = oficina(COM_PDF);
+        let (mut som, ctx) = banco();
+        quadro(&ctx, &mut e, &mut som, 1280.0);
+        assert_eq!(e.pdf_lateral.tamanho_da_pagina(), Some([4, 6]));
+        std::fs::remove_file(raiz.join("paginas/p-1.png")).expect("apaga");
+        for _ in 0..3 {
+            quadro(&ctx, &mut e, &mut som, 1280.0);
+        }
+        assert_eq!(
+            e.pdf_lateral.tamanho_da_pagina(),
+            Some([4, 6]),
+            "a textura em memória segue valendo"
+        );
+        assert!(e.pdf_lateral.erro().is_none(), "{:?}", e.pdf_lateral.erro());
+        // Mudar de página lê o disco de novo: a página 2 existe e carrega.
+        e.pdf_lateral.ir_para_pagina(1);
+        quadro(&ctx, &mut e, &mut som, 1280.0);
+        assert_eq!(e.pdf_lateral.tamanho_da_pagina(), Some([4, 6]));
+        // Voltar à página 1 (apagada) mostra o erro de leitura em vez de uma textura velha.
+        e.pdf_lateral.ir_para_pagina(0);
+        quadro(&ctx, &mut e, &mut som, 1280.0);
+        assert!(e.pdf_lateral.erro().is_some());
     }
 
     #[test]

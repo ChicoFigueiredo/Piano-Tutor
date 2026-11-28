@@ -392,6 +392,7 @@ impl DocumentoPartitura {
     /// não troca arquivo nenhum. Quem chama confere o destino com
     /// [`conferir_destino_de_exportacao`] (este método não sabe o que é Hipótese).
     pub fn gravar(&self, destino: &Path, sobrescrever: bool) -> Result<(), String> {
+        conferir_destino_gravavel(destino, sobrescrever)?;
         let texto = self.aberto.exportar().map_err(|e| e.to_string())?;
         self.aberto
             .conferir_exportacao(&texto)
@@ -400,10 +401,15 @@ impl DocumentoPartitura {
             gravar_atomico(destino, &texto).map_err(|e| e.to_string())?;
         } else {
             gravar_sem_substituir(destino, &texto).map_err(|e| {
-                format!(
-                    "{}: {e} (marque \"Sobrescrever\" para trocar um arquivo)",
-                    destino.display()
-                )
+                // A dica de "Sobrescrever" só vale quando o arquivo já existe.
+                if e.kind() == std::io::ErrorKind::AlreadyExists {
+                    format!(
+                        "{}: {e} (marque \"Sobrescrever\" para trocar um arquivo)",
+                        destino.display()
+                    )
+                } else {
+                    format!("{}: {e}", destino.display())
+                }
             })?;
         }
         let lido =
@@ -425,6 +431,49 @@ impl DocumentoPartitura {
             )
         })
     }
+}
+
+/// Confere, antes de gravar, o que a gravação por temporário e `rename` não deve fazer em
+/// silêncio (achados N4 e N9 da segunda revisão independente da E01):
+///
+/// - a pasta do destino precisa existir (mensagem própria, sem a dica de "Sobrescrever");
+/// - um link simbólico como destino é recusado: o `rename` o trocaria por um arquivo comum sem
+///   tocar o alvo, e escrever "através" dele alteraria um arquivo que o usuário não escolheu. A
+///   escolha mais segura é recusar e pedir o arquivo real;
+/// - com "Sobrescrever", um arquivo somente leitura (ou que o processo não pode abrir para
+///   escrita) é recusado: o `rename` o substituiria sem aviso, contornando a permissão. As
+///   permissões de um arquivo gravável são preservadas pela gravação ([`gravar_atomico`]).
+fn conferir_destino_gravavel(destino: &Path, sobrescrever: bool) -> Result<(), String> {
+    if let Some(dir) = destino.parent().filter(|d| !d.as_os_str().is_empty())
+        && !dir.is_dir()
+    {
+        return Err(format!("a pasta de destino não existe: {}", dir.display()));
+    }
+    let Ok(meta) = std::fs::symlink_metadata(destino) else {
+        return Ok(());
+    };
+    if meta.file_type().is_symlink() {
+        return Err(format!(
+            "{}: o destino é um atalho (link simbólico): a exportação não escreve em atalhos \
+             nem os substitui. Escolha o arquivo real.",
+            destino.display()
+        ));
+    }
+    if sobrescrever
+        && meta.is_file()
+        && (meta.permissions().readonly()
+            || std::fs::OpenOptions::new()
+                .write(true)
+                .open(destino)
+                .is_err())
+    {
+        return Err(format!(
+            "{}: o destino é somente leitura (ou sem permissão de escrita): a exportação não o \
+             substitui. Mude a permissão do arquivo ou escolha outro destino.",
+            destino.display()
+        ));
+    }
+    Ok(())
 }
 
 /// Cria `destino` com `texto` por temporário vizinho e `hard_link` (que falha se o destino já

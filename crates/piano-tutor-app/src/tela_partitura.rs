@@ -16,6 +16,8 @@ mod testes_continuar;
 mod testes_exportar;
 #[cfg(test)]
 mod testes_revisao;
+#[cfg(test)]
+mod testes_revisao2;
 mod versoes_base;
 use crate::autosave::{Autosave, ConfigAutosave, ErroAutosave, Rascunho};
 use crate::cursor_entrada::{
@@ -536,15 +538,17 @@ impl EstadoPartitura {
 
     fn carregar_texto(&mut self, nome: String, texto: String) -> Result<(), ErroServico> {
         let d = DocumentoPartitura::de_texto(nome, texto)?;
-        self.carregar_documento(d);
+        self.carregar_documento(d, None);
         Ok(())
     }
 
-    /// Passa a mostrar um documento já aberto pelo serviço (texto, arquivo ou `.mxl`).
-    fn carregar_documento(&mut self, d: DocumentoPartitura) {
+    /// Passa a mostrar um documento já aberto pelo serviço (texto, arquivo ou `.mxl`). `origem` é
+    /// o arquivo de onde ele veio (`None` para texto embutido): toda abertura a informa, para a
+    /// exportação nunca sobrescrever o arquivo aberto (achados R2 e N3).
+    fn carregar_documento(&mut self, d: DocumentoPartitura, origem: Option<PathBuf>) {
         // Outro documento: o vínculo com a Oficina e a leitura de Versão não valem mais.
         self.versoes = None;
-        self.arquivo_aberto = None;
+        self.arquivo_aberto = origem;
         self.lista_de_versoes.clear();
         self.comparacao = Comparacao::default();
         self.aviso_versoes = None;
@@ -1361,7 +1365,7 @@ impl EstadoPartitura {
         match aberto {
             Ok(d) => {
                 let recusa = recusa_dos_ids(&d);
-                self.carregar_documento(d);
+                self.carregar_documento(d, f.caminho.clone());
                 self.selecionada = i;
                 self.erro = None;
                 self.aviso = recusa;
@@ -1377,8 +1381,7 @@ impl EstadoPartitura {
         match DocumentoPartitura::de_arquivo(c, caminho) {
             Ok(d) => {
                 let recusa = recusa_dos_ids(&d);
-                self.carregar_documento(d);
-                self.arquivo_aberto = Some(c.to_path_buf());
+                self.carregar_documento(d, Some(c.to_path_buf()));
                 self.erro = None;
                 self.aviso = recusa;
                 self.vincular_a_oficina(c);
@@ -1445,13 +1448,23 @@ impl EstadoPartitura {
 
     /// Aceita a recuperação: o documento passa a ser o do rascunho, tido como modificado, e o
     /// histórico de desfazer começa vazio (aviso explícito).
+    ///
+    /// Com uma Versão aberta em leitura, sai da leitura primeiro (o documento em edição volta) e
+    /// só então instala o rascunho como documento em edição (achado N1): o trabalho recuperado
+    /// nunca vira documento "(leitura)" nem fica guardado para ser descartado por "Voltar à
+    /// edição". Se a recuperação falha, nada muda além do aviso: o rascunho segue pendente, a
+    /// edição segue bloqueada e o usuário decide (descartar ou tentar de novo; achado N2).
     pub fn recuperar_rascunho(&mut self) {
-        let nome = self.nome().to_owned();
+        let nome = self.nome().trim_end_matches(" (leitura)").to_owned();
         let Some(a) = self.autosave.as_mut() else {
             return;
         };
         match a.recuperar(&nome) {
             Ok(r) => {
+                let estava_em_leitura = self.leitura.is_some();
+                if estava_em_leitura {
+                    self.voltar_da_leitura();
+                }
                 self.rascunho_pendente = None;
                 self.recuperado = true;
                 self.rascunho_escrito = true;
@@ -1464,25 +1477,36 @@ impl EstadoPartitura {
                 );
                 let recusa = recusa_dos_ids(&doc);
                 self.instalar_documento(doc);
-                self.aviso_versoes = Some(match recusa {
-                    Some(m) => format!("{} {m}", r.aviso_undo),
-                    None => r.aviso_undo.to_owned(),
-                });
+                let mut aviso = r.aviso_undo.to_owned();
+                if let Some(m) = recusa {
+                    aviso = format!("{aviso} {m}");
+                }
+                if estava_em_leitura {
+                    aviso.push_str(" A leitura da Versão foi encerrada.");
+                }
+                self.aviso_versoes = Some(aviso);
             }
             Err(e) => {
-                self.rascunho_pendente = None;
-                self.aviso_versoes = Some(format!("Não foi possível recuperar: {e}"));
+                // Estado consistente: o rascunho continua pendente (banner, edição bloqueada e
+                // autosave quieto) e o aviso diz o que fazer.
+                self.aviso_versoes = Some(format!(
+                    "Não foi possível recuperar: {e}. O rascunho continua guardado. Descarte-o \
+                     para voltar a editar."
+                ));
             }
         }
         self.conferir_originais();
     }
 
-    /// Recusa a recuperação: apaga só o rascunho (original e Versões ficam).
+    /// Recusa a recuperação: apaga só o rascunho (original e Versões ficam). Se o disco recusa
+    /// apagar, o rascunho continua pendente (banner e edição bloqueada) com o erro no aviso: o
+    /// autosave nunca fica quieto sem a tela dizer por quê (achado N2).
     pub fn descartar_rascunho(&mut self) {
         if let Some(a) = self.autosave.as_mut()
             && let Err(e) = a.descartar()
         {
             self.aviso_versoes = Some(format!("Não foi possível descartar o rascunho: {e}"));
+            return;
         }
         self.rascunho_pendente = None;
         self.recuperado = false;

@@ -181,7 +181,8 @@ pub fn sincronizar_diretorio(dir: &Path) -> std::io::Result<()> {
 }
 
 /// Grava `texto` em `caminho` por arquivo temporário vizinho e `rename`, e sincroniza o diretório
-/// depois do `rename` (durabilidade; ver [`sincronizar_diretorio`]).
+/// depois do `rename` (durabilidade; ver [`sincronizar_diretorio`]). Se `caminho` já é um arquivo
+/// comum, o novo herda as permissões dele (segunda revisão da E01, achado N4).
 pub fn gravar_atomico(caminho: &Path, texto: &str) -> Result<(), ErroRevisao> {
     let nome = caminho
         .file_name()
@@ -191,6 +192,13 @@ pub fn gravar_atomico(caminho: &Path, texto: &str) -> Result<(), ErroRevisao> {
     let r = (|| {
         let mut f = fs::File::create(&tmp)?;
         f.write_all(texto.as_bytes())?;
+        // Trocar o arquivo por `rename` não pode mudar as permissões dele (o temporário nasce
+        // com o modo do `umask`): quem já existe como arquivo comum passa suas permissões ao novo.
+        if let Ok(m) = fs::metadata(caminho)
+            && m.is_file()
+        {
+            let _ = f.set_permissions(m.permissions());
+        }
         f.sync_all()?;
         fs::rename(&tmp, caminho)
     })();
