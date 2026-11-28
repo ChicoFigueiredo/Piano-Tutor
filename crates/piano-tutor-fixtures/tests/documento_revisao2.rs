@@ -686,3 +686,134 @@ fn g2_inserir_ponto_e_duracao_o_inverso_e_aceito_e_restaura_salvo_pausas_e_vigas
     eprintln!("G2 classes: total={total} byte_a_byte={exatos} so_pausas_ou_vigas={agrupamento}");
     assert!(total > 50, "o sorteio aplicou poucas edições: {total}");
 }
+
+// --- Ajuste do supervisor sobre N7: bytes do arquivo são confiáveis; os de fora, não ---------
+
+fn doc_com_acidente_fora_do_esquema(marca: &str, alter: i8) -> (DocumentoAberto, IdNota, String) {
+    let ac = format!("<accidental{marca}>sharp</accidental>");
+    let t = peca(&format!(
+        "{}{}",
+        nota('C', Some(alter), Some(&ac)),
+        nota('D', None, None)
+    ));
+    let d = DocumentoAberto::abrir_texto("x", &t).unwrap();
+    let id = d.ids().id(0, 0, 0).unwrap();
+    (d, id, t)
+}
+
+#[test]
+fn n7_mudar_altura_em_acidente_do_arquivo_fora_do_esquema_preserva_e_desfaz_byte_a_byte() {
+    for marca in [
+        " foo=\"x\"",
+        " foo=\"x\" cautionary=\"yes\"",
+        "   foo='x'   bar=\"a>b\"",
+        "\n  foo=\"x\"\n",
+    ] {
+        for unidade in [
+            UnidadeDeAltura::Semitom,
+            UnidadeDeAltura::GrauDaEscala,
+            UnidadeDeAltura::Oitava,
+        ] {
+            let (mut d, id, original) = doc_com_acidente_fora_do_esquema(marca, 1);
+            let antes = d.exportar().unwrap();
+            assert_eq!(antes, original);
+            d.aplicar(ComandoDeEdicao::MudarAltura {
+                nota: id,
+                unidade,
+                sentido: SentidoDaAltura::Acima,
+            })
+            .unwrap_or_else(|e| panic!("{marca:?} {unidade:?}: {e:?}"));
+            let depois = d.exportar().unwrap();
+            assert_ne!(depois, antes);
+            // O atributo fora do esquema sobrevive enquanto o acidente existir.
+            if depois.contains("<accidental") {
+                assert!(depois.contains("foo="), "{marca:?}: {depois}");
+            }
+            d.desfazer().unwrap();
+            assert_eq!(
+                d.exportar().unwrap(),
+                antes,
+                "{marca:?} {unidade:?} desfazer"
+            );
+            d.refazer().unwrap();
+            assert_eq!(
+                d.exportar().unwrap(),
+                depois,
+                "{marca:?} {unidade:?} refazer"
+            );
+            d.desfazer().unwrap();
+            assert_eq!(d.exportar().unwrap(), antes);
+        }
+    }
+}
+
+#[test]
+fn n7_acidente_removido_pela_edicao_volta_com_o_atributo_do_arquivo() {
+    let (mut d, id, original) = doc_com_acidente_fora_do_esquema(" foo=\"x\"", 1);
+    d.aplicar(ComandoDeEdicao::MudarAltura {
+        nota: id,
+        unidade: UnidadeDeAltura::Semitom,
+        sentido: SentidoDaAltura::Acima,
+    })
+    .unwrap();
+    d.desfazer().unwrap();
+    assert_eq!(d.exportar().unwrap(), original);
+}
+
+#[test]
+fn n7_forjar_bytes_do_arquivo_continua_recusado() {
+    let (mut d, id, _) = doc_com_acidente_fora_do_esquema(" foo=\"x\"", 1);
+    let forjadas = [
+        "sharp\u{1F} foo=\"y\"",
+        "sharp\u{1F}<injetado/>",
+        "sharp\u{1F} foo=\"x\"><injetado/><x y=\"",
+        "sharp\u{1F} foo=\"x\" onclick=\"z\"",
+        "sharp\u{1F} foo=\"x\"\u{1F}",
+        "sharp foo=\"x\" onclick=\"z\"",
+        "sharp foo=\"xx\"",
+        "sharp foo=x",
+        "bacura foo=\"x\"",
+        "sharp</accidental><injetado/><accidental foo=\"x\">sharp",
+    ];
+    let mut falhas = Vec::new();
+    for g in forjadas {
+        let acidente = Some(g.to_owned());
+        let cs = [
+            ComandoDeEdicao::DefinirAltura {
+                nota: id,
+                altura: alt('C', 1, 4),
+                acidente: acidente.clone(),
+            },
+            ComandoDeEdicao::AdicionarAltura {
+                nota: id,
+                altura: alt('E', 1, 4),
+                acidente: acidente.clone(),
+            },
+            ComandoDeEdicao::RestaurarAltura {
+                nota: id,
+                altura: alt('E', 1, 4),
+                acidente,
+            },
+        ];
+        for c in cs {
+            let rotulo = format!("{c:?}");
+            if let Err(e) = recusa_sem_rastro(&mut d, c, &rotulo) {
+                falhas.push(e);
+            }
+        }
+    }
+    assert!(falhas.is_empty(), "{falhas:#?}");
+}
+
+#[test]
+fn n7_restaurar_altura_forjado_com_grafia_maliciosa_e_recusado() {
+    let (mut d, id, _) = doc_com_acidente_fora_do_esquema(" foo=\"x\"", 1);
+    for g in HOSTIS {
+        let c = ComandoDeEdicao::RestaurarAltura {
+            nota: id,
+            altura: alt('C', 1, 4),
+            acidente: Some((*g).into()),
+        };
+        recusa_sem_rastro(&mut d, c, &format!("RestaurarAltura {g:?}")).unwrap();
+    }
+}

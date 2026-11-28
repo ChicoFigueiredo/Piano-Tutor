@@ -5,8 +5,8 @@
 use super::duracao::{mmc, mmc_dos_denominadores, para_divisions};
 use super::erro::ErroDocumento;
 use super::grafia::{
-    SEPARADOR_BRUTO, grafia_de_acidente_valida, nome_do_acidente, partes_do_acidente,
-    separar_acidente,
+    PedacosDoArquivo, SEPARADOR_BRUTO, grafia_de_acidente_aceita, nome_do_acidente,
+    partes_do_acidente, separar_acidente,
 };
 use super::texto::{Abertura, No, Peca, fim_da_abertura};
 use super::{Altura, Documento, IdNota};
@@ -87,10 +87,9 @@ pub(super) fn leaf(nome: &str, conteudo: &str) -> No {
 }
 
 /// `<accidental>` novo a partir da grafia completa (`nome`, `nome atributos` ou a forma bruta).
-/// **A grafia já passou por [`validar_grafia`]**: aqui ela vai ao XML como está (conteúdo e marca
-/// de abertura exatos).
+/// **A grafia já passou por [`Documento::validar_grafia`]**: aqui ela vai ao XML como está
+/// (conteúdo e marca de abertura exatos).
 pub(super) fn leaf_acidente(grafia: &str) -> No {
-    debug_assert!(grafia_de_acidente_valida(grafia), "grafia sem validar");
     let (conteudo, abertura) = partes_do_acidente(grafia);
     No::novo(
         "accidental",
@@ -121,16 +120,50 @@ fn grafia_do_acidente(a: &No, base: &str) -> Option<String> {
     })
 }
 
-/// A grafia é aceitável? Validação estrita: nome de acidente da lista fechada do MusicXML,
-/// atributos da lista permitida, valores entre aspas e escapados (`>` dentro do valor vale).
-pub(super) fn validar_grafia(grafia: &str) -> Result<(), ErroDocumento> {
-    if grafia_de_acidente_valida(grafia) {
-        Ok(())
-    } else {
-        Err(ErroDocumento::AlturaInvalida(format!(
-            "acidente '{}'",
-            grafia.replace(SEPARADOR_BRUTO, " | ")
-        )))
+impl Documento {
+    /// Os conteúdos e marcas de abertura de todos os `<accidental>` do texto original.
+    fn pedacos_do_arquivo(&self) -> PedacosDoArquivo {
+        let base = self.original.as_str();
+        let mut pedacos = PedacosDoArquivo::default();
+        let mut de = 0;
+        while let Some(i) = base[de..].find("<accidental") {
+            let ini = de + i;
+            de = ini + "<accidental".len();
+            if !matches!(
+                base.as_bytes().get(de),
+                Some(b' ' | b'\t' | b'\r' | b'\n' | b'>')
+            ) {
+                continue;
+            }
+            let Some(Abertura::Aberta(fim)) = fim_da_abertura(base, de) else {
+                continue;
+            };
+            let abertura = &base[de..fim - 1];
+            let resto = &base[fim..];
+            let Some(c) = resto.find('<') else { continue };
+            if resto[c..].starts_with("</accidental") {
+                pedacos.registrar(&resto[..c], abertura);
+            }
+        }
+        pedacos
+    }
+
+    /// A grafia é aceitável? Vinda de fora, **validação estrita**: nome de acidente da lista
+    /// fechada do MusicXML, atributos da lista permitida, valores entre aspas e escapados (`>`
+    /// dentro do valor vale). A exceção são bytes que o próprio arquivo já tem (atributo fora do
+    /// esquema preservado, marca de abertura guardada para o inverso): idênticos a um
+    /// `<accidental>` do original, não são revalidados (ADR-0017), e nada fora disso entra.
+    pub(super) fn validar_grafia(&self, grafia: &str) -> Result<(), ErroDocumento> {
+        if grafia_de_acidente_aceita(grafia, &PedacosDoArquivo::default())
+            || grafia_de_acidente_aceita(grafia, &self.pedacos_do_arquivo())
+        {
+            Ok(())
+        } else {
+            Err(ErroDocumento::AlturaInvalida(format!(
+                "acidente '{}'",
+                grafia.replace(SEPARADOR_BRUTO, " | ")
+            )))
+        }
     }
 }
 
@@ -292,7 +325,7 @@ impl Documento {
     ) -> Result<bool, ErroDocumento> {
         validar(nova)?;
         if let Some(t) = acidente {
-            validar_grafia(t)?;
+            self.validar_grafia(t)?;
         }
         let loc = self.local(id)?;
         let atual = self.partes[loc.0].compassos[loc.1].notas[loc.2]
@@ -353,7 +386,7 @@ impl Documento {
         let base = &self.original;
         match acidente {
             Some(t) => {
-                validar_grafia(t)?;
+                self.validar_grafia(t)?;
                 troca_acidente(&mut no, base, t)?;
             }
             None => {

@@ -201,6 +201,12 @@ fn entidades_validas(valor: &str) -> bool {
 /// um uma vez, com valor entre aspas, sem `<`, sem controle e com `&` só em referência de
 /// entidade. `>` e as outras aspas são válidos dentro do valor (XML).
 fn abertura_valida(abertura: &str) -> bool {
+    abertura_bem_formada(abertura, true)
+}
+
+/// Sintaxe de atributos XML da marca de abertura. Com `restrito`, só os nomes da lista fechada
+/// do esquema; sem ele, qualquer nome de atributo XML (para bytes que já estão no arquivo).
+fn abertura_bem_formada(abertura: &str, restrito: bool) -> bool {
     let b = abertura.as_bytes();
     let mut i = 0;
     let mut vistos: Vec<&str> = Vec::new();
@@ -216,11 +222,18 @@ fn abertura_valida(abertura: &str) -> bool {
             return false; // atributo colado no anterior (ou na marca): falta espaço
         }
         let n0 = i;
-        while i < b.len() && (b[i].is_ascii_alphanumeric() || b[i] == b'-') {
+        while i < b.len()
+            && (b[i].is_ascii_alphanumeric()
+                || b[i] == b'-'
+                || (!restrito && matches!(b[i], b'_' | b':' | b'.')))
+        {
             i += 1;
         }
         let nome = &abertura[n0..i];
-        if !ATRIBUTOS_DO_ACIDENTE.contains(&nome) || vistos.contains(&nome) {
+        if nome.is_empty()
+            || (restrito && !ATRIBUTOS_DO_ACIDENTE.contains(&nome))
+            || vistos.contains(&nome)
+        {
             return false;
         }
         vistos.push(nome);
@@ -252,14 +265,48 @@ fn abertura_valida(abertura: &str) -> bool {
     }
 }
 
-/// A grafia é aceitável para ir ao XML? **Validação estrita** (lista fechada): o nome é um dos
-/// `accidental-value` do MusicXML (com espaço só nas pontas, na forma bruta), os atributos são da
-/// lista permitida, sem repetição, com valor entre aspas e escapado. Nenhum texto que passe aqui
-/// consegue fechar o elemento, abrir outro ou pôr atributo fora do esquema.
-pub fn grafia_de_acidente_valida(grafia: &str) -> bool {
+/// Pedaços de `<accidental>` que **já existem no arquivo** (conteúdos e marcas de abertura, byte
+/// a byte). São confiáveis: o princípio de preservação (ADR-0017) manda que o que o modelo não
+/// conhece sobreviva, inclusive atributos fora do esquema, e o `inverso` precisa devolvê-los. Quem
+/// os colhe confere só a sintaxe; quem os usa só aceita pedaço **idêntico** a um deles.
+#[derive(Clone, Debug, Default)]
+pub struct PedacosDoArquivo {
+    conteudos: Vec<String>,
+    aberturas: Vec<String>,
+}
+
+impl PedacosDoArquivo {
+    /// Registra um `<accidental>` do arquivo (conteúdo e o texto depois de `<accidental`), se a
+    /// sintaxe é a de um elemento XML bem formado.
+    pub fn registrar(&mut self, conteudo: &str, abertura: &str) {
+        let conteudo_ok = !conteudo.contains(['<', SEPARADOR_BRUTO])
+            && !conteudo
+                .chars()
+                .any(|c| c.is_control() && !c.is_whitespace())
+            && entidades_validas(conteudo);
+        if !conteudo_ok || !abertura_bem_formada(abertura, false) {
+            return;
+        }
+        if !self.conteudos.iter().any(|c| c == conteudo) {
+            self.conteudos.push(conteudo.to_owned());
+        }
+        if !self.aberturas.iter().any(|a| a == abertura) {
+            self.aberturas.push(abertura.to_owned());
+        }
+    }
+}
+
+/// **Validação estrita** (lista fechada): o nome é um dos `accidental-value` do MusicXML (com
+/// espaço só nas pontas, na forma bruta), os atributos são da lista permitida, sem repetição, com
+/// valor entre aspas e escapado. Nenhum texto que passe aqui consegue fechar o elemento, abrir
+/// outro ou pôr atributo fora do esquema. Com `arquivo` vazio é só isso; além dela, aceita também
+/// conteúdo e marca de abertura **idênticos** a um pedaço que já existe no arquivo. Um chamador não forja bytes do arquivo:
+/// o que não está lá (ou só está parecido) segue sob a lista fechada.
+pub fn grafia_de_acidente_aceita(grafia: &str, arquivo: &PedacosDoArquivo) -> bool {
     let (conteudo, abertura) = partes_do_acidente(grafia);
     let nome = conteudo.trim_matches([' ', '\t', '\r', '\n']);
-    ACIDENTES.contains(&nome) && abertura_valida(&abertura)
+    (ACIDENTES.contains(&nome) || arquivo.conteudos.contains(&conteudo))
+        && (abertura_valida(&abertura) || arquivo.aberturas.contains(&abertura))
 }
 
 /// O nome do acidente (`natural`, `sharp`...) de uma grafia completa.

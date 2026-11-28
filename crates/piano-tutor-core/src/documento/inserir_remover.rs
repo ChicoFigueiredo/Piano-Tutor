@@ -89,7 +89,7 @@ use super::comando::{
     ALTURA_NEUTRA, AvisoDeEdicao, ComandoDeEdicao, ErroDeEdicao, MudancaDeEstrutura,
     ResultadoDaEdicao, acidente_devido, sem_sinal_devido_em,
 };
-use super::edicao::{leaf, leaf_acidente, posto_nota, validar, validar_grafia, validar_rotulo};
+use super::edicao::{leaf, leaf_acidente, posto_nota, validar, validar_rotulo};
 use super::editar_duracao::{
     Aplicacao, Planejado, decompor, derivar_e_vigar, duracao_real, grupo_do_acorde, inconsistente,
     inserir_nota_antes, montar_no, no_da_nota, no_da_nota_mut, no_de_pausa, remover_nota, unidades,
@@ -125,7 +125,7 @@ impl DocumentoAberto {
                 validar(*altura)?;
                 self.conferir_limites(*altura)?;
                 if let Some(t) = acidente {
-                    validar_grafia(t)?;
+                    self.documento.validar_grafia(t)?;
                 }
                 if let Some(t) = acidente
                     && alter_do_acidente(t) != Some(altura.alter)

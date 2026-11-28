@@ -58,7 +58,7 @@
 
 use super::comando::acidente_devido;
 use super::comando::{AvisoDeEdicao, ComandoDeEdicao, ErroDeEdicao, ResultadoDaEdicao};
-use super::edicao::{leaf, leaf_acidente, validar, validar_grafia};
+use super::edicao::{leaf, leaf_acidente, validar};
 use super::editar_duracao::{
     Aplicacao, Planejado, derivar_e_vigar, grupo_do_acorde, inconsistente, inserir_nota_apos,
     montar_no, no_da_nota,
@@ -159,7 +159,7 @@ impl DocumentoAberto {
         validar(altura)?;
         self.conferir_limites(altura)?;
         if let Some(t) = acidente {
-            validar_grafia(t)?;
+            self.documento.validar_grafia(t)?;
         }
         if let Some(t) = acidente
             && alter_do_acidente(t) != Some(altura.alter)
