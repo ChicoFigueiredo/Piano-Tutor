@@ -55,7 +55,30 @@
 //!   posição, voz, pauta) e a soma do compasso, mas não os atributos gráficos nem os elementos
 //!   que a remoção descartou (`default-x`, `<stem>`, letra, dedilhado, ligaduras: os avisos já
 //!   dizem quais). Por isso a restauração byte a byte vem do desfazer por snapshot; o texto só
-//!   volta idêntico quando a nota removida não tinha nada disso.
+//!   volta idêntico quando a nota removida não tinha nada disso. O inverso é **sempre aplicável**
+//!   como comando (também em acorde de altura repetida: nesse caso é
+//!   [`ComandoDeEdicao::RestaurarAltura`], que aceita o uníssono ou o enarmônico que o acorde
+//!   tinha).
+//! - **"Não exato por definição"** (classificação dos casos de `InserirNota`, `InserirPausa`,
+//!   `AlternarPonto` e `MudarDuracao` cujo inverso, aplicado como comando, não devolve a
+//!   partitura idêntica; segunda revisão da E01, N5 a N8 e seção 4). O inverso devolve **cada
+//!   nota** (posição, duração, altura, voz, acorde, acidente) e a **soma das pausas de cada
+//!   voz**; não devolve:
+//!   1. *o agrupamento das pausas livres.* Inserir nota ou pausa, ou encurtar ou tirar o ponto de
+//!      uma nota, deixa pausas sobras que a edição escolhe (a maior figura que cabe); o inverso
+//!      (`RemoverNota`, `DefinirDuracao` ou, em `InserirPausa`, o próprio `aplicado`) recoloca
+//!      as notas, mas **não existe comando que junte pausas**, então uma semibreve de pausa
+//!      que virou semínima mais mínima pontuada continua assim. Não é bug: a soma é a mesma e
+//!      o desfazer por snapshot devolve os bytes;
+//!   2. *as vigas escritas pelo autor.* `MudarDuracao` e `AlternarPonto` refazem as vigas pela
+//!      regra automática (aviso `VigasRefeitas`); o inverso devolve as durações, e as vigas
+//!      voltam pela regra, não pelo que o arquivo tinha (ex.: `Fim, Fim` / `Inicio, Inicio`
+//!      viram `Continua, Continua`);
+//!   3. *`<type>` incoerente com `<duration>`.* Em arquivo cujo `<type>` não bate com a duração
+//!      (fixture `tercina`), editar a duração normaliza o `<type>`; o inverso restaura a figura,
+//!      não a incoerência.
+//!
+//!   Nos três casos o inverso é aceito e o resultado reabre; o byte a byte vem do desfazer.
 //!
 //! # Fora de escopo
 //!
@@ -66,14 +89,14 @@ use super::comando::{
     ALTURA_NEUTRA, AvisoDeEdicao, ComandoDeEdicao, ErroDeEdicao, MudancaDeEstrutura,
     ResultadoDaEdicao, acidente_devido, sem_sinal_devido_em,
 };
-use super::edicao::{leaf, leaf_acidente, posto_nota, validar};
+use super::edicao::{leaf, leaf_acidente, posto_nota, validar, validar_grafia, validar_rotulo};
 use super::editar_duracao::{
     Aplicacao, Planejado, decompor, derivar_e_vigar, duracao_real, grupo_do_acorde, inconsistente,
     inserir_nota_antes, montar_no, no_da_nota, no_da_nota_mut, no_de_pausa, remover_nota, unidades,
     valor_atual,
 };
 use super::erro::ErroDocumento;
-use super::grafia::alter_do_acidente;
+use super::grafia::{alter_do_acidente, midi};
 use super::servico::DocumentoAberto;
 use super::texto::{No, Peca, Texto};
 use super::{Altura, Compasso, Documento, IdNota, Nota, PosCompasso};
@@ -101,6 +124,9 @@ impl DocumentoAberto {
             } => {
                 validar(*altura)?;
                 self.conferir_limites(*altura)?;
+                if let Some(t) = acidente {
+                    validar_grafia(t)?;
+                }
                 if let Some(t) = acidente
                     && alter_do_acidente(t) != Some(altura.alter)
                 {
@@ -397,6 +423,9 @@ fn planejar_insercao(
     if voz.trim().is_empty() {
         return Err(invalida("a voz está vazia".to_owned()));
     }
+    // Voz e pauta vão ao XML como texto: validação estrita (nenhuma marcação entra).
+    validar_rotulo(voz, "a voz").map_err(ErroDeEdicao::Documento)?;
+    validar_rotulo(pauta, "a pauta").map_err(ErroDeEdicao::Documento)?;
     if p < Fracao::ZERO || p >= a.info.duracao {
         return Err(invalida(format!(
             "o tempo {p} está fora do compasso, que comporta {} tempo(s) de semínima",
@@ -929,10 +958,26 @@ pub(super) fn planejar_remocao(
         if !sel.graca {
             let restante = if ord > p0 { p0 } else { ord + 1 };
             if let (Some(altura), Some(resto)) = (sel.altura, a.comp0.notas.get(restante)) {
-                inverso = Some(ComandoDeEdicao::AdicionarAltura {
-                    nota: resto.id,
-                    altura,
-                    acidente: doc.acidente_da_nota(id).ok().flatten(),
+                let acidente = doc.acidente_da_nota(id).ok().flatten();
+                // N5: se outra altura do acorde soa igual (uníssono ou enarmônico), o
+                // `AdicionarAltura` seria recusado (`AlturaJaNoAcorde`); o inverso usa a variante
+                // que aceita, porque o acorde que se restaura a tinha.
+                let m = midi(altura);
+                let repetida = (p0..=q)
+                    .filter(|&k| k != ord)
+                    .any(|k| a.comp0.notas[k].altura.and_then(midi) == m);
+                inverso = Some(if repetida {
+                    ComandoDeEdicao::RestaurarAltura {
+                        nota: resto.id,
+                        altura,
+                        acidente,
+                    }
+                } else {
+                    ComandoDeEdicao::AdicionarAltura {
+                        nota: resto.id,
+                        altura,
+                        acidente,
+                    }
                 });
             }
         }

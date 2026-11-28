@@ -42,7 +42,14 @@
 //! - **Inverso.** O `inverso` de acrescentar é [`ComandoDeEdicao::RetirarAltura`] da nota nova.
 //!   O de retirar de um acorde é [`ComandoDeEdicao::AdicionarAltura`] sobre outra nota do acorde
 //!   (mesmo som; a ordem das alturas no arquivo pode diferir: quem devolve os bytes é o
-//!   histórico).
+//!   histórico). Se o acorde tinha **altura repetida** (uníssono ou enarmônico), o
+//!   `AdicionarAltura` seria recusado; então o inverso é [`ComandoDeEdicao::RestaurarAltura`]
+//!   (N5 da segunda revisão): a mesma operação, que aceita a repetição porque restaura um estado
+//!   que existia. Só o inverso a usa; o comando público continua recusando a repetição.
+//! - **Validação estrita do acidente.** O `acidente` de [`ComandoDeEdicao::AdicionarAltura`] e de
+//!   [`ComandoDeEdicao::RestaurarAltura`] passa por `validar_grafia` (lista fechada de nomes e de
+//!   atributos, valores entre aspas e escapados): nenhum comando consegue pôr marcação no XML
+//!   (N7).
 //!
 //! # Fora de escopo
 //!
@@ -51,7 +58,7 @@
 
 use super::comando::acidente_devido;
 use super::comando::{AvisoDeEdicao, ComandoDeEdicao, ErroDeEdicao, ResultadoDaEdicao};
-use super::edicao::{leaf, leaf_acidente, validar};
+use super::edicao::{leaf, leaf_acidente, validar, validar_grafia};
 use super::editar_duracao::{
     Aplicacao, Planejado, derivar_e_vigar, grupo_do_acorde, inconsistente, inserir_nota_apos,
     montar_no, no_da_nota,
@@ -84,8 +91,22 @@ impl DocumentoAberto {
                     &self.documento,
                     &self.partitura,
                     *nota,
-                    *altura,
-                    acidente.as_deref(),
+                    (*altura, acidente.as_deref()),
+                    false,
+                )?
+            }
+            ComandoDeEdicao::RestaurarAltura {
+                nota,
+                altura,
+                acidente,
+            } => {
+                self.conferir_altura_nova(*altura, acidente.as_deref())?;
+                planejar_adicao(
+                    &self.documento,
+                    &self.partitura,
+                    *nota,
+                    (*altura, acidente.as_deref()),
+                    true,
                 )?
             }
             ComandoDeEdicao::AcrescentarLetra { nota, letra } => {
@@ -93,7 +114,13 @@ impl DocumentoAberto {
                     por_letra_mais_proxima(base, *letra, quintas)
                 })?;
                 self.conferir_altura_nova(altura, None)?;
-                planejar_adicao(&self.documento, &self.partitura, *nota, altura, None)?
+                planejar_adicao(
+                    &self.documento,
+                    &self.partitura,
+                    *nota,
+                    (altura, None),
+                    false,
+                )?
             }
             ComandoDeEdicao::AcrescentarIntervalo { nota, graus } => {
                 if !(2..=9).contains(graus) {
@@ -103,7 +130,13 @@ impl DocumentoAberto {
                     por_intervalo_acima(base, *graus, quintas)
                 })?;
                 self.conferir_altura_nova(altura, None)?;
-                planejar_adicao(&self.documento, &self.partitura, *nota, altura, None)?
+                planejar_adicao(
+                    &self.documento,
+                    &self.partitura,
+                    *nota,
+                    (altura, None),
+                    false,
+                )?
             }
             ComandoDeEdicao::RetirarAltura { nota } => {
                 planejar_retirada(&self.documento, &self.partitura, *nota)?
@@ -125,6 +158,9 @@ impl DocumentoAberto {
     ) -> Result<(), ErroDeEdicao> {
         validar(altura)?;
         self.conferir_limites(altura)?;
+        if let Some(t) = acidente {
+            validar_grafia(t)?;
+        }
         if let Some(t) = acidente
             && alter_do_acidente(t) != Some(altura.alter)
         {
@@ -278,8 +314,8 @@ fn planejar_adicao(
     doc: &Documento,
     partitura: &Partitura,
     id: IdNota,
-    altura: Altura,
-    acidente_pedido: Option<&str>,
+    (altura, acidente_pedido): (Altura, Option<&str>),
+    repetida_ok: bool,
 ) -> Result<Planejado, ErroDeEdicao> {
     let &(pd, ci, ord) = doc
         .indice
@@ -303,7 +339,7 @@ fn planejar_adicao(
     })?;
     for k in p0..=q {
         let n = &a.comp0.notas[k];
-        if n.altura.and_then(midi) == Some(m_novo) {
+        if !repetida_ok && n.altura.and_then(midi) == Some(m_novo) {
             return Err(ErroDeEdicao::AlturaJaNoAcorde { nota: n.id, altura });
         }
     }
@@ -365,10 +401,18 @@ fn planejar_adicao(
     )?;
 
     // --- Resultado ---------------------------------------------------------------------------
-    let aplicado = ComandoDeEdicao::AdicionarAltura {
-        nota: id,
-        altura,
-        acidente: acidente.clone(),
+    let aplicado = if repetida_ok {
+        ComandoDeEdicao::RestaurarAltura {
+            nota: id,
+            altura,
+            acidente: acidente.clone(),
+        }
+    } else {
+        ComandoDeEdicao::AdicionarAltura {
+            nota: id,
+            altura,
+            acidente: acidente.clone(),
+        }
     };
     let mut r = resultado_base(aplicado, id_novo, altura, true);
     r.nota = id;

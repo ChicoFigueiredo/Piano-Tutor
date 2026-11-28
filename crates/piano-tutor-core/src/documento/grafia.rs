@@ -65,16 +65,201 @@ pub fn acidente_de(alter: i8) -> &'static str {
     }
 }
 
+/// Separador da forma **bruta** da grafia: `conteúdo␟abertura`. É a forma que `grafia_do_acidente`
+/// devolve quando o `<accidental>` do arquivo tem espaço atípico (vários espaços, quebra de linha,
+/// espaço antes do `>`, espaço em volta do nome): guarda o conteúdo e o texto da marca de
+/// abertura (o que vem depois de `<accidental`) **byte a byte**, para o `inverso` restaurar o
+/// elemento sem normalizar nada. U+001F não é espaço nem pode aparecer num nome ou atributo
+/// válido.
+pub const SEPARADOR_BRUTO: char = '\u{1F}';
+
 /// Separa a **grafia completa** de um `<accidental>` em nome (o conteúdo do elemento, ex.:
 /// `natural`) e atributos (o texto da marca de abertura depois do nome do elemento, ex.:
 /// `cautionary="yes" parentheses="no"`; vazio se não há). A grafia é `nome` ou
-/// `nome atributos`: é o que o `inverso` guarda para restaurar o acidente sem perder nada.
+/// `nome atributos` (ou a forma bruta, ver [`SEPARADOR_BRUTO`]; nela o nome e os atributos saem
+/// aparados): é o que o `inverso` guarda para restaurar o acidente sem perder nada.
 pub fn separar_acidente(grafia: &str) -> (&str, &str) {
+    if let Some((conteudo, abertura)) = grafia.split_once(SEPARADOR_BRUTO) {
+        return (conteudo.trim(), abertura.trim());
+    }
     let g = grafia.trim();
     match g.split_once(char::is_whitespace) {
         Some((nome, atributos)) => (nome, atributos.trim()),
         None => (g, ""),
     }
+}
+
+/// Conteúdo e marca de abertura (o que vem depois de `<accidental`, com o espaço inicial) de uma
+/// grafia, exatamente como vão para o XML.
+pub fn partes_do_acidente(grafia: &str) -> (String, String) {
+    if let Some((conteudo, abertura)) = grafia.split_once(SEPARADOR_BRUTO) {
+        return (conteudo.to_owned(), abertura.to_owned());
+    }
+    let (nome, atributos) = separar_acidente(grafia);
+    let abertura = if atributos.is_empty() {
+        String::new()
+    } else {
+        format!(" {atributos}")
+    };
+    (nome.to_owned(), abertura)
+}
+
+/// Nomes de acidente do MusicXML 4.0 (`accidental-value`): lista fechada.
+const ACIDENTES: &[&str] = &[
+    "sharp",
+    "natural",
+    "flat",
+    "double-sharp",
+    "sharp-sharp",
+    "flat-flat",
+    "natural-sharp",
+    "natural-flat",
+    "quarter-flat",
+    "quarter-sharp",
+    "three-quarters-flat",
+    "three-quarters-sharp",
+    "sharp-down",
+    "sharp-up",
+    "natural-down",
+    "natural-up",
+    "flat-down",
+    "flat-up",
+    "double-sharp-down",
+    "double-sharp-up",
+    "flat-flat-down",
+    "flat-flat-up",
+    "arrow-down",
+    "arrow-up",
+    "triple-sharp",
+    "triple-flat",
+    "slash-quarter-sharp",
+    "slash-sharp",
+    "slash-flat",
+    "double-slash-flat",
+    "sharp-1",
+    "sharp-2",
+    "sharp-3",
+    "sharp-5",
+    "flat-1",
+    "flat-2",
+    "flat-3",
+    "flat-4",
+    "sori",
+    "koron",
+    "other",
+];
+
+/// Atributos que o esquema MusicXML 4.0 permite em `<accidental>`: lista fechada.
+const ATRIBUTOS_DO_ACIDENTE: &[&str] = &[
+    "cautionary",
+    "editorial",
+    "parentheses",
+    "bracket",
+    "size",
+    "smufl",
+    "id",
+    "color",
+    "default-x",
+    "default-y",
+    "relative-x",
+    "relative-y",
+    "font-family",
+    "font-size",
+    "font-style",
+    "font-weight",
+];
+
+fn espaco_xml(b: u8) -> bool {
+    matches!(b, b' ' | b'\t' | b'\r' | b'\n')
+}
+
+/// Referências de entidade bem formadas: as cinco predefinidas e as numéricas.
+fn entidades_validas(valor: &str) -> bool {
+    let mut resto = valor;
+    while let Some(i) = resto.find('&') {
+        let depois = &resto[i + 1..];
+        let Some(fim) = depois.find(';') else {
+            return false;
+        };
+        let nome = &depois[..fim];
+        let ok = matches!(nome, "amp" | "lt" | "gt" | "quot" | "apos")
+            || nome
+                .strip_prefix("#x")
+                .is_some_and(|h| !h.is_empty() && h.bytes().all(|c| c.is_ascii_hexdigit()))
+            || nome
+                .strip_prefix('#')
+                .is_some_and(|d| !d.is_empty() && d.bytes().all(|c| c.is_ascii_digit()));
+        if !ok {
+            return false;
+        }
+        resto = &depois[fim + 1..];
+    }
+    true
+}
+
+/// A marca de abertura (o que vem depois de `<accidental`) só tem atributos da lista fechada, cada
+/// um uma vez, com valor entre aspas, sem `<`, sem controle e com `&` só em referência de
+/// entidade. `>` e as outras aspas são válidos dentro do valor (XML).
+fn abertura_valida(abertura: &str) -> bool {
+    let b = abertura.as_bytes();
+    let mut i = 0;
+    let mut vistos: Vec<&str> = Vec::new();
+    loop {
+        let ini = i;
+        while i < b.len() && espaco_xml(b[i]) {
+            i += 1;
+        }
+        if i == b.len() {
+            return true;
+        }
+        if i == ini {
+            return false; // atributo colado no anterior (ou na marca): falta espaço
+        }
+        let n0 = i;
+        while i < b.len() && (b[i].is_ascii_alphanumeric() || b[i] == b'-') {
+            i += 1;
+        }
+        let nome = &abertura[n0..i];
+        if !ATRIBUTOS_DO_ACIDENTE.contains(&nome) || vistos.contains(&nome) {
+            return false;
+        }
+        vistos.push(nome);
+        while i < b.len() && espaco_xml(b[i]) {
+            i += 1;
+        }
+        if b.get(i) != Some(&b'=') {
+            return false;
+        }
+        i += 1;
+        while i < b.len() && espaco_xml(b[i]) {
+            i += 1;
+        }
+        let Some(&aspa) = b.get(i).filter(|c| matches!(c, b'"' | b'\'')) else {
+            return false;
+        };
+        i += 1;
+        let v0 = i;
+        while i < b.len() && b[i] != aspa {
+            if b[i] == b'<' || (b[i] < 0x20 && !espaco_xml(b[i])) {
+                return false;
+            }
+            i += 1;
+        }
+        if i == b.len() || !entidades_validas(&abertura[v0..i]) {
+            return false;
+        }
+        i += 1;
+    }
+}
+
+/// A grafia é aceitável para ir ao XML? **Validação estrita** (lista fechada): o nome é um dos
+/// `accidental-value` do MusicXML (com espaço só nas pontas, na forma bruta), os atributos são da
+/// lista permitida, sem repetição, com valor entre aspas e escapado. Nenhum texto que passe aqui
+/// consegue fechar o elemento, abrir outro ou pôr atributo fora do esquema.
+pub fn grafia_de_acidente_valida(grafia: &str) -> bool {
+    let (conteudo, abertura) = partes_do_acidente(grafia);
+    let nome = conteudo.trim_matches([' ', '\t', '\r', '\n']);
+    ACIDENTES.contains(&nome) && abertura_valida(&abertura)
 }
 
 /// O nome do acidente (`natural`, `sharp`...) de uma grafia completa.
