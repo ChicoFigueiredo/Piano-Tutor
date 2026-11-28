@@ -340,3 +340,94 @@ Testes em `crates/piano-tutor-fixtures/tests/documento_revisao2.rs` (red: 8 de 1
 - **N5 (corrigido).** O inverso de `RemoverNota`/`RetirarAltura` num acorde de altura repetida é `RestaurarAltura` (nova variante, só para inverso); `AdicionarAltura` público continua recusando a repetição.
 - **N8 (corrigido).** `DefinirAltura` com a mesma altura e a mesma grafia efetiva devolve `alterou = false`, sem sujar nem criar histórico.
 - **Os 19 casos (classificados, nenhum bug de aplicabilidade).** O inverso é sempre aceito. Três classes "não exato por definição": (a) agrupamento das pausas livres (InserirPausa 7, InserirNota 5, AlternarPonto/MudarDuracao 5 em que o ponto ou a figura deixa pausas sobras; sem comando que junte pausas); (b) vigas do autor refeitas pela regra automática (MudarDuracao em `schubert-heidenroeslein`); (c) `<type>` incoerente com `<duration>` (fixture `tercina`, já ressalvado no G2). Documentado em `inserir_remover.rs` e na linha G2 da matriz; o teste `g2_inserir_ponto_e_duracao_*` trava a garantia real (cada nota e a soma das pausas por voz).
+
+## Terceira revisão (2026-11-28)
+
+Revisor independente (qa-aceite), sem alterar produção. Base: `origin/claude/project-thread-w8l1yp` em `3b06328`; diff lido: `git diff 6f8a45d..HEAD` (15 arquivos). Esta seção não reescreve as anteriores.
+
+### 1. Veredito
+
+**O item "Revisão de código independente sem achados P0/P1" do gate 27 está ATENDIDO nesta rodada.** Zero P0 e zero P1. Os achados da segunda revisão (N1 a N9) e as correções do núcleo (N5 a N8, validação de grafia, `RestaurarAltura`) **resistiram** aos cenários novos, com duas ressalvas de classe P2 (T1, T2): a promessa documentada de que "nenhum comando injeta marcação" vale para elementos e atributos fora da lista, mas **não** impede que um comando público produza XML que não reabre quando o texto "do arquivo" vem de comentário e quando o valor tem referência de caractere inválida. Nenhum dos dois é alcançável pela interface (a tela só passa ao núcleo grafias que saem do próprio documento ou `None`); são de API/MCP e devem ser corrigidos antes da exposição por MCP. Total: 0 P0, 0 P1, 2 P2, 8 P3.
+
+Condição para manter o "atendido": T1 e T2 ficam registrados no gate como P2 aberto, com dono e prazo antes do MCP. O aceite humano do titular continua pendente (item 7 do gate, não inferido de CI).
+
+### 2. Achados
+
+| ID | Sev. | Resumo | Reproduzido |
+|---|---|---|---|
+| T1 | **P2** | `pedacos_do_arquivo` colhe `<accidental` do texto cru, inclusive de comentário e CDATA: conteúdo/atributo que só existe num comentário passa pela validação ("bytes do arquivo") e a saída não reabre | sim (sonda) |
+| T2 | **P2** | A lista fechada aceita referências de caractere inválidas em valor de atributo (`&#0;`, `&#1;`, `&#x8;`, `&#xFFFE;`, `&#99999999999;`) e U+FFFE/U+FFFF literais: o XML exportado não reabre | sim (sonda) |
+| T3 | P3 | Custo quadrático de `pedacos_do_arquivo` (varredura por ocorrência + dedupe linear): 5,7 s num único comando com 209 KB; só por API | sim (medido) |
+| T4 | P3 | `RestaurarAltura` é variante pública e contorna a recusa de altura repetida de `AdicionarAltura` | sim (sonda) |
+| T5 | P3 | `DefinirAltura` aceita acidente incoerente com a altura (Fá natural com `sharp`; Fá♯ com `quarter-sharp`/`other`); `AdicionarAltura` e `InserirNota` conferem, este não | sim (sonda) |
+| T6 | P3 | Efeito colateral de N5 na tela: retirar uma altura de acorde com altura repetida solta a seleção (o inverso agora é `RestaurarAltura` e a tela só reconhece `AdicionarAltura`) | sim (teste de tela) |
+| T7 | P3 | Avisos e guarda de Recuperar/Descartar: aviso "O rascunho continua guardado" fica depois de um Descartar que deu certo; `recuperar_rascunho` (pública) não confere `rascunho_pendente` | sim (sonda) |
+| T8 | P3 | A política do destino da exportação (atalho recusado, somente leitura recusado) não vale para o `.ids` lateral gravado ao lado | sim (sonda) |
+| T9 | P3 | N9(b) trocou o cache por chave só de caminho: erro de leitura da página fica em cache; a página que aparece depois não é relida | sim (teste de tela) |
+| T10 | P3 | G1 recusa atributo de nome XML não ASCII em `<accidental>`; rótulo de erro "altura inválida" para voz/pauta; voz/pauta com espaço ou acento recusadas | sim / leitura |
+
+**T1 (P2) — pedaço "do arquivo" vindo de comentário.** `edicao.rs:125-150` percorre `self.original` com `base[de..].find("<accidental")` sem pular comentário, CDATA nem instrução de processamento; `grafia.rs:281-299` (`registrar`) confere só sintaxe de atributo e a ausência de `<` no conteúdo; `grafia.rs:305-311` aceita o que for idêntico. Cenário: arquivo com `<!-- <accidental>sharp]]>y</accidental> -->` antes de `<score-partwise>`. `DefinirAltura{Fá♯4, acidente: "sharp]]>y"}` é **aceito**; `exportar()` devolve `<accidental>sharp]]>y</accidental>`, que não reabre («XML inválido: marcação malformada»), e `conferir_exportacao` falha. Idem `<!-- <accidental foo:bar="1">sharp</accidental> -->` com `"sharp foo:bar=\"1\""` (prefixo de namespace não declarado: não reabre) e `onclick="x"` (reabre; atributo fora do esquema entra por comentário). Controle sem o comentário: recusado. Fuzz de 60 mil grafias hostis por `DefinirAltura`, `AdicionarAltura`, `RestaurarAltura` e `InserirNota`: **0 elementos novos** em todas as aceitas (nenhuma injeção de elemento), mas, com o comentário, `flat]]>` foi aceita e a saída não reabre (4 de 1134 aceitas). O risco real: `salvar_versao` (`tela_partitura.rs:1906`) e o autosave (`:1563`) usam `exportado_com_ids`, que **não** relê; uma Versão ou um rascunho ilegível seria gravado. Contradiz `comando.rs` ("Nenhum comando injeta marcação") e o comentário de `grafia_de_acidente_aceita` ("Um chamador não forja bytes do arquivo"). Alcance: só API/MCP. Correção sugerida (não aplicada): colher os pedaços do que o parser já leu (nós `<accidental>` reais), não do texto cru; e rejeitar `]]>` no conteúdo.
+
+**T2 (P2) — referências de caractere inválidas.** `grafia.rs:177-199` (`entidades_validas`) aceita `&#` seguido de dígitos ou `x` e hexadecimais de qualquer valor; `grafia.rs:256` rejeita só `<` e controles abaixo de 0x20. Medido com `DefinirAltura{Fá♯, "sharp cautionary=\"<v>\""}`: `&#0;`, `&#1;`, `&#x1;`, `&#x8;`, `&#xFFFE;`, `&#xFFFF;`, `&#99999999999;`, U+FFFE e U+FFFF literais são **aceitos** e o texto exportado **não reabre** (roxmltree); `&#xD800;` e `&#x110000;` reabrem no roxmltree (que é tolerante) mas não são XML válido para outros leitores (NÃO VERIFICADO com outro parser). Mesmo alcance e mesma consequência de T1. Correção sugerida: validar o escalar (`char::from_u32`, faixa `Char` do XML 1.0).
+
+**T3 (P3) — custo quadrático.** `pedacos_do_arquivo` chama `fim_da_abertura` para cada `<accidental` (a varredura segue aspas e só para num `>` fora delas), e `registrar` deduplica com `.iter().any` (`grafia.rs:290,293`). Com um comentário de `<accidental "` repetido (aspas desbalanceadas, arquivo que abre em 15 ms), **um** comando com grafia fora da lista estrita leva 0,11 s (n=2 000; 27 KB), 1,4 s (n=8 000; 105 KB), 5,9 s (n=16 000; 209 KB); o crescimento é quadrático e o limite de 8 MiB de abertura não o contém. Sem comentário hostil, 20 mil acidentes distintos (`default-x` único, 4,4 MB) custam 1,25 s por comando recusado. **Não** é alcançável pela tecla de seta: `MudarAltura` mantém o acidente pelo nome e passa pela lista estrita (nota com `print-object`, n=16 000: 0,1 ms); só o **inverso** aplicado como comando (grafia do arquivo) e comandos por API caem aqui (5,7 s em n=16 000). Pior caso: arquivo hostil + MCP. Correção: `HashSet`, e pular comentários (T1) elimina o vetor.
+
+**T4 (P3).** `acorde.rs:98-112` e `:342` (`repetida_ok`): `RestaurarAltura` é `pub` e o comentário diz "só como inverso", mas qualquer chamador a usa. Medido: Dó4 ganha Dó4 três vezes em seguida (`Ok(true)` x3), reabre, `desfazer` devolve o original; `AdicionarAltura` na mesma altura é recusado. Acorde de uníssono ilimitado por API. Reversível. Sugestão: restringir a `pub(crate)`/`pub(super)` ou recusar fora do contexto de desfazer.
+
+**T5 (P3).** `edicao.rs:320-330` (`definir_altura_e_acidente`) valida a grafia mas não confere `alter_do_acidente` com a altura; `AdicionarAltura` e `InserirNota` conferem (`acorde.rs:165`, `inserir_remover.rs:131`). Medido: Fá natural com `sharp` aceito (texto exportado: `<accidental>sharp</accidental>`), Fá♯ com `quarter-sharp` e `other` aceitos. A partitura mostra um sinal que contradiz a altura que soa. Não foi introduzido por este diff; a lista fechada do N7 não fecha essa lacuna.
+
+**T6 (P3).** `tela_partitura/acorde.rs:57` só move a seleção quando `r.inverso` é `AdicionarAltura`. Medido: acorde Ré4+Ré4, selecionado o primeiro, "Retirar": `depois = None`, inverso `RestaurarAltura`; no acorde Ré4+Fá4 passa para a outra nota. A mensagem diz "as demais continuam soando" e a seleção some. O desfazer funciona (texto igual).
+
+**T7 (P3).** (a) `descartar_rascunho` (`tela_partitura.rs:1506-1517`) bem-sucedido não limpa `aviso_versoes`: depois de "Recuperar" falho e "Descartar" o aviso segue dizendo "O rascunho continua guardado. Descarte-o para voltar a editar." com o rascunho já apagado (sondas S5/D3; some só ao "Voltar à edição" ou na próxima ação). (b) `recuperar_rascunho` (`:1459`) é `pub` e não confere `rascunho_pendente`: chamada pela API depois de uma recuperação, relê o rascunho em disco e **substitui** o documento editado depois (edição perdida, medido em S1); sem rascunho diz "O rascunho continua guardado". O botão só existe no banner, então a interface não chega aqui.
+
+**T8 (P3).** `documento_partitura.rs:427` grava o `.ids` lateral com `gravar_atomico`, sem `conferir_destino_gravavel`. Medido: `.ids` lateral que é link simbólico para arquivo alheio: exportação `Ok`, o alvo fica intacto (`IMPORTANTE`), o link vira arquivo comum; `.ids` lateral `0444`: substituído (por `rename`) e continua `0444`. A política "não contorna permissão nem troca atalho" do N4 vale só para o arquivo principal. O `.ids` é regenerável.
+
+**T9 (P3).** `pdf_lateral.rs:177-180` grava `chave` antes de ler o PNG e retorna cedo enquanto o caminho é o mesmo: se a página não existe quando o painel a pede, o erro fica em cache. Medido: apagar `p-1.png`, um quadro (erro), recriar o arquivo, cinco quadros: o erro continua (`No such file or directory`); reabrir a partitura recarrega. Antes, a chave com `mtime` religava sozinha. Aceitável se o PNG nunca é produzido depois da abertura; vale registrar.
+
+**T10 (P3).** (a) G1: `<accidental ação="1">sharp</accidental>` (nome de atributo válido em XML, ASCII estrito na lista de `abertura_bem_formada`, `grafia.rs:~225`) faz `MudarAltura` e o inverso serem recusados nas 5 combinações; pela leitura do `grafia_valida` removido, antes só `<` e `>` eram vetados (regressão por leitura, não por execução do commit antigo). Atributos `print-object`, `xml:lang`, `x_y`, `smufl=""`, tab antes do `>`, CRLF e `>` no valor passam nas 5 combinações, byte a byte. (b) O erro de voz/pauta inválida sai como «altura inválida: a voz «٠» não é aceita» (`ErroDocumento::AlturaInvalida` reaproveitado em `validar_rotulo`, `edicao.rs:172`). (c) `validar_rotulo` recusa voz com espaço ou letra acentuada; `voice` é `xs:string` no MusicXML, então um arquivo com voz "Voz 1" não recebe `InserirNota`/`InserirPausa` (a tela passa voz numérica; o corpus passa). (d) `<accidental/>` auto-fechado: `MudarAltura` funciona mas o inverso não devolve o elemento (4 de 5 não idênticos; o desfazer por snapshot é exato).
+
+### 3. Cada correção, atacada com cenário novo
+
+| Correção | Resultado | O que tentei |
+|---|---|---|
+| N1 (Recuperar com Versão em leitura) | **PASS** | Em 8 ordens: leitura→Recuperar; abrir a Hipótese e a v1 em sequência→Recuperar; Recuperar→leitura→tick de autosave→Voltar→editar→Salvar (sem gravação durante a leitura; Versão salva é filha da v1); leitura→Descartar→Recuperar; Descartar duas vezes; Voltar sem leitura; Continuar bloqueado com banner (em edição e em leitura), liberado depois de Descartar e depois de Salvar. Texto recuperado idêntico ao do rascunho, Versão filha da v1, rascunho some ao salvar. Ressalva T7(b) por API. |
+| N2 (Recuperar/Descartar que falham) | **PASS** com T7(a) | Recuperar falho com Versão em leitura: leitura, banner e bloqueio de edição mantidos; Descartar libera; Voltar devolve a edição que aceita edição e autosave. O aviso velho é cosmético (T7a). |
+| N3 (origem pela lista) | **PASS** | Teste novo verde na suíte; não ataquei com cenário novo além de ler o código (`carregar_documento` agora exige a origem em todas as aberturas). |
+| N4 (permissões, atalho, somente leitura) | **PASS** com T8 | Atalho para pasta e atalho pendente: recusados, alvo não criado (o atalho para arquivo é teste do repositório); destino que é pasta: erro «Is a directory», sem `.tmp` sobrando (com e sem Sobrescrever); `.ids` lateral: T8. Pasta somente leitura e `0444` como usuário comum: NÃO VERIFICADO (root). |
+| N9 (a), (b) | **PASS** com T9 | (a) pasta inexistente: teste novo verde; NUL no caminho dá erro do SO; caminho vazio e "." recusados com mensagem própria. (b) cache por caminho: T9. |
+| N5 (`RestaurarAltura`) | **PASS** com T4, T6 | Inverso de remover em uníssono/enarmônico aceito (exaustivo a2 e fuzz misto verdes). Por API pública: T4. |
+| N6 (grafia bruta) | **PASS** com T10(a) | 20 formas de `<accidental>` x 5 combinações de `MudarAltura` (inverso aplicado e `desfazer`), mais `RemoverNota` + inverso em 5 formas, solo e em acorde: inverso aceito e `desfazer` devolve o original byte a byte em todos os casos aplicados; em acorde o texto do inverso difere só pela ordem das alturas (documentada). |
+| N7 (lista fechada) | **PASS parcial** | 2 x 60 mil grafias hostis (fragmentos `<`, `>`, `]]>`, `-->`, `<!--`, U+001F, `&`, `xmlns`, aspas, NUL, U+FFFE...) por 4 comandos, sem e com comentário no arquivo: 0 elementos novos. **Falha** nos pontos T1 e T2 (XML que não reabre). Pela leitura do código (e pelos fragmentos do fuzz, não por casos dirigidos): U+001F extra, atributos sem espaço entre si, atributo duplicado e `/` ou `>` fora de aspas são recusados. |
+| N8 (`DefinirAltura` sem efeito) | **PASS** | Coberto pelo teste novo e pelos exaustivos. |
+| Voz/pauta restritas | **PASS** com T10(b,c) | `1\n`, `1 `, algarismo árabe, 33 caracteres: recusados; `a.b-c_d` passa; `pontos` 0 a 255 em `InserirNota`/`InserirPausa`: sem pânico (valores altos recusados pela grade de `divisions`). |
+| Aceitação de bytes idênticos ao arquivo | **PASS parcial** | Atributos fora do esquema do arquivo seguem editáveis e desfazíveis (T10 lista); o rigor falha só pela fonte do "arquivo" (T1) e pelo custo (T3). |
+
+### 4. Comandos executados (e resultado)
+
+- `git fetch origin claude/project-thread-w8l1yp && git reset --hard origin/claude/project-thread-w8l1yp`: HEAD `3b06328`.
+- `cargo build --release --workspace --offline`: **verde** (4 min 57 s).
+- `cargo deny --offline check licenses bans sources`: **bans ok, licenses ok, sources ok** (advisories não pedidos; a saída traz árvores de dependência de avisos, nenhum erro).
+- `cargo test --offline --release -p piano-tutor-fixtures -- --ignored`: **4 de 4 verdes**: `a2_exaustivo_toda_nota_afinada_do_corpus` (27 s), `a2_exaustivo_toda_nota_afinada_com_os_seis_comandos` (381 s), `corpus_exaustivo_toda_nota_afinada_com_todas_as_figuras` (109 s), `mista_em_todo_o_corpus_grande` (2,3 s).
+- `cargo test --offline --workspace` (dev, com 14 sondas temporárias presentes): 1616 passed, 0 failed, 12 ignored; sem as sondas, 1602 passed. (Número da rodada anterior: 1587; a diferença são testes acrescentados nas correções.)
+- `cargo fmt --all --check`: sem diferenças. **Clippy não foi executado nesta rodada.**
+- Sondas (dev, `CARGO_PROFILE_DEV_DEBUG=0 cargo test --offline`): ver Apêndice. Todas rodaram; as que reproduzem achado imprimem `SONDA3 ...` (não afirmam).
+- `cargo clean` ao final.
+
+### 5. NÃO VERIFICADO
+
+Windows e macOS (atributo somente leitura, `symlink_metadata`, rename sobre arquivo, abertura para escrita com arquivo em uso); arquivo somente leitura e diretório sem permissão como usuário comum (a sessão roda como root: a recusa por "somente leitura" foi exercitada pelo bit `0444`, e `OpenOptions::write` sempre abre para root); leitor que não seja o roxmltree para `&#xD800;`/`&#x110000;`; arquivos reais de exportadores (MuseScore, Finale, Sibelius) com atributos exóticos em `<accidental>` (só o corpus do repositório e arquivos sintéticos); clique real nos botões Recuperar/Descartar com Versão aberta; durabilidade e disputa de dois processos; clippy; desempenho em máquina de referência (os tempos são desta VM).
+
+### 6. Estado do item e do gate
+
+- Item "revisão sem P0/P1": **ATENDIDO** (0 P0, 0 P1), com T1 e T2 como P2 abertos, de API/MCP, a corrigir antes de expor comandos por MCP. Se o titular preferir "sem P0/P1/P2", o item volta a não atendido até T1 e T2 serem corrigidos e re-revisados.
+- Itens 1 (A1–A18 em CI e captura de tela) e 7 (aceite humano) seguem abertos; esta revisão não os inferiu.
+- Recomendação: corrigir T1/T2 com teste que falhe primeiro (arquivo com `<!-- <accidental>x]]></accidental> -->` e `DefinirAltura`; os 8 valores de referência de caractere acima), o que também elimina o vetor de T3.
+
+### Apêndice. Sondas da terceira revisão
+
+Copiadas para `docs/evolucao-musical/e01/sondas-revisao/` (removidas das crates antes do commit):
+
+- `zz_revisao3_fixtures_nucleo.rs`: copiar para `crates/piano-tutor-fixtures/tests/zz_sonda3_nucleo.rs`; `cargo test --offline -p piano-tutor-fixtures --test zz_sonda3_nucleo -- --nocapture --test-threads=1`. A: comentário/CDATA (T1); B: referências de caractere (T2); C: acidente incoerente (T5); D: `RestaurarAltura` pública (T4); E: `pontos` e rótulos; F: preservação exótica (T10); G, H: custo (T3).
+- `zz_revisao3_fixtures_fuzz.rs`: copiar para `crates/piano-tutor-fixtures/tests/zz_sonda3_fuzz.rs`; fuzz de 60 mil grafias (T1), `RemoverNota` + inverso em acidentes exóticos, `RestaurarAltura`/`InserirNota` em pausa e `pontos` 0 a 255.
+- `zz_revisao3_app_tela_partitura.rs`: copiar para `crates/piano-tutor-app/src/tela_partitura/zz_sondas3.rs` e acrescentar `#[cfg(test)] mod zz_sondas3;` a `tela_partitura.rs`; `cargo test --offline -p piano-tutor-app --lib zz3_app -- --nocapture --test-threads=1` (só Unix). A: ordens de Recuperar/Descartar/Voltar/Continuar (T7); B: acorde em uníssono (T6); C: exportação (T8); D: leitura com rascunho que não abre (T7a).
+- `zz_revisao3_app_pdf_lateral.diff`: teste a acrescentar ao módulo `testes` de `pdf_lateral.rs` (T9); aplicar com `git apply`.
