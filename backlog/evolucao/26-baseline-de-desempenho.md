@@ -12,10 +12,10 @@
 
 **Blocked by:** 07 (Corpus de fixtures da E01 e harness de round-trip e comparação semântica), 18 (Acorde: adicionar e retirar alturas de uma nota)
 
-**Status:** ready-for-agent
+**Status:** feito, aguarda revisão (baseline medido só nesta VM de nuvem; PC de referência NÃO VERIFICADO)
 
-- [ ] A16: um benchmark reproduzível mede cada comando listado numa peça de 100 compassos e registra mediana, p95 e máximo, com versão do código, máquina e carga; o resultado é um documento no repositório.
-- [ ] O benchmark não falha a CI por tempo (sem asserção de meta); ele só garante que roda (smoke).
-- [ ] A comparação com a meta proposta (100 ms em 100 compassos) é registrada como observação, com o texto 'meta a calibrar'; nenhuma meta é alterada.
-- [ ] O resultado distingue Linux de referência (PC de referência, NÃO VERIFICADO se medido em outra máquina) de outras máquinas; medição sob carga com áudio é NÃO VERIFICADA fora do PC de referência.
-- [ ] Se algum comando ultrapassar 100 ms, abre-se um registro (não um conserto no mesmo ticket) com o perfil de onde está o custo.
+- [x] A16 (`crates/piano-tutor-app/tests/baseline_desempenho.rs`, relatório e dados em `docs/evolucao-musical/e01/desempenho/RELATORIO.md`): um benchmark reproduzível mede cada comando listado numa peça de 100 compassos e registra mediana, p95 e máximo, com versão do código, máquina e carga; o resultado é um documento no repositório.
+- [x] O benchmark não falha a CI por tempo (sem asserção de meta); ele só garante que roda (smoke).
+- [x] A comparação com a meta proposta (100 ms em 100 compassos) é registrada como observação, com o texto 'meta a calibrar'; nenhuma meta é alterada.
+- [x] O resultado distingue Linux de referência (PC de referência, NÃO VERIFICADO se medido em outra máquina) de outras máquinas; medição sob carga com áudio é NÃO VERIFICADA fora do PC de referência.
+- [x] (nenhum comando ultrapassou 100 ms nesta máquina; nada a registrar) Se algum comando ultrapassar 100 ms, abre-se um registro (não um conserto no mesmo ticket) com o perfil de onde está o custo.
