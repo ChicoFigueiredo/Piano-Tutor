@@ -9,6 +9,7 @@
 pub use crate::atalhos_partitura::{AcaoAtalho, Destino, MapaAtalhos, MovimentoDeEntrada};
 
 mod acorde;
+mod pdf_lateral;
 use crate::autosave::{Autosave, ConfigAutosave, ErroAutosave, Rascunho};
 use crate::cursor_entrada::{
     AvisoDeEntrada, Conteudo, CursorDeEntrada, Faixa, PosicaoDeEntrada, altura_da_letra,
@@ -322,6 +323,8 @@ pub struct EstadoPartitura {
     pratica: Option<SessaoPratica>,
     /// Versões da partitura da Oficina aberta (ticket 21); `None` para arquivo solto ou embutido.
     versoes: Option<Versoes>,
+    /// PDF original ao lado da edição (ticket 20); só vale com `versoes` (item da Oficina).
+    pdf_lateral: pdf_lateral::PdfLateral,
     /// Lista de Versões (relida ao abrir e ao salvar, não a cada quadro).
     lista_de_versoes: Vec<LinhaDaLista>,
     /// Nota de motivo da próxima Versão (opcional).
@@ -480,6 +483,7 @@ impl EstadoPartitura {
             retomada_pratica: Retomada::Zero,
             pratica: None,
             versoes: None,
+            pdf_lateral: pdf_lateral::PdfLateral::default(),
             lista_de_versoes: Vec::new(),
             comparacao: Comparacao::default(),
             campo_nota_versao: String::new(),
@@ -1398,6 +1402,7 @@ impl EstadoPartitura {
         let item = crate::revisao::ItemPartitura::ler(&oficina, id);
         let v = Versoes::da_partitura(&item);
         self.versoes = Some(v);
+        self.pdf_lateral = pdf_lateral::PdfLateral::do_item(&item);
         self.atualizar_lista_de_versoes();
         self.conferir_originais();
         self.preparar_autosave(pasta, id);
@@ -2734,7 +2739,9 @@ impl OpcoesTela {
 
 /// Desenha a tela inteira.
 pub fn desenhar_tela(ui: &mut Ui, e: &mut EstadoPartitura, som: &mut ServicoSom) {
-    desenhar_corpo(ui, e, som, OpcoesTela::COMPLETA);
+    pdf_lateral::desenhar_com_pdf(ui, e, som, |ui, e, som| {
+        desenhar_corpo(ui, e, som, OpcoesTela::COMPLETA);
+    });
 }
 
 /// Intervalo mínimo entre conferências periódicas da sessão de prática da Versão (1 s).
