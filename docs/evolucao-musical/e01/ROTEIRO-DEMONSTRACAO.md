@@ -29,9 +29,9 @@ sha256sum ~/.local/share/piano-tutor/fontes/*/oficina/partituras/*.musicxml
 
 Guarde a linha da partitura da demonstração. Ela é a prova do passo 9.
 
-## 1. Abrir com o PDF ao lado (depende de R5)
+## 1. Abrir com o PDF ao lado (R5 corrigido em 2026-11-28)
 
-**Como deve ficar (depende de R5, em implementação por outra equipe):** na tela **Partitura**, abra o arquivo da Oficina (passo 2) e a coluna **Página do PDF** aparece ao lado da partitura editável, com ◀ ▶, "Ajustar", "100%" e Ctrl+roda para zoom. Clicar num compasso leva o PDF à página dele; sem mapa de compassos o painel diz que o mapa é por página; com região mapeada, destaca a região. Os passos 3 a 10 se fazem nessa mesma tela, com o PDF sempre à vista.
+**Como deve ficar (R5 corrigido em 2026-11-28, em implementação por outra equipe):** na tela **Partitura**, abra o arquivo da Oficina (passo 2) e a coluna **Página do PDF** aparece ao lado da partitura editável, com ◀ ▶, "Ajustar", "100%" e Ctrl+roda para zoom. Clicar num compasso leva o PDF à página dele; sem mapa de compassos o painel diz que o mapa é por página; com região mapeada, destaca a região. Os passos 3 a 10 se fazem nessa mesma tela, com o PDF sempre à vista.
 
 **Enquanto R5 não entrar (como é hoje, pelo código):** o PDF ao lado só existe na tela **Revisão do tutor** (grupo Tutor, aba Partituras, escolher a oficina e a partitura; a vista ali é somente leitura). Mostre o PDF ali, depois vá ao passo 2 e alterne de tela para editar. Nesse caso o "ao lado" se perde na edição.
 

@@ -39,3 +39,5 @@
 - PDF e páginas só são lidos (teste com SHA-256 antes e depois de apontar compassos, trocar página e esconder/mostrar). Mesmos limites de memória de `ler_png`.
 - Testes egui sem janela (7, em `pdf_lateral::testes`): painel acompanha nota selecionada; cursor de entrada leva o PDF; região x por página; esconder/mostrar; larguras estreita e larga sem pânico; sem PDF; arquivo solto; hash. Os testes foram escritos junto com o código, não antes (sem registro de "red").
 - NÃO VERIFICADO: legibilidade do painel e do destaque numa janela real, arrastar a borda com o mouse, HiDPI e captura de tela (sem display neste ambiente). O roteiro de demonstração (`docs/evolucao-musical/e01/ROTEIRO-DEMONSTRACAO.md`) não existe no repositório; nada foi alterado nele.
+
+**Supervisor (2026-11-28):** R5 aceito. Dívida: o estado e o desenho do painel de PDF existem duas vezes, em `tela_revisao.rs` e em `tela_partitura/pdf_lateral.rs`. Unificar num componente só, na E02 ou antes se o código divergir.
