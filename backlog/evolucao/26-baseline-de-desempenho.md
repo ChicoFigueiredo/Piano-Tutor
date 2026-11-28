@@ -19,3 +19,5 @@
 - [x] A comparação com a meta proposta (100 ms em 100 compassos) é registrada como observação, com o texto 'meta a calibrar'; nenhuma meta é alterada.
 - [x] O resultado distingue Linux de referência (PC de referência, NÃO VERIFICADO se medido em outra máquina) de outras máquinas; medição sob carga com áudio é NÃO VERIFICADA fora do PC de referência.
 - [x] (nenhum comando ultrapassou 100 ms nesta máquina; nada a registrar) Se algum comando ultrapassar 100 ms, abre-se um registro (não um conserto no mesmo ticket) com o perfil de onde está o custo.
+
+**Supervisor (2026-11-28):** aceito. A meta de 100 ms é "a calibrar" (A16) e foi registrada como observação, sem ser prometida. Nada passou dela nesta VM. O desempenho no cerebro, sob áudio e com MIDI→tela, segue NÃO VERIFICADO.

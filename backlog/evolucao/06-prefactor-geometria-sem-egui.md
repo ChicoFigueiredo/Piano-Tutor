@@ -22,3 +22,5 @@
 - [ ] Sem aumento mensurável no tempo de layout de uma peça de 100 compassos (medição informal registrada; a baseline formal é o ticket 26). NÃO CONCLUÍDO: medição informal e ruidosa (0,84 a 0,87 ms antes; 0,86 a 1,7 ms depois, 42 compassos, release, máquina compartilhada); não dá para afirmar ausência de aumento. Baseline formal é o ticket 26.
 
 **Notas:** Wide refactor (to-tickets): sequenciar expandir/migrar/contrair; a CI deve ficar verde em cada batch.
+
+**Supervisor (2026-11-28, após o ticket 26):** o ticket 26 mediu o valor absoluto do layout em 100 compassos: mediana de 0,156 ms (p95 0,177), em nuvem e em release. O critério acima continua aberto, porque a comparação com o commit anterior ao ticket 06 não foi feita e "sem aumento mensurável" segue NÃO COMPROVADO. Ele não bloqueia o uso, já que o tempo fica abaixo de 1% de um quadro, mas aparece como pendência no gate do ticket 27.
