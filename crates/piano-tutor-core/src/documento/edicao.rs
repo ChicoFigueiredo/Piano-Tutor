@@ -4,7 +4,8 @@
 
 use super::duracao::{mmc, mmc_dos_denominadores, para_divisions};
 use super::erro::ErroDocumento;
-use super::texto::{No, Peca};
+use super::grafia::separar_acidente;
+use super::texto::{Abertura, No, Peca, fim_da_abertura};
 use super::{Altura, Documento, IdNota};
 use crate::partitura::Fracao;
 
@@ -80,6 +81,57 @@ pub(super) fn validar(a: Altura) -> Result<(), ErroDocumento> {
 
 pub(super) fn leaf(nome: &str, conteudo: &str) -> No {
     No::novo(nome, format!("<{nome}>{conteudo}</{nome}>"))
+}
+
+/// `<accidental>` novo a partir da grafia completa (`nome` ou `nome atributos`).
+pub(super) fn leaf_acidente(grafia: &str) -> No {
+    let (nome, atributos) = separar_acidente(grafia);
+    if atributos.is_empty() {
+        leaf("accidental", nome)
+    } else {
+        No::novo(
+            "accidental",
+            format!("<accidental {atributos}>{nome}</accidental>"),
+        )
+    }
+}
+
+/// Grafia completa de um `<accidental>` existente: o conteúdo e, se houver, os atributos.
+fn grafia_do_acidente(a: &No, base: &str) -> Option<String> {
+    let texto = a.texto(base);
+    let nome = a.conteudo_folha(base)?;
+    let fim = match fim_da_abertura(&texto, 0)? {
+        Abertura::Aberta(i) => i - 1,
+        Abertura::AutoFechada => return None,
+    };
+    let atributos = texto["<accidental".len()..fim].trim();
+    Some(if atributos.is_empty() {
+        nome.trim().to_owned()
+    } else {
+        format!("{} {atributos}", nome.trim())
+    })
+}
+
+/// A grafia é aceitável? Nome não vazio e sem marcação; atributos sem `<` nem `>`.
+fn grafia_valida(grafia: &str) -> bool {
+    let (nome, atributos) = separar_acidente(grafia);
+    !nome.is_empty() && !nome.contains(['<', '>', '&']) && !atributos.contains(['<', '>'])
+}
+
+/// Põe o `<accidental>` na grafia `t`. Grafia só com o nome troca o conteúdo e mantém os
+/// atributos que o elemento já tinha; com atributos, o elemento vira exatamente o pedido.
+fn troca_acidente(no: &mut No, base: &str, t: &str) -> Result<(), ErroDocumento> {
+    let (nome, atributos) = separar_acidente(t);
+    match no.filho_mut("accidental") {
+        Some(a) if atributos.is_empty() => a.definir_conteudo(base, nome),
+        Some(a) => {
+            if grafia_do_acidente(a, base).as_deref() != Some(t.trim()) {
+                *a = leaf_acidente(t);
+            }
+            Ok(())
+        }
+        None => no.inserir_em_ordem(leaf_acidente(t), &posto_nota),
+    }
 }
 
 type Local = (usize, usize, usize);
@@ -158,8 +210,7 @@ impl Documento {
         let no = self.copia_da_nota(loc)?;
         Ok(no
             .filho("accidental")
-            .and_then(|a| a.conteudo_folha(&self.original))
-            .map(|t| t.trim().to_owned()))
+            .and_then(|a| grafia_do_acidente(a, &self.original)))
     }
 
     /// A nota participa de ligadura de prolongamento (`<tie>` ou `<tied>`)?
@@ -183,7 +234,7 @@ impl Documento {
     ) -> Result<bool, ErroDocumento> {
         validar(nova)?;
         if let Some(t) = acidente
-            && (t.is_empty() || t.contains(['<', '>', '&']))
+            && !grafia_valida(t)
         {
             return Err(ErroDocumento::AlturaInvalida(format!("acidente '{t}'")));
         }
@@ -195,8 +246,7 @@ impl Documento {
         let base = &self.original;
         let acidente_atual = no
             .filho("accidental")
-            .and_then(|a| a.conteudo_folha(base))
-            .map(|t| t.trim().to_owned());
+            .and_then(|a| grafia_do_acidente(a, base));
         if atual == nova && acidente_atual.as_deref() == acidente {
             return Ok(false);
         }
@@ -226,10 +276,7 @@ impl Documento {
             }
         }
         match acidente {
-            Some(t) => match no.filho_mut("accidental") {
-                Some(a) => a.definir_conteudo(base, t)?,
-                None => no.inserir_em_ordem(leaf("accidental", t), &posto_nota)?,
-            },
+            Some(t) => troca_acidente(&mut no, base, t)?,
             None => {
                 no.remover_filho("accidental");
             }
@@ -250,13 +297,10 @@ impl Documento {
         let base = &self.original;
         match acidente {
             Some(t) => {
-                if t.is_empty() || t.contains(['<', '>', '&']) {
+                if !grafia_valida(t) {
                     return Err(ErroDocumento::AlturaInvalida(format!("acidente '{t}'")));
                 }
-                match no.filho_mut("accidental") {
-                    Some(a) => a.definir_conteudo(base, t)?,
-                    None => no.inserir_em_ordem(leaf("accidental", t), &posto_nota)?,
-                }
+                troca_acidente(&mut no, base, t)?;
             }
             None => {
                 if !no.remover_filho("accidental") {

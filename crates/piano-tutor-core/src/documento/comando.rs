@@ -44,7 +44,8 @@
 use super::editar_duracao::MudancaDeDuracao;
 use super::grafia::{
     Anterior, acidente_de, alter_do_acidente, alteracao_em_vigor, antes, de_partitura, midi,
-    nome_da_altura, nome_do_midi, para_partitura, por_grau, por_oitava, por_semitom,
+    nome_da_altura, nome_do_acidente, nome_do_midi, para_partitura, por_grau, por_oitava,
+    por_semitom,
 };
 use super::servico::DocumentoAberto;
 use super::{Altura, ErroDocumento, IdNota, PosCompasso};
@@ -751,6 +752,8 @@ impl DocumentoAberto {
         let alterou = self
             .documento
             .definir_altura_e_acidente(id, altura, acidente.as_deref())?;
+        // A grafia que ficou (um nome só mantém os atributos que o elemento já tinha).
+        let acidente = self.documento.acidente_da_nota(id)?;
         let mut resultado = ResultadoDaEdicao {
             aplicado: ComandoDeEdicao::DefinirAltura {
                 nota: id,
@@ -890,7 +893,7 @@ impl DocumentoAberto {
         let nota = &mut self.partitura.partes[l.parte].compassos[l.compasso].notas[l.ordinal];
         nota.altura = Some(pa);
         nota.midi = pa.numero_midi();
-        nota.acidente = acidente.and_then(Acidente::de_texto);
+        nota.acidente = acidente.and_then(|t| Acidente::de_texto(nome_do_acidente(t)));
     }
 }
 
