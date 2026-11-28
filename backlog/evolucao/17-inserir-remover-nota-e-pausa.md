@@ -12,7 +12,7 @@
 
 **Blocked by:** 16 (Mudar a duração com 1–9 e ponto, com validação do compasso (A4))
 
-**Status:** feito, aguarda revisão
+**Status:** em andamento — núcleo pronto e revisado pelo supervisor; cursor de entrada e arquivo `*.ids` no app pendentes (17b)
 
 - [x] Inserir uma nota onde há pausa livre a substitui, preservando a soma do compasso; inserir onde não há espaço é recusado com mensagem e sem alteração (teste, sem entrada no undo).
 - [x] Inserir uma pausa em posição válida é aceito; inserir pausa sobre nota existente é recusado ou pede remoção explícita (decisão registrada no teste).
@@ -20,7 +20,7 @@
 - [x] Remover a última nota de uma voz não deixa a voz com soma inválida; a voz fica com pausas até completar o compasso (teste).
 - [x] Desfazer e refazer cada uma das duas operações restaura o modelo (A5 em testes dedicados).
 - [x] Exportação difere do original só no compasso editado; ornamentos e letra associados a uma nota removida são tratados com aviso explícito (letra/cifra/dedilhado órfãos viram lista de avisos e nunca somem em silêncio).
-- [x] A posição de inserção usa as colunas do layout e o cursor de entrada; o teste usa a posição, não coordenadas de pixel.
+- [ ] A posição de inserção usa as colunas do layout e o cursor de entrada; o teste usa a posição, não coordenadas de pixel.
 
 **Supervisor (2026-11-27):** quando o arquivo lateral de IdNota existir, trocar o pareamento do diff (`documento/diff.rs`, ticket 22) para usá-lo, com teste de inserção no meio de compasso sem `id` no MusicXML.
 
@@ -46,3 +46,6 @@
 - **Cursor de entrada de notas e atalho de inserir** na tela: os comandos de inserir existem no serviço (posição pela coluna do layout), mas a Oficina ainda não tem o cursor de entrada nem a seleção de pausa; só `Delete` foi ligado.
 - Ramos irmãos (duas Versões que saem do mesmo ancestral) herdam o mesmo contador de ids: o pareamento por id entre irmãos pode juntar notas inseridas diferentes como "alterada" (entre ancestral e descendente, não).
 - Hardware, áudio e REVAS: NÃO VERIFICADO (nada daqui depende deles).
+
+
+**Supervisor (2026-11-28):** núcleo aceito: os comandos, o IdNota estável por série, `conferir_exportacao` completo de novo, o diff por IdNota e a correção de `exibicao()`. Reabri o critério do cursor de entrada, porque a Oficina ainda não tem cursor, seleção de pausa nem atalho de inserir. Ele fecha no 17b, junto com a gravação e leitura do arquivo `*.ids` no app (exportação, Versões e autosave) e com a correção dos ramos irmãos.
