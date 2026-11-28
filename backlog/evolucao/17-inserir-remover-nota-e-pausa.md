@@ -12,7 +12,7 @@
 
 **Blocked by:** 16 (Mudar a duração com 1–9 e ponto, com validação do compasso (A4))
 
-**Status:** feito, aguarda revisão (núcleo aceito em 2026-11-28; 17b entregue no app: arquivo `*.ids`, ramos irmãos e cursor de entrada)
+**Status:** feito pelo time, revisado pelo supervisor (núcleo aceito em 2026-11-28; 17b entregue no app: arquivo `*.ids`, ramos irmãos e cursor de entrada)
 
 - [x] Inserir uma nota onde há pausa livre a substitui, preservando a soma do compasso; inserir onde não há espaço é recusado com mensagem e sem alteração (teste, sem entrada no undo).
 - [x] Inserir uma pausa em posição válida é aceito; inserir pausa sobre nota existente é recusado ou pede remoção explícita (decisão registrada no teste).
