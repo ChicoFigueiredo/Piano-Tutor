@@ -47,8 +47,15 @@
 //!   reutilizado); as pausas ocupadas deixam de existir. O arquivo lateral de ids
 //!   ([`DocumentoAberto::tabela_ids_para`]) guarda isso para a releitura.
 //! - **Inverso.** O `inverso` de inserir nota é [`ComandoDeEdicao::RemoverNota`] e o de remover
-//!   uma nota que vira pausa é [`ComandoDeEdicao::InserirNota`]. Nos demais casos (pausa,
-//!   membro de acorde, adorno) o `inverso` é o próprio `aplicado` e quem desfaz é o histórico.
+//!   uma nota que vira pausa é [`ComandoDeEdicao::InserirNota`]. O de remover um membro de acorde
+//!   (principal ou não) é [`ComandoDeEdicao::AdicionarAltura`] na nota que fica (G2: antes era o
+//!   próprio `aplicado`, que falha porque a identidade deixou de existir). Só a nota de adorno
+//!   mantém o `inverso` igual ao `aplicado`, e quem a desfaz é o histórico.
+//! - **O que o inverso garante.** Reconstrói a nota (altura, grafia do acidente, figura, pontos,
+//!   posição, voz, pauta) e a soma do compasso, mas não os atributos gráficos nem os elementos
+//!   que a remoção descartou (`default-x`, `<stem>`, letra, dedilhado, ligaduras: os avisos já
+//!   dizem quais). Por isso a restauração byte a byte vem do desfazer por snapshot; o texto só
+//!   volta idêntico quando a nota removida não tinha nada disso.
 //!
 //! # Fora de escopo
 //!
@@ -916,6 +923,19 @@ pub(super) fn planejar_remocao(
     let mut inverso: Option<ComandoDeEdicao> = None;
 
     if sai_sem_virar_pausa {
+        // G2: a nota de acorde que sai se desfaz por `AdicionarAltura` na nota que fica como
+        // principal (a seguinte, se a removida era a principal; a principal, senão). O inverso
+        // não pode ser o próprio `aplicado`: a identidade `id` deixa de existir.
+        if !sel.graca {
+            let restante = if ord > p0 { p0 } else { ord + 1 };
+            if let (Some(altura), Some(resto)) = (sel.altura, a.comp0.notas.get(restante)) {
+                inverso = Some(ComandoDeEdicao::AdicionarAltura {
+                    nota: resto.id,
+                    altura,
+                    acidente: doc.acidente_da_nota(id).ok().flatten(),
+                });
+            }
+        }
         // A nota some; se era a principal de um acorde, a seguinte passa a ser a principal.
         remover_nota(&mut comp, ord);
         if !sel.acorde && comp.notas.get(ord).is_some_and(|n| n.acorde) {

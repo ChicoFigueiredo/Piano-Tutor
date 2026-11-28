@@ -408,20 +408,10 @@ fn planejar_retirada(
     let sel = &a.comp0.notas[ord];
     let (p0, q) = grupo_do_acorde(a.comp0, ord);
     let em_acorde = !sel.pausa && !sel.graca && q > p0;
-    let restante = if ord > p0 { p0 } else { ord + 1 };
-    let (altura, restante_id) = (sel.altura, a.comp0.notas[restante.min(q)].id);
-    let acidente = doc.acidente_da_nota(id).ok().flatten();
     let planejado = planejar_remocao(doc, partitura, id)?;
     match planejado {
         Planejado::Muda(mut ap) if em_acorde => {
             ap.resultado.aplicado = ComandoDeEdicao::RetirarAltura { nota: id };
-            if let Some(altura) = altura {
-                ap.resultado.inverso = ComandoDeEdicao::AdicionarAltura {
-                    nota: restante_id,
-                    altura,
-                    acidente,
-                };
-            }
             Ok(Planejado::Muda(ap))
         }
         outro => Ok(outro),

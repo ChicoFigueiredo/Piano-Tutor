@@ -8,7 +8,8 @@ use piano_tutor_core::documento::{
     Altura, AvisoDeEdicao, ComandoDeEdicao, DocumentoAberto, ErroDeEdicao, IdNota, Nota,
     PosCompasso,
 };
-use piano_tutor_core::partitura::{Fracao, Partitura};
+use piano_tutor_core::documento::{SentidoDaAltura, UnidadeDeAltura};
+use piano_tutor_core::partitura::{Figura, Fracao, Partitura};
 use piano_tutor_fixtures::corpus::{Fixture, corpus};
 use piano_tutor_fixtures::harness::{comparar_bytes, verificar_golden};
 use std::collections::BTreeMap;
@@ -830,4 +831,275 @@ fn varre_retirar(fx: &Fixture, max: usize) -> usize {
 fn corpus_inteiro_retirar_altura_de_acorde_mantem_a_soma_e_desfaz_byte_a_byte() {
     let total: usize = corpus().iter().map(|fx| varre_retirar(fx, 10)).sum();
     assert!(total >= 10, "{total}");
+}
+
+// --- G2 (gate da E01): o `inverso` devolvido, aplicado como COMANDO, restaura o texto ----------
+
+/// O `inverso` de cada resultado aceito, aplicado como comando num documento que acabou de aplicar
+/// o `aplicado`, devolve o texto exportado byte a byte (como o desfazer por snapshot).
+fn varre_inversos(fx: &Fixture, max: usize) -> (usize, Vec<String>) {
+    let d0 = DocumentoAberto::abrir_texto(fx.id, &fx.conteudo).expect("abre");
+    let amostrar = |v: Vec<IdNota>| -> Vec<IdNota> {
+        let passo = v.len().div_ceil(max).max(1);
+        v.into_iter().step_by(passo).collect()
+    };
+    let afinadas = amostrar(
+        d0.documento()
+            .notas()
+            .filter(|n| n.altura.is_some() && !n.graca)
+            .map(|n| n.id)
+            .collect(),
+    );
+    let em_acorde = amostrar(
+        d0.documento()
+            .partes()
+            .iter()
+            .flat_map(|p| p.compassos.iter())
+            .flat_map(|c| {
+                c.notas.iter().enumerate().filter_map(|(i, n)| {
+                    let acorde = n.acorde || c.notas.get(i + 1).is_some_and(|s| s.acorde);
+                    (acorde && !n.graca && !n.pausa).then_some(n.id)
+                })
+            })
+            .collect(),
+    );
+    let mut cmds: Vec<ComandoDeEdicao> = Vec::new();
+    for id in afinadas.iter().chain(&em_acorde).copied() {
+        let alt0 = d0.documento().nota(id).and_then(|n| n.altura);
+        cmds.push(ComandoDeEdicao::MudarAltura {
+            nota: id,
+            unidade: UnidadeDeAltura::Semitom,
+            sentido: SentidoDaAltura::Acima,
+        });
+        cmds.push(ComandoDeEdicao::MudarDuracao {
+            nota: id,
+            figura: Figura::Colcheia,
+        });
+        cmds.push(ComandoDeEdicao::AlternarPonto { nota: id });
+        cmds.push(ComandoDeEdicao::RemoverNota { nota: id });
+        cmds.push(ComandoDeEdicao::RetirarAltura { nota: id });
+        if let Some(a) = alt0 {
+            let passo = if a.passo == 'G' {
+                'A'
+            } else {
+                (a.passo as u8 + 1) as char
+            };
+            cmds.push(adicionar(id, alt(passo, a.oitava)));
+        }
+    }
+    // Pausas: inserir nota e inserir pausa no lugar de uma pausa.
+    let mut pausas = Vec::new();
+    for (pi, parte) in d0.partitura().partes.iter().enumerate() {
+        for (ci, c) in parte.compassos.iter().enumerate() {
+            for n in c.notas.iter().filter(|n| n.e_pausa()) {
+                pausas.push((pi, ci, n.posicao, n.voz.to_string(), n.pauta.to_string()));
+            }
+        }
+    }
+    let passo = pausas.len().div_ceil(max).max(1);
+    for (pi, ci, posicao, voz, pauta) in pausas.into_iter().step_by(passo) {
+        let compasso = PosCompasso {
+            parte: d0.documento().partes()[pi].id.clone(),
+            indice: ci,
+            numero: String::new(),
+        };
+        for figura in [Figura::Seminima, Figura::Colcheia] {
+            cmds.push(ComandoDeEdicao::InserirNota {
+                compasso: compasso.clone(),
+                voz: voz.clone(),
+                pauta: pauta.clone(),
+                posicao,
+                altura: alt('E', 4),
+                acidente: None,
+                figura,
+                pontos: 0,
+            });
+            cmds.push(ComandoDeEdicao::InserirPausa {
+                compasso: compasso.clone(),
+                voz: voz.clone(),
+                pauta: pauta.clone(),
+                posicao,
+                figura,
+                pontos: 0,
+            });
+        }
+    }
+    let coerente = figuras_coerentes(d0.partitura());
+    let (mut aceitos, mut falhas) = (0, Vec::new());
+    for cmd in cmds {
+        let mut d = d0.clone();
+        let Ok(r) = d.aplicar(cmd.clone()) else {
+            continue;
+        };
+        if !r.alterou {
+            continue;
+        }
+        aceitos += 1;
+        let mut v = d.clone();
+        if let Err(e) = v.aplicar(r.inverso.clone()) {
+            falhas.push(format!(
+                "{}: {cmd:?}: inverso {:?} recusado: {e}",
+                fx.id, r.inverso
+            ));
+            continue;
+        }
+        // Garantia geral: as notas do modelo de tocar voltam (como conjunto por compasso: a
+        // ordem das alturas de um acorde cuja principal foi removida pode mudar).
+        let so_altura = matches!(
+            cmd,
+            ComandoDeEdicao::MudarAltura { .. } | ComandoDeEdicao::AdicionarAltura { .. }
+        );
+        if (so_altura || coerente)
+            && conjunto_de_notas(v.partitura()) != conjunto_de_notas(d0.partitura())
+        {
+            falhas.push(format!(
+                "{}: {cmd:?}: o inverso não restaurou o modelo",
+                fx.id
+            ));
+        }
+        // Garantia exata: o texto volta byte a byte nos comandos que não descartam nada.
+        let exato = matches!(
+            cmd,
+            ComandoDeEdicao::MudarAltura { .. } | ComandoDeEdicao::AdicionarAltura { .. }
+        );
+        if exato && v.exportar().expect("exporta") != fx.conteudo {
+            falhas.push(format!(
+                "{}: {cmd:?}: o inverso não restaurou o texto",
+                fx.id
+            ));
+        }
+    }
+    (aceitos, falhas)
+}
+
+/// O conteúdo musical por compasso: as notas com altura (posição, duração, altura, voz, pauta,
+/// figura, pontos, quiáltera) como conjunto, e a soma das pausas por voz e pauta (o inverso não
+/// reagrupa as pausas que uma inserção dividiu).
+type ConteudoDoCompasso = (Vec<String>, BTreeMap<(u8, u8), Fracao>);
+
+fn conjunto_de_notas(p: &Partitura) -> Vec<ConteudoDoCompasso> {
+    p.partes
+        .iter()
+        .flat_map(|parte| parte.compassos.iter())
+        .map(|c| {
+            let mut notas: Vec<String> = Vec::new();
+            let mut pausas: BTreeMap<(u8, u8), Fracao> = BTreeMap::new();
+            for n in &c.notas {
+                if n.e_pausa() {
+                    let soma = pausas.entry((n.voz, n.pauta)).or_insert(Fracao::inteiro(0));
+                    *soma = *soma + n.duracao;
+                } else {
+                    notas.push(format!(
+                        "{:?}",
+                        (
+                            n.posicao, n.duracao, n.altura, n.midi, n.voz, n.pauta, n.adorno,
+                            n.figura, n.pontos, n.tuplo
+                        )
+                    ));
+                }
+            }
+            notas.sort();
+            (notas, pausas)
+        })
+        .collect()
+}
+
+/// `true` se toda nota com altura tem a duração que a figura, os pontos e a quiáltera escritos
+/// dizem (o fixture `tercina` escreve `<type>eighth</type>` com a duração de uma semínima de
+/// tercina: o primeiro comando de duração normaliza isso, e o inverso não desfaz a normalização).
+fn figuras_coerentes(p: &Partitura) -> bool {
+    p.partes
+        .iter()
+        .flat_map(|x| x.compassos.iter())
+        .flat_map(|c| c.notas.iter())
+        .all(|n| {
+            if n.e_pausa() || n.adorno {
+                return true;
+            }
+            let f = n.figura;
+            let pontos = f64::from(n.pontos);
+            let nominal = f.duracao_nominal();
+            let mut esperado = nominal.como_f64() * (2.0 - 0.5f64.powf(pontos));
+            if let Some((a, b)) = n.tuplo {
+                esperado *= f64::from(b) / f64::from(a);
+            }
+            (esperado - n.duracao.como_f64()).abs() < 1e-9
+        })
+}
+
+#[test]
+fn g2_corpus_o_inverso_aplicado_como_comando_restaura_o_texto_byte_a_byte() {
+    let (mut total, mut falhas) = (0, Vec::new());
+    for fx in corpus() {
+        let (n, f) = varre_inversos(&fx, 6);
+        total += n;
+        falhas.extend(f);
+    }
+    assert!(total >= 100, "a varredura precisa de casos reais: {total}");
+    assert!(
+        falhas.is_empty(),
+        "{} inversos falharam:\n{}",
+        falhas.len(),
+        falhas
+            .iter()
+            .take(400)
+            .cloned()
+            .collect::<Vec<_>>()
+            .join("\n")
+    );
+}
+
+#[test]
+fn g2_remover_nota_de_acorde_tem_inverso_que_se_aplica_como_comando() {
+    let texto = acorde_de_tres();
+    let original = abrir(&texto);
+    let pitch_set = |d: &DocumentoAberto| {
+        let mut v: Vec<i32> = d.partitura().partes[0].compassos[0]
+            .notas
+            .iter()
+            .filter_map(|n| n.midi.map(i32::from))
+            .collect();
+        v.sort_unstable();
+        v
+    };
+    // Membro que não é a principal: o inverso devolve o texto byte a byte.
+    for ordinal in [1, 2] {
+        for retira in [false, true] {
+            let mut d = original.clone();
+            let id = id_da(&d, ordinal);
+            let cmd = if retira {
+                ComandoDeEdicao::RetirarAltura { nota: id }
+            } else {
+                ComandoDeEdicao::RemoverNota { nota: id }
+            };
+            let r = d.aplicar(cmd).expect("remove");
+            assert!(
+                matches!(r.inverso, ComandoDeEdicao::AdicionarAltura { .. }),
+                "{:?}",
+                r.inverso
+            );
+            d.aplicar(r.inverso).expect("o inverso se aplica");
+            assert_eq!(d.exportar().expect("exporta"), texto, "ordinal {ordinal}");
+        }
+    }
+    // A principal: o inverso se aplica e devolve as alturas, a duração e a soma; a ordem das
+    // alturas dentro do acorde pode mudar (a principal volta como membro).
+    for retira in [false, true] {
+        let mut d = original.clone();
+        let id = id_da(&d, 0);
+        let cmd = if retira {
+            ComandoDeEdicao::RetirarAltura { nota: id }
+        } else {
+            ComandoDeEdicao::RemoverNota { nota: id }
+        };
+        let r = d.aplicar(cmd).expect("remove a principal");
+        d.aplicar(r.inverso).expect("o inverso se aplica");
+        assert_eq!(pitch_set(&d), pitch_set(&original));
+        assert_eq!(
+            somas_por_voz(d.partitura()),
+            somas_por_voz(original.partitura())
+        );
+        d.conferir_exportacao(&d.exportar().expect("exporta"))
+            .expect("confere");
+    }
 }
