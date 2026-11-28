@@ -33,3 +33,5 @@
 - App: `Shift+letra` (já existia como ação pendente), `Alt+2` a `Alt+9` (intervalo acima, como no MuseScore) e `Ctrl+Delete` (retirar altura) no mapa, remapeáveis; nenhum atalho removido. Tela: só um `mod acorde;` e um braço no `match` de `Destino` em `tela_partitura.rs` (código em `tela_partitura/acorde.rs`).
 
 **Pendências / riscos:** retirar a nota principal de um acorde leva junto a letra, as vigas e a marca `<tuplet>` que ela carregava (a letra e o resto saem com aviso; vigas são refeitas pela conferência; a marca de tupla não é transferida para a nota seguinte: herdado do 17). Intervalo abaixo e adorno em acorde ficam fora. Som e interface real: NÃO VERIFICADO (só testes automatizados).
+
+**Supervisor (2026-11-28):** aceito. Também aceito as decisões de recusar altura repetida pelo mesmo MIDI, inclusive a enarmônica, e de usar Ctrl+Delete para retirar altura. Intervalo abaixo fica para a E03. A faixa de 88 teclas ainda é provisória e será confirmada com o titular.
