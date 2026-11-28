@@ -4,10 +4,12 @@
 //! Partitura só o usa. Abrir e exportar passam **somente** pelo serviço (`piano_tutor_core::
 //! documento`); aqui ficam apenas a leitura e a gravação de arquivos, com os limites de tamanho.
 
+use crate::ids_lateral::{self, IdsGravados, SituacaoDosIds};
 use crate::selecao_partitura::IndiceLeitura;
+use crate::versoes::{Hash, hash_do_conteudo};
 use piano_tutor_core::documento::{
     ComandoDeEdicao, DocumentoAberto, ErroDeEdicao, ErroServico, Exibicao, Formato, IdsPorNota,
-    ResultadoDaEdicao, ResultadoDoHistorico,
+    ResultadoDaEdicao, ResultadoDoHistorico, TabelaIds,
 };
 use piano_tutor_core::mxl::MXL_TAMANHO_MAXIMO_BYTES;
 use piano_tutor_core::partitura::{
@@ -155,6 +157,12 @@ pub struct DocumentoPartitura {
     /// editor não desenha (ticket 19). Lida do texto original uma vez por abertura: os comandos
     /// de edição de hoje (altura) não tocam nesses elementos.
     exibicao: Exibicao,
+    /// O que houve com o arquivo lateral de identidades ao abrir (ticket 17b).
+    ids_lateral: SituacaoDosIds,
+    /// Versão de que as identidades deste documento descendem, para a linhagem das Versões:
+    /// o hash do arquivo aberto (vale só se ele é uma Versão registrada; quem salva confere) ou a
+    /// linhagem do arquivo lateral usado. `None` quando não se sabe.
+    base_de_ids: Option<Hash>,
 }
 
 impl DocumentoPartitura {
@@ -168,6 +176,8 @@ impl DocumentoPartitura {
             musica,
             leitura,
             exibicao,
+            ids_lateral: SituacaoDosIds::Nenhum,
+            base_de_ids: None,
         }
     }
 
@@ -176,6 +186,20 @@ impl DocumentoPartitura {
     pub fn de_recuperado(nome: String, mut aberto: DocumentoAberto) -> Self {
         aberto.marcar_modificado();
         Self::de_aberto(nome, aberto)
+    }
+
+    /// Como [`Self::de_recuperado`], guardando o que houve com o arquivo lateral do rascunho e a
+    /// linhagem das identidades (ticket 17b).
+    pub fn de_recuperado_com_ids(
+        nome: String,
+        aberto: DocumentoAberto,
+        situacao: SituacaoDosIds,
+        derivada_de: Option<Hash>,
+    ) -> Self {
+        let mut d = Self::de_recuperado(nome, aberto);
+        d.ids_lateral = situacao;
+        d.base_de_ids = derivada_de;
+        d
     }
 
     /// Interpreta o texto MusicXML.
@@ -191,9 +215,46 @@ impl DocumentoPartitura {
             .file_name()
             .map(|n| n.to_string_lossy().into_owned())
             .unwrap_or_else(|| nome_se_faltar.to_owned());
-        let aberto =
-            DocumentoAberto::abrir_bytes(&nome, &bytes, formato).map_err(|e| e.to_string())?;
-        Ok(Self::de_aberto(nome, aberto))
+        // O arquivo lateral de identidades (`<arquivo>.ids`) é tolerante: ausente, de outro texto
+        // ou ilegível, o texto abre sem ele (ticket 17b).
+        let lateral = ids_lateral::ler(&ids_lateral::caminho_lateral(caminho));
+        let (aberto, situacao, derivada_de) = ids_lateral::abrir_tolerante(lateral, |t| {
+            DocumentoAberto::abrir_bytes_com_ids(&nome, &bytes, formato, t)
+        })
+        .map_err(|e| e.to_string())?;
+        let mut d = Self::de_aberto(nome, aberto);
+        d.base_de_ids = match situacao {
+            SituacaoDosIds::Usado => derivada_de,
+            // Sem tabela as identidades vêm do próprio texto: se o arquivo é uma Versão
+            // registrada (a Hipótese), é dela que descendem.
+            _ => Some(hash_do_conteudo(&bytes)),
+        };
+        d.ids_lateral = situacao;
+        Ok(d)
+    }
+
+    /// O que houve com o arquivo lateral de identidades ao abrir (ticket 17b).
+    pub fn situacao_dos_ids(&self) -> &SituacaoDosIds {
+        &self.ids_lateral
+    }
+
+    /// Versão de que as identidades deste documento descendem, se se sabe (ticket 17b).
+    pub fn base_de_ids(&self) -> Option<&str> {
+        self.base_de_ids.as_deref()
+    }
+
+    /// Depois de salvar uma Versão com as identidades atuais: o documento passa a descender dela.
+    pub fn definir_base_de_ids(&mut self, hash: Hash) {
+        self.base_de_ids = Some(hash);
+    }
+
+    /// O texto exportado agora e a tabela de identidades que vale para ele (a que vai no arquivo
+    /// lateral, na Versão e no rascunho): reabrir o texto com a tabela devolve as mesmas
+    /// identidades.
+    pub fn exportado_com_ids(&self) -> Result<(String, TabelaIds), ErroServico> {
+        let texto = self.aberto.exportar()?;
+        let tabela = self.aberto.tabela_ids_para(&texto);
+        Ok((texto, tabela))
     }
 
     /// O modelo para tocar e desenhar.
@@ -271,6 +332,22 @@ impl DocumentoPartitura {
         self.aberto.editado()
     }
 
+    /// Posição (parte e compasso) no formato dos comandos de edição, a partir dos índices do
+    /// modelo de tocar (que o cursor de entrada usa). `None` fora dos limites.
+    pub fn pos_compasso(
+        &self,
+        parte: usize,
+        compasso: usize,
+    ) -> Option<piano_tutor_core::documento::PosCompasso> {
+        let p = self.aberto.documento().partes().get(parte)?;
+        let c = p.compassos.get(compasso)?;
+        Some(piano_tutor_core::documento::PosCompasso {
+            parte: p.id.clone(),
+            indice: compasso,
+            numero: c.numero.clone(),
+        })
+    }
+
     /// Compassos editados (sujos), os únicos que a exportação regenera.
     pub fn compassos_editados(&self) -> Vec<piano_tutor_core::documento::PosCompasso> {
         self.aberto.documento().compassos_sujos()
@@ -310,7 +387,17 @@ impl DocumentoPartitura {
             std::fs::read_to_string(destino).map_err(|e| format!("{}: {e}", destino.display()))?;
         self.aberto
             .conferir_exportacao(&lido)
-            .map_err(|e| e.to_string())
+            .map_err(|e| e.to_string())?;
+        // O arquivo lateral de identidades vai ao lado do texto gravado (ticket 17b). Falhar aqui
+        // não desfaz a exportação, mas também não passa em silêncio.
+        let lateral = ids_lateral::caminho_lateral(destino);
+        let ids = IdsGravados::nova(self.aberto.tabela_ids_para(&lido), None);
+        ids_lateral::gravar(&lateral, &ids).map_err(|e| {
+            format!(
+                "{} foi gravado, mas não o arquivo de identidades das notas ao lado dele: {e}",
+                destino.display()
+            )
+        })
     }
 }
 

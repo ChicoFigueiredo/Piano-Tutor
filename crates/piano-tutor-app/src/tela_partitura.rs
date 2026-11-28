@@ -6,13 +6,17 @@
 //! O app chama [`EstadoPartitura::atualizar`] a cada quadro (agenda as notas até
 //! `agora + ANTECEDENCIA`) e [`EstadoPartitura::tocando`] para saber se há reprodução.
 
-pub use crate::atalhos_partitura::{AcaoAtalho, Destino, MapaAtalhos};
+pub use crate::atalhos_partitura::{AcaoAtalho, Destino, MapaAtalhos, MovimentoDeEntrada};
 
 mod acorde;
 use crate::autosave::{Autosave, ConfigAutosave, ErroAutosave, Rascunho};
+use crate::cursor_entrada::{
+    AvisoDeEntrada, Conteudo, CursorDeEntrada, Faixa, PosicaoDeEntrada, altura_da_letra,
+};
 use crate::documento_partitura::Musica;
 use crate::documento_partitura::{DocumentoPartitura, destino_de_exportacao};
 use crate::geometria::IdNota;
+use crate::ids_lateral::{IdsGravados, SituacaoDosIds};
 use crate::partitura_visual::{
     Acerto, Destaque, EstadoVisual, Mao, MapaResultados, MarcaSelecao, Marcas, ModoRolagem,
     OpcoesVisuais, ResultadoNota, ZOOM_MAX, ZOOM_MIN, desenhar_partitura,
@@ -20,11 +24,13 @@ use crate::partitura_visual::{
 use crate::pratica_versao::{ErroDaPratica, PraticaDaVersao, ouvir_compasso};
 use crate::preferencias::PreferenciasPartitura;
 use crate::revisao::Estado as EstadoDeRevisao;
-use crate::selecao_partitura::{Comando, EfeitoDoClique, Resultado, SelecaoPartitura, descrever};
+use crate::selecao_partitura::{
+    Comando, EfeitoDoClique, Passo, Resultado, SelecaoPartitura, descrever,
+};
 use crate::som::{EstadoSom, ServicoSom};
 use crate::versoes::{
-    AcaoDeRevisao, LinhaDaLista, ResultadoDoSalvar, SituacaoDoOriginal, Versao, Versoes, agora_utc,
-    hash_curto, hash_do_conteudo,
+    AcaoDeRevisao, IdsDaVersao, LinhaDaLista, ResultadoDoSalvar, SituacaoDoOriginal, Versao,
+    Versoes, agora_utc, hash_curto, hash_do_conteudo,
 };
 use crate::versoes_diff::{DiffDeVersoes, diff_entre_versoes};
 use bancada_casca::Atalho;
@@ -277,6 +283,9 @@ pub struct EstadoPartitura {
     pub alto_contraste: bool,
     /// Nota selecionada e navegação por teclado (ticket 12): fora do documento e do egui.
     selecao: SelecaoPartitura,
+    /// Cursor de entrada de notas e duração atual de entrada (ticket 17b): posição por coluna do
+    /// layout, voz e pauta; fora do documento e do egui.
+    entrada: CursorDeEntrada,
     /// Mapa de atalhos da Oficina (ticket 13), gravado no perfil (`tela.atalhos`).
     pub atalhos: MapaAtalhos,
     /// Ação cujo atalho está sendo capturado na lista de atalhos (a próxima tecla vale).
@@ -450,6 +459,7 @@ impl EstadoPartitura {
             papel_branco: prefs.papel_branco,
             alto_contraste: prefs.alto_contraste,
             selecao: SelecaoPartitura::default(),
+            entrada: CursorDeEntrada::default(),
             atalhos: MapaAtalhos::padrao(),
             capturando_atalho: None,
             aviso_atalho: None,
@@ -544,6 +554,7 @@ impl EstadoPartitura {
         self.compasso_em_foco = None;
         // Outro documento, outras identidades de nota: a seleção anterior não vale mais.
         self.selecao.limpar();
+        self.entrada.limpar();
         self.ultima_edicao = None;
         self.audicao_pendente = None;
         self.pratica = None;
@@ -609,7 +620,23 @@ impl EstadoPartitura {
     /// Executa um comando de navegação sobre a partitura aberta. Não edita nem suja o documento.
     pub fn navegar(&mut self, cmd: Comando) -> Option<Resultado> {
         let d = self.documento.as_ref()?;
+        // Sem nota selecionada mas com o cursor de entrada (uma pausa selecionada, por exemplo),
+        // as setas partem da posição do cursor e não do começo da peça (ticket 17b).
+        if self.selecao.nota().is_none()
+            && let Some(id) = vizinha_da_entrada(d, &self.entrada, cmd)
+        {
+            // A vizinha já é o destino: executar o comando de novo andaria mais um passo.
+            self.selecao.selecionar(&d.leitura, id);
+            self.selecao.pedir_rolagem();
+            return self.seguir_a_selecao_na_entrada(Resultado::Moveu(id));
+        }
         let r = self.selecao.executar(&d.leitura, cmd);
+        self.seguir_a_selecao_na_entrada(r)
+    }
+
+    /// O foco do compasso e o cursor de entrada seguem a nota selecionada.
+    fn seguir_a_selecao_na_entrada(&mut self, r: Resultado) -> Option<Resultado> {
+        let d = self.documento.as_ref()?;
         if let Some(c) = self
             .selecao
             .nota()
@@ -617,6 +644,9 @@ impl EstadoPartitura {
             .map(|e| e.compasso)
         {
             self.compasso_em_foco = Some(c);
+        }
+        if let Some(n) = self.selecao.nota() {
+            self.entrada.selecionar_nota(d.partitura(), d.ids(), n);
         }
         Some(r)
     }
@@ -698,6 +728,16 @@ impl EstadoPartitura {
     pub fn mudar_duracao(&mut self, tecla: u8) -> Option<ResultadoDaEdicao> {
         match figura_da_tecla(tecla) {
             Ok(figura) => {
+                // A tecla também é a duração atual das próximas inserções (ticket 17b).
+                self.entrada.definir_duracao(tecla);
+                if self.selecao.nota().is_none() {
+                    self.ultima_edicao = Some(format!(
+                        "Duração de entrada: {}. Selecione uma nota (clique nela ou use as \
+                         setas) para mudar a duração dela.",
+                        self.nome_da_duracao_de_entrada()
+                    ));
+                    return None;
+                }
                 self.editar_duracao(move |nota| ComandoDeEdicao::MudarDuracao { nota, figura })
             }
             Err(e) => {
@@ -709,7 +749,295 @@ impl EstadoPartitura {
 
     /// Liga ou desliga o ponto de aumento da nota selecionada (ticket 16).
     pub fn alternar_ponto(&mut self) -> Option<ResultadoDaEdicao> {
+        // O ponto também vale para as próximas inserções (ticket 17b).
+        self.entrada.alternar_ponto();
+        if self.selecao.nota().is_none() {
+            self.ultima_edicao = Some(format!(
+                "Duração de entrada: {}. Selecione uma nota (clique nela ou use as setas) para \
+                 mudar a duração dela.",
+                self.nome_da_duracao_de_entrada()
+            ));
+            return None;
+        }
         self.editar_duracao(|nota| ComandoDeEdicao::AlternarPonto { nota })
+    }
+
+    // --- Cursor de entrada de notas (ticket 17b) ------------------------------------------------
+
+    /// O cursor de entrada e a duração atual de entrada.
+    pub fn entrada(&self) -> &CursorDeEntrada {
+        &self.entrada
+    }
+
+    /// Nome da duração atual de entrada ("semínima", "colcheia pontuada").
+    pub fn nome_da_duracao_de_entrada(&self) -> String {
+        let d = self.entrada.duracao();
+        match figura_da_tecla(d.tecla) {
+            Ok(figura) => texto_da_duracao(figura, d.pontos),
+            Err(_) => "semínima".to_owned(),
+        }
+    }
+
+    /// Descrição em texto da posição de entrada (compasso, tempo, coluna, pauta, voz e o que há
+    /// ali), para a linha de estado e os leitores de tela.
+    pub fn descricao_da_entrada(&self) -> Option<String> {
+        let d = self.documento.as_ref()?;
+        self.entrada.descricao(d.partitura(), d.ids())
+    }
+
+    /// A pausa sob o cursor de entrada, quando é isso que está lá: a "pausa selecionada".
+    pub fn pausa_selecionada(&self) -> Option<IdNota> {
+        let d = self.documento.as_ref()?;
+        self.entrada.pausa_selecionada(d.partitura(), d.ids())
+    }
+
+    /// Vai à posição de entrada dada (faixa, compasso e coluna do layout): nunca um pixel. Sobre
+    /// uma nota, seleciona a nota; sobre uma pausa, a pausa fica selecionada e a seleção de nota
+    /// é limpa. Posição que não existe é recusada com mensagem e nada muda.
+    pub fn posicionar_entrada(&mut self, faixa: Faixa, compasso: usize, coluna: usize) -> bool {
+        let Some(d) = self.documento.as_ref() else {
+            return false;
+        };
+        match self
+            .entrada
+            .posicionar(d.partitura(), faixa, compasso, coluna)
+        {
+            Ok(()) => {
+                self.apos_mover_entrada();
+                true
+            }
+            Err(a) => {
+                self.ultima_edicao = Some(a.texto().to_owned());
+                false
+            }
+        }
+    }
+
+    /// Clique num compasso, fora de nota: a posição de entrada passa à coluna do layout mais
+    /// próxima, na voz e pauta em que o cursor estava.
+    pub fn clicar_na_coluna(&mut self, compasso: usize, coluna: usize) -> bool {
+        let Some(d) = self.documento.as_ref() else {
+            return false;
+        };
+        match self
+            .entrada
+            .posicionar_na_coluna(d.partitura(), compasso, coluna)
+        {
+            Ok(()) => {
+                self.apos_mover_entrada();
+                true
+            }
+            Err(a) => {
+                self.ultima_edicao = Some(a.texto().to_owned());
+                false
+            }
+        }
+    }
+
+    /// Move o cursor de entrada: pelas posições da voz (pausas incluídas) ou entre voz e pauta.
+    /// Sem posição ainda, começa pela nota selecionada ou pelo início da primeira voz.
+    pub fn mover_entrada(&mut self, mov: MovimentoDeEntrada) -> bool {
+        let Some(d) = self.documento.as_ref() else {
+            return false;
+        };
+        let p = d.partitura();
+        if self.entrada.posicao().is_none() {
+            let comecou = self
+                .selecao
+                .nota()
+                .is_some_and(|n| self.entrada.selecionar_nota(p, d.ids(), n))
+                || self.entrada.posicionar_na_coluna(p, 0, 0).is_ok();
+            if !comecou {
+                self.ultima_edicao = Some(AvisoDeEntrada::SemNotas.texto().to_owned());
+                return false;
+            }
+            // O primeiro toque só mostra onde o cursor está.
+            self.apos_mover_entrada();
+            return true;
+        }
+        let r = match mov {
+            MovimentoDeEntrada::Anterior => self.entrada.anterior(p),
+            MovimentoDeEntrada::Seguinte => self.entrada.seguinte(p),
+            MovimentoDeEntrada::Acima => self.entrada.faixa_acima(p),
+            MovimentoDeEntrada::Abaixo => self.entrada.faixa_abaixo(p),
+        };
+        match r {
+            Ok(_) => {
+                self.apos_mover_entrada();
+                true
+            }
+            Err(a) => {
+                self.ultima_edicao = Some(a.texto().to_owned());
+                false
+            }
+        }
+    }
+
+    /// Depois de mover o cursor: sobre uma nota, ela fica selecionada; sobre pausa ou vazio, a
+    /// seleção de nota é limpa (o "item atual" é a pausa sob o cursor) e a descrição é mostrada.
+    fn apos_mover_entrada(&mut self) {
+        let Some(d) = self.documento.as_ref() else {
+            return;
+        };
+        match self.entrada.conteudo(d.partitura(), d.ids()) {
+            Some(Conteudo::Nota(id)) if d.leitura.contem(id) => {
+                self.selecao.selecionar(&d.leitura, id);
+                self.selecao.pedir_rolagem();
+            }
+            _ => self.selecao.limpar(),
+        }
+        if let Some(c) = self.entrada.posicao().map(|p| p.compasso) {
+            self.compasso_em_foco = Some(c);
+        }
+        self.ultima_edicao = self
+            .entrada
+            .descricao(d.partitura(), d.ids())
+            .map(|t| format!("Posição de entrada: {t}."));
+    }
+
+    /// Mantém o cursor válido depois que o documento mudou (inserir, remover, desfazer, refazer).
+    fn revalidar_entrada(&mut self) {
+        let Some(d) = self.documento.as_ref() else {
+            return;
+        };
+        let Some(pos) = self.entrada.posicao() else {
+            return;
+        };
+        if self
+            .entrada
+            .posicionar(d.partitura(), pos.faixa, pos.compasso, pos.coluna)
+            .is_err()
+        {
+            self.entrada.limpar();
+        }
+    }
+
+    /// Insere, na posição do cursor de entrada, a nota da letra `A` a `G` (como no MuseScore: a
+    /// oitava mais próxima da última nota da voz, a alteração da armadura) com a duração atual de
+    /// entrada, chamando o comando tipado do serviço de documento. Só vale onde há pausa livre da
+    /// voz (a nota substitui a pausa); onde há nota, ou não cabe, é recusado com mensagem e nada
+    /// muda. Recusa também sem posição de entrada, em leitura de Versão e durante a reprodução ou
+    /// a prática.
+    pub fn inserir_nota_na_entrada(&mut self, letra: char) -> Option<ResultadoDaEdicao> {
+        let r = self.aplicar_insercao(Some(letra));
+        self.conferir_originais();
+        r
+    }
+
+    /// Insere uma pausa na posição do cursor de entrada, com a duração atual (regrupa pausas
+    /// livres; em cima de nota é recusado, pede apagar antes).
+    pub fn inserir_pausa_na_entrada(&mut self) -> Option<ResultadoDaEdicao> {
+        let r = self.aplicar_insercao(None);
+        self.conferir_originais();
+        r
+    }
+
+    fn aplicar_insercao(&mut self, letra: Option<char>) -> Option<ResultadoDaEdicao> {
+        self.documento.as_ref()?;
+        if self.recusar_em_leitura() {
+            return None;
+        }
+        if self.tocando() || self.praticando() {
+            self.ultima_edicao =
+                Some("Pare a reprodução ou a prática antes de editar a partitura.".into());
+            return None;
+        }
+        let Some(pos) = self.entrada.posicao() else {
+            self.ultima_edicao = Some(AvisoDeEntrada::SemPosicao.texto().to_owned());
+            return None;
+        };
+        let d = self.documento.as_ref()?;
+        let p = d.partitura();
+        let duracao = self.entrada.duracao();
+        let (Some(tempo), Some(compasso), Ok(figura)) = (
+            self.entrada.tempo(p),
+            d.pos_compasso(pos.faixa.parte, pos.compasso),
+            figura_da_tecla(duracao.tecla),
+        ) else {
+            self.ultima_edicao = Some(AvisoDeEntrada::PosicaoInvalida.texto().to_owned());
+            return None;
+        };
+        let (voz, pauta) = (pos.faixa.voz.to_string(), pos.faixa.pauta.to_string());
+        let comando = match letra {
+            Some(l) => {
+                let Some(altura) = altura_da_letra(p, &self.entrada, l) else {
+                    self.ultima_edicao = Some(format!("A letra «{l}» não é uma nota de A a G."));
+                    return None;
+                };
+                ComandoDeEdicao::InserirNota {
+                    compasso,
+                    voz,
+                    pauta,
+                    posicao: tempo,
+                    altura,
+                    acidente: None,
+                    figura,
+                    pontos: duracao.pontos,
+                }
+            }
+            None => ComandoDeEdicao::InserirPausa {
+                compasso,
+                voz,
+                pauta,
+                posicao: tempo,
+                figura,
+                pontos: duracao.pontos,
+            },
+        };
+        let nome = self.nome_da_duracao_de_entrada();
+        let d = self.documento.as_mut()?;
+        match d.aplicar(comando) {
+            Ok(r) => {
+                let mut texto = if !r.alterou {
+                    "Já há uma pausa assim nesta posição.".to_owned()
+                } else if letra.is_some() {
+                    format!(
+                        "Nota inserida: {}, {nome}, compasso {}.",
+                        nome_da_altura(r.depois),
+                        r.compassos_afetados
+                            .first()
+                            .map_or_else(String::new, rotulo_do_compasso)
+                    )
+                } else {
+                    format!(
+                        "Pausa inserida: {nome}, compasso {}.",
+                        r.compassos_afetados
+                            .first()
+                            .map_or_else(String::new, rotulo_do_compasso)
+                    )
+                };
+                for a in &r.avisos {
+                    texto.push(' ');
+                    texto.push_str(&a.texto());
+                }
+                if r.alterou {
+                    // A nota inserida fica selecionada (as setas ajustam a altura dela) e o
+                    // cursor avança para o próximo início da voz, como na entrada de notas.
+                    let alvo = r.estrutura.as_ref().map(|e| (e.alvo, e.alvo_soa));
+                    match alvo {
+                        Some((id, true)) if d.leitura.contem(id) => {
+                            self.selecao.selecionar(&d.leitura, id);
+                            self.selecao.pedir_rolagem();
+                        }
+                        _ => self.selecao.limpar(),
+                    }
+                    let _ = self.entrada.seguinte(d.partitura());
+                    self.pratica = None;
+                    self.visual.invalidar();
+                    self.audicao_pendente = r.midi_depois();
+                    if let Some(c) = r.compassos_afetados.first().map(|c| c.indice) {
+                        self.compasso_em_foco = Some(c);
+                    }
+                }
+                self.ultima_edicao = Some(texto);
+                self.revalidar_entrada();
+                Some(r)
+            }
+            Err(e) => {
+                self.ultima_edicao = Some(e.to_string());
+                None
+            }
+        }
     }
 
     fn editar_duracao(
@@ -779,8 +1107,13 @@ impl EstadoPartitura {
             return None;
         }
         let Some(nota) = self.selecao.nota() else {
-            self.ultima_edicao =
-                Some("Selecione uma nota (clique nela ou use as setas) antes de apagar.".into());
+            self.ultima_edicao = Some(if self.pausa_selecionada().is_some() {
+                "A pausa selecionada não se apaga: insira uma nota nela (letra A a G) ou ajuste a \
+                 duração das notas ao lado."
+                    .into()
+            } else {
+                "Selecione uma nota (clique nela ou use as setas) antes de apagar.".into()
+            });
             return None;
         };
         if self.tocando() || self.praticando() {
@@ -796,6 +1129,7 @@ impl EstadoPartitura {
                     self.selecao.pedir_rolagem();
                     self.pratica = None;
                     self.visual.invalidar();
+                    self.revalidar_entrada();
                 }
                 let mut texto = "Nota removida: virou pausa.".to_owned();
                 for a in &r.avisos {
@@ -870,6 +1204,10 @@ impl EstadoPartitura {
         {
             self.compasso_em_foco = Some(c);
         }
+        if let Some(n) = self.selecao.nota() {
+            self.entrada.selecionar_nota(d.partitura(), d.ids(), n);
+        }
+        self.revalidar_entrada();
         let numeros: Vec<String> = r
             .compassos_afetados
             .iter()
@@ -930,6 +1268,7 @@ impl EstadoPartitura {
                 if let Some(e) = d.leitura.entrada(id) {
                     self.compasso_em_foco = Some(e.compasso);
                 }
+                self.entrada.selecionar_nota(d.partitura(), d.ids(), id);
             }
             EfeitoDoClique::Compasso(c) => self.compasso_em_foco = Some(c),
             EfeitoDoClique::Nenhum => {}
@@ -1003,9 +1342,11 @@ impl EstadoPartitura {
         };
         match aberto {
             Ok(d) => {
+                let recusa = recusa_dos_ids(&d);
                 self.carregar_documento(d);
                 self.selecionada = i;
                 self.erro = None;
+                self.aviso = recusa;
             }
             Err(e) => self.erro = Some(format!("{}: {e}", f.nome)),
         }
@@ -1017,8 +1358,10 @@ impl EstadoPartitura {
         self.parar_sem_som();
         match DocumentoPartitura::de_arquivo(c, caminho) {
             Ok(d) => {
+                let recusa = recusa_dos_ids(&d);
                 self.carregar_documento(d);
                 self.erro = None;
+                self.aviso = recusa;
                 self.vincular_a_oficina(c);
             }
             Err(e) => self.erro = Some(e),
@@ -1093,8 +1436,18 @@ impl EstadoPartitura {
                 self.recuperado = true;
                 self.rascunho_escrito = true;
                 self.parar_sem_som();
-                self.instalar_documento(DocumentoPartitura::de_recuperado(nome, r.documento));
-                self.aviso_versoes = Some(r.aviso_undo.to_owned());
+                let doc = DocumentoPartitura::de_recuperado_com_ids(
+                    nome,
+                    r.documento,
+                    r.ids,
+                    r.derivada_de,
+                );
+                let recusa = recusa_dos_ids(&doc);
+                self.instalar_documento(doc);
+                self.aviso_versoes = Some(match recusa {
+                    Some(m) => format!("{} {m}", r.aviso_undo),
+                    None => r.aviso_undo.to_owned(),
+                });
             }
             Err(e) => {
                 self.rascunho_pendente = None;
@@ -1163,7 +1516,7 @@ impl EstadoPartitura {
         if !a.devido(agora_ms, modificado) {
             return;
         }
-        let Ok(texto) = d.exportado() else {
+        let Ok((texto, tabela)) = d.exportado_com_ids() else {
             return;
         };
         let hash = hash_do_conteudo(texto.as_bytes());
@@ -1171,12 +1524,14 @@ impl EstadoPartitura {
             a.gravado(hash, agora_ms);
             return;
         }
+        // As identidades das notas vão ao lado do rascunho (ticket 17b).
+        let ids = IdsGravados::nova(tabela, d.base_de_ids());
         let gravador = a.gravador();
         let em = agora_utc();
         let (tx, rx) = std::sync::mpsc::channel();
         self.gravacao_do_rascunho = Some(rx);
         std::thread::spawn(move || {
-            let _ = tx.send(gravador.gravar(&texto, &em));
+            let _ = tx.send(gravador.gravar_com_ids(&texto, Some(&ids), &em));
         });
     }
 
@@ -1495,12 +1850,19 @@ impl EstadoPartitura {
         let (Some(v), Some(d)) = (&self.versoes, &self.documento) else {
             return Err("nenhuma partitura carregada".into());
         };
-        let texto = d.exportado().map_err(|e| e.to_string())?;
+        let (texto, tabela) = d.exportado_com_ids().map_err(|e| e.to_string())?;
         let nota = self.campo_nota_versao.trim();
+        // As identidades das notas ficam com a Versão (ticket 17b), com a linhagem de que o
+        // documento descende: o diff só pareia por IdNota entre quem descende de quem.
+        let ids = IdsDaVersao {
+            tabela: &tabela,
+            derivada_de: d.base_de_ids(),
+        };
         let r = v
-            .salvar(
+            .salvar_com_ids(
                 None,
                 &texto,
+                Some(ids),
                 (!nota.is_empty()).then_some(nota),
                 crate::revisao::REVISOR,
                 &agora_utc(),
@@ -1516,6 +1878,10 @@ impl EstadoPartitura {
         };
         if let Some(d) = self.documento.as_mut() {
             d.marcar_salvo();
+            // As identidades do documento são, agora, as dessa Versão.
+            if let ResultadoDoSalvar::Criada(v) = &r {
+                d.definir_base_de_ids(v.hash.clone());
+            }
         }
         self.aviso_versoes = Some(match &r {
             ResultadoDoSalvar::Criada(v) => {
@@ -2233,6 +2599,73 @@ impl EstadoPartitura {
     }
 }
 
+/// Aviso de que o arquivo lateral de identidades das notas foi ignorado (ticket 17b), ou `None`.
+fn recusa_dos_ids(d: &DocumentoPartitura) -> Option<String> {
+    match d.situacao_dos_ids() {
+        SituacaoDosIds::Recusado(m) => Some(format!(
+            "O arquivo de identidades das notas foi ignorado ({m}); o diff de Versões compara por conteúdo."
+        )),
+        _ => None,
+    }
+}
+
+/// A nota ou a pausa mais próxima do cursor de entrada, no sentido do comando, na trilha dele
+/// (ticket 17b): as setas de nota partem do cursor quando a seleção está numa pausa.
+fn vizinha_da_entrada(
+    d: &DocumentoPartitura,
+    entrada: &CursorDeEntrada,
+    cmd: Comando,
+) -> Option<IdNota> {
+    let passo = match cmd {
+        Comando::Anterior => Passo::Anterior,
+        Comando::Seguinte => Passo::Seguinte,
+        _ => return None,
+    };
+    let pos = entrada.posicao()?;
+    let p = d.partitura();
+    let agora = p.compassos.get(pos.compasso)?.inicio.como_f64() + entrada.tempo(p)?.como_f64();
+    let trilha = d.leitura.trilhas().iter().find(|t| {
+        t.parte == pos.faixa.parte && t.pauta == pos.faixa.pauta && t.voz == pos.faixa.voz
+    })?;
+    match passo {
+        Passo::Seguinte => trilha
+            .notas
+            .iter()
+            .find(|n| n.inicio_q > agora + 1e-9)
+            .map(|n| n.id),
+        Passo::Anterior => trilha
+            .notas
+            .iter()
+            .rev()
+            .find(|n| n.inicio_q < agora - 1e-9)
+            .map(|n| n.id),
+    }
+}
+
+/// O cursor de entrada como a vista o desenha (compasso, coluna e se há pausa selecionada).
+fn marca_da_entrada(
+    entrada: &CursorDeEntrada,
+    d: &DocumentoPartitura,
+) -> Option<crate::partitura_visual::MarcaEntrada> {
+    let PosicaoDeEntrada {
+        compasso, coluna, ..
+    } = entrada.posicao()?;
+    Some(crate::partitura_visual::MarcaEntrada {
+        compasso,
+        coluna,
+        pausa: entrada.pausa_selecionada(d.partitura(), d.ids()).is_some(),
+    })
+}
+
+/// Rótulo impresso do compasso (ou o índice a partir de 1, se não houver).
+fn rotulo_do_compasso(p: &piano_tutor_core::documento::PosCompasso) -> String {
+    if p.numero.is_empty() {
+        (p.indice + 1).to_string()
+    } else {
+        p.numero.clone()
+    }
+}
+
 fn nome_de_arquivo(nome: &str) -> String {
     let base: String = nome
         .chars()
@@ -2404,6 +2837,7 @@ pub fn desenhar_corpo(
                 captura_tab: d.leitura.trilhas().len() > 1,
                 alto_contraste: e.alto_contraste,
                 descricao: &descricao,
+                entrada: marca_da_entrada(&e.entrada, &d),
             }),
         },
     );
@@ -2440,6 +2874,15 @@ pub fn desenhar_corpo(
                         Destino::Acorde(p) => {
                             e.editar_acorde(p);
                         }
+                        Destino::InserirNota(l) => {
+                            e.inserir_nota_na_entrada(l);
+                        }
+                        Destino::InserirPausa => {
+                            e.inserir_pausa_na_entrada();
+                        }
+                        Destino::Entrada(m) => {
+                            e.mover_entrada(m);
+                        }
                         Destino::Pendente(a) => e.avisar_pendente(a),
                     }
                 }
@@ -2451,7 +2894,12 @@ pub fn desenhar_corpo(
             capturar_atalho(ui, e);
         }
         if resposta.acerto.is_some() {
+            let na_nota = matches!(resposta.acerto, Some(Acerto::Nota(_)));
             e.clicar_na_partitura(resposta.acerto);
+            // Clique fora de nota, dentro de um compasso: a posição de entrada vai à coluna.
+            if !na_nota && let Some((c, k)) = resposta.coluna_clicada {
+                e.clicar_na_coluna(c, k);
+            }
         }
     } else if let Some(c) = resposta.compasso_clicado {
         e.compasso_inicial = if e.compasso_inicial == Some(c) {
@@ -2545,11 +2993,22 @@ fn desenhar_estado_da_selecao(ui: &mut Ui, e: &mut EstadoPartitura) {
     let mut partes = Vec::new();
     match e.descricao_da_selecao() {
         Some(t) => partes.push(format!("Nota selecionada: {t}")),
+        None if e.pausa_selecionada().is_some() => {
+            partes.push(
+                "Pausa selecionada (insira uma nota com A a G ou uma pausa com 0).".to_owned(),
+            );
+        }
         None => partes.push(
             "Clique numa nota (ou ative a partitura com Tab) e use as setas esquerda e direita; \
              Tab troca de voz ou pauta; Esc sai."
                 .to_owned(),
         ),
+    }
+    if let Some(t) = e.descricao_da_entrada() {
+        partes.push(format!(
+            "Posição de entrada: {t}; duração de entrada: {}",
+            e.nome_da_duracao_de_entrada()
+        ));
     }
     if let Some(a) = e.selecao.aviso() {
         partes.push(a.texto().to_owned());
@@ -2632,8 +3091,12 @@ fn desenhar_elementos_sem_suporte(ui: &mut Ui, e: &EstadoPartitura) {
 
 /// «semínima», «colcheia pontuada»: a figura e os pontos de um valor de duração.
 fn descricao_da_duracao(v: ValorDeDuracao) -> String {
-    let nome = nome_da_figura(v.figura);
-    match v.pontos {
+    texto_da_duracao(v.figura, v.pontos)
+}
+
+fn texto_da_duracao(figura: piano_tutor_core::partitura::Figura, pontos: u8) -> String {
+    let nome = nome_da_figura(figura);
+    match pontos {
         0 => nome.to_owned(),
         1 => format!("{nome} pontuada"),
         n => format!("{nome} com {n} pontos"),
@@ -3009,7 +3472,10 @@ fn desenhar_exportacao(ui: &mut Ui, e: &mut EstadoPartitura) {
             let destino = e.campo_exportar.clone();
             match e.exportar(&destino) {
                 Ok(c) => {
-                    e.aviso = Some(format!("Exportado e conferido: {}", c.display()));
+                    e.aviso = Some(format!(
+                        "Exportado e conferido: {} (com o arquivo de identidades das notas ao lado)",
+                        c.display()
+                    ));
                     e.erro = None;
                 }
                 Err(m) => e.erro = Some(m),
@@ -4727,14 +5193,19 @@ mod testes {
     }
 
     #[test]
-    fn ctrl_e_alt_com_setas_nao_movem_a_selecao_mesmo_com_foco() {
+    fn alt_e_shift_com_setas_nao_movem_a_selecao_e_ctrl_seta_e_o_cursor_de_entrada() {
         let (mut som, ctx) = banco();
         let mut e = ode();
         partitura_em_foco(&ctx, &mut e, &mut som);
-        apertar(&ctx, &mut e, &mut som, Key::ArrowRight, Modifiers::COMMAND);
         apertar(&ctx, &mut e, &mut som, Key::ArrowRight, Modifiers::ALT);
         apertar(&ctx, &mut e, &mut som, Key::ArrowRight, Modifiers::SHIFT);
         assert_eq!(e.nota_selecionada(), None);
+        assert_eq!(e.entrada().posicao(), None);
+        // Ctrl+→ é a ação "próxima posição de entrada" (ticket 17b), não a navegação por notas:
+        // o primeiro toque só mostra onde o cursor de entrada está.
+        apertar(&ctx, &mut e, &mut som, Key::ArrowRight, Modifiers::COMMAND);
+        assert!(e.entrada().posicao().is_some());
+        assert!(!e.documento.as_ref().expect("doc").editado());
     }
 
     #[test]
@@ -5283,6 +5754,530 @@ mod testes {
     }
 
     // --- Ticket 23: aprovar, rejeitar e reabrir na lista de Versões ----------------------------
+
+    // --- Ticket 17b: cursor de entrada de notas -------------------------------------------------
+
+    /// 4/4, divisions 2, duas pautas. Compasso 1: voz 1 (pauta 1) Dó4 (semínima), pausa de mínima,
+    /// Ré4 (semínima); voz 5 (pauta 2) pausa de semibreve. Compasso 2: voz 1 Mi4 (semibreve) e
+    /// voz 5 pausa de semibreve.
+    const PECA_COM_PAUSAS: &str = r#"<?xml version="1.0" encoding="UTF-8"?>
+<score-partwise version="3.1"><part-list><score-part id="P1"><part-name>P</part-name></score-part></part-list>
+<part id="P1"><measure number="1"><attributes><divisions>2</divisions><key><fifths>0</fifths></key><time><beats>4</beats><beat-type>4</beat-type></time><staves>2</staves><clef number="1"><sign>G</sign><line>2</line></clef><clef number="2"><sign>F</sign><line>4</line></clef></attributes>
+<note><pitch><step>C</step><octave>4</octave></pitch><duration>2</duration><voice>1</voice><type>quarter</type><staff>1</staff></note>
+<note><rest/><duration>4</duration><voice>1</voice><type>half</type><staff>1</staff></note>
+<note><pitch><step>D</step><octave>4</octave></pitch><duration>2</duration><voice>1</voice><type>quarter</type><staff>1</staff></note>
+<backup><duration>8</duration></backup>
+<note><rest/><duration>8</duration><voice>5</voice><type>whole</type><staff>2</staff></note></measure>
+<measure number="2"><note><pitch><step>E</step><octave>4</octave></pitch><duration>8</duration><voice>1</voice><type>whole</type><staff>1</staff></note>
+<backup><duration>8</duration></backup>
+<note><rest/><duration>8</duration><voice>5</voice><type>whole</type><staff>2</staff></note></measure></part></score-partwise>"#;
+
+    const VOZ_1: Faixa = Faixa {
+        parte: 0,
+        pauta: 1,
+        voz: 1,
+    };
+    const VOZ_5: Faixa = Faixa {
+        parte: 0,
+        pauta: 2,
+        voz: 5,
+    };
+
+    fn com_pausas() -> (EstadoPartitura, ServicoSom, Context) {
+        let (mut som, ctx) = banco();
+        let mut e = EstadoPartitura::novo(None);
+        e.abrir_xml("pausas", PECA_COM_PAUSAS.to_owned())
+            .expect("abre");
+        partitura_em_foco(&ctx, &mut e, &mut som);
+        (e, som, ctx)
+    }
+
+    fn texto_atual(e: &EstadoPartitura) -> String {
+        e.documento.as_ref().expect("doc").exportado().expect("ok")
+    }
+
+    #[test]
+    fn selecionar_a_pausa_pela_coluna_voz_e_pauta_e_a_letra_insere_a_nota_com_a_duracao_atual() {
+        let (mut e, mut som, ctx) = com_pausas();
+        let original = texto_atual(&e);
+        // Coluna 1 do compasso 1 (tempo 1) da voz 1: onde a pausa de mínima começa.
+        assert!(e.posicionar_entrada(VOZ_1, 0, 1));
+        assert!(e.pausa_selecionada().is_some(), "a pausa está selecionada");
+        assert_eq!(e.nota_selecionada(), None);
+        assert!(
+            e.descricao_da_entrada()
+                .expect("descrição")
+                .contains("pausa selecionada")
+        );
+        // A tecla 4 é a colcheia: vale para as próximas inserções (sem nota selecionada, só isso).
+        apertar(&ctx, &mut e, &mut som, Key::Num4, Modifiers::NONE);
+        assert_eq!(e.entrada().duracao().tecla, 4);
+        assert!(
+            e.ultima_edicao()
+                .expect("msg")
+                .contains("Duração de entrada")
+        );
+        assert!(!e.documento.as_ref().expect("doc").editado());
+        // A letra E insere um Mi (o mais próximo do Dó4 anterior) onde estava a pausa.
+        apertar(&ctx, &mut e, &mut som, Key::E, Modifiers::NONE);
+        assert!(
+            e.ultima_edicao().expect("msg").contains("Nota inserida"),
+            "{:?}",
+            e.ultima_edicao()
+        );
+        assert!(e.documento.as_ref().expect("doc").editado());
+        assert!(e.descricao_da_selecao().expect("nota").contains("Mi 4"));
+        let inserido = texto_atual(&e);
+        assert_eq!(
+            inserido.matches("<step>E</step>").count(),
+            original.matches("<step>E</step>").count() + 1
+        );
+        // O compasso continua fechando: o que sobrou da pausa é pausa (aviso do serviço).
+        assert!(
+            e.ultima_edicao()
+                .expect("msg")
+                .to_lowercase()
+                .contains("pausa")
+        );
+        // O cursor avançou para o próximo início da voz (a pausa que sobrou), que passa a ser a
+        // posição de entrada.
+        let p = e.partitura().expect("p");
+        assert_eq!(
+            e.entrada().tempo(p),
+            Some(piano_tutor_core::partitura::Fracao::nova(3, 2))
+        );
+        // Desfazer e refazer devolvem byte a byte.
+        apertar(&ctx, &mut e, &mut som, Key::Z, Modifiers::COMMAND);
+        assert_eq!(texto_atual(&e), original);
+        apertar(&ctx, &mut e, &mut som, Key::Z, ctrl_shift());
+        assert_eq!(texto_atual(&e), inserido);
+    }
+
+    #[test]
+    fn letra_sobre_nota_ou_sem_posicao_e_recusada_com_mensagem_e_nada_muda() {
+        let (mut e, mut som, ctx) = com_pausas();
+        let original = texto_atual(&e);
+        // Sem posição de entrada: pede para escolher uma.
+        apertar(&ctx, &mut e, &mut som, Key::C, Modifiers::NONE);
+        assert!(
+            e.ultima_edicao()
+                .expect("msg")
+                .contains("Escolha a posição")
+        );
+        assert_eq!(texto_atual(&e), original);
+        // Sobre uma nota (Dó4, tempo 0): não há espaço; nada é inserido, nada entra no undo.
+        assert!(e.posicionar_entrada(VOZ_1, 0, 0));
+        assert!(
+            e.nota_selecionada().is_some(),
+            "sobre nota, a nota é a selecionada"
+        );
+        apertar(&ctx, &mut e, &mut som, Key::G, Modifiers::NONE);
+        let msg = e.ultima_edicao().expect("msg").to_owned();
+        assert!(msg.contains("Não há espaço"), "{msg}");
+        assert_eq!(texto_atual(&e), original);
+        assert!(!e.documento.as_ref().expect("doc").editado());
+        assert!(!e.documento.as_ref().expect("doc").pode_desfazer());
+        // No meio de uma nota que dura (o Mi do compasso 2, no tempo 2): também recusado.
+        let mut e2 = EstadoPartitura::novo(None);
+        e2.abrir_xml("duas", PECA_COM_PAUSAS.to_owned())
+            .expect("abre");
+        // Letra que não é nota nunca chega (o mapa só liga A a G); pela API, recusa com mensagem.
+        assert!(e2.posicionar_entrada(VOZ_1, 1, 0));
+        assert!(e2.inserir_nota_na_entrada('H').is_none());
+        assert!(e2.ultima_edicao().expect("msg").contains("não é uma nota"));
+    }
+
+    #[test]
+    fn ctrl_setas_movem_o_cursor_pelas_posicoes_da_voz_incluindo_pausas_e_alt_setas_trocam_de_voz()
+    {
+        let (mut e, mut som, ctx) = com_pausas();
+        // O primeiro toque mostra onde o cursor está: o começo da primeira voz.
+        apertar(&ctx, &mut e, &mut som, Key::ArrowRight, Modifiers::COMMAND);
+        let pos = e.entrada().posicao().expect("posição");
+        assert_eq!((pos.faixa, pos.compasso, pos.coluna), (VOZ_1, 0, 0));
+        assert!(e.nota_selecionada().is_some(), "sobre a nota Dó4");
+        // Ctrl+→: a pausa de mínima (que a navegação por notas pula).
+        apertar(&ctx, &mut e, &mut som, Key::ArrowRight, Modifiers::COMMAND);
+        assert!(e.pausa_selecionada().is_some());
+        assert_eq!(
+            e.nota_selecionada(),
+            None,
+            "a pausa selecionada limpa a nota"
+        );
+        assert!(
+            e.ultima_edicao()
+                .expect("msg")
+                .contains("pausa selecionada")
+        );
+        // →: a navegação por notas parte do cursor e vai à próxima nota (Ré4), não ao começo.
+        apertar(&ctx, &mut e, &mut som, Key::ArrowRight, Modifiers::NONE);
+        assert!(
+            e.descricao_da_selecao().expect("nota").contains("Ré 4"),
+            "{:?} {:?}",
+            e.descricao_da_selecao(),
+            e.entrada().posicao()
+        );
+        let pos = e.entrada().posicao().expect("posição");
+        assert_eq!((pos.compasso, pos.coluna), (0, 2), "o cursor segue a nota");
+        // Ctrl+←: volta à pausa; ←: anda para a nota anterior (Dó4).
+        apertar(&ctx, &mut e, &mut som, Key::ArrowLeft, Modifiers::COMMAND);
+        assert!(e.pausa_selecionada().is_some());
+        apertar(&ctx, &mut e, &mut som, Key::ArrowLeft, Modifiers::NONE);
+        assert!(e.descricao_da_selecao().expect("nota").contains("Dó 4"));
+        // Alt+↓ vai à voz de baixo (a voz 5, só de pausas, que a navegação por notas não alcança).
+        apertar(&ctx, &mut e, &mut som, Key::ArrowDown, Modifiers::ALT);
+        let pos = e.entrada().posicao().expect("posição");
+        assert_eq!(pos.faixa, VOZ_5);
+        assert!(e.pausa_selecionada().is_some());
+        assert_eq!(e.nota_selecionada(), None);
+        apertar(&ctx, &mut e, &mut som, Key::ArrowDown, Modifiers::ALT);
+        assert!(
+            e.ultima_edicao()
+                .expect("msg")
+                .contains("Não há voz ou pauta abaixo")
+        );
+        apertar(&ctx, &mut e, &mut som, Key::ArrowUp, Modifiers::ALT);
+        assert_eq!(e.entrada().posicao().expect("p").faixa, VOZ_1);
+        // Nada disso editou o documento.
+        assert!(!e.documento.as_ref().expect("doc").editado());
+    }
+
+    #[test]
+    fn nota_inserida_numa_voz_so_de_pausas_e_a_pausa_selecionada_nao_se_apaga() {
+        let (mut e, mut som, ctx) = com_pausas();
+        assert!(e.posicionar_entrada(VOZ_5, 0, 0));
+        assert!(e.pausa_selecionada().is_some());
+        // Delete sobre uma pausa selecionada explica em vez de calar.
+        apertar(&ctx, &mut e, &mut som, Key::Delete, Modifiers::NONE);
+        assert!(
+            e.ultima_edicao()
+                .expect("msg")
+                .contains("pausa selecionada")
+        );
+        assert!(!e.documento.as_ref().expect("doc").editado());
+        // Na pauta de fá, sem nota antes, a letra A cai ao redor do Ré3 (meio da clave de fá).
+        apertar(&ctx, &mut e, &mut som, Key::A, Modifiers::NONE);
+        assert!(
+            e.descricao_da_selecao().expect("nota").contains("Lá 2"),
+            "{:?}",
+            e.descricao_da_selecao()
+        );
+        assert!(texto_atual(&e).contains("<staff>2</staff>"));
+    }
+
+    #[test]
+    fn zero_insere_pausa_e_em_cima_de_nota_pede_remocao_explicita() {
+        let (mut e, mut som, ctx) = com_pausas();
+        // Sobre a nota Dó4: a pausa é recusada e a mensagem pede para remover antes.
+        assert!(e.posicionar_entrada(VOZ_1, 0, 0));
+        let original = texto_atual(&e);
+        apertar(&ctx, &mut e, &mut som, Key::Num0, Modifiers::NONE);
+        assert!(
+            e.ultima_edicao()
+                .expect("msg")
+                .contains("uma pausa não pode")
+        );
+        assert_eq!(texto_atual(&e), original);
+        // Remove a nota (Delete: vira pausa) e agora a pausa de semínima cabe no mesmo lugar.
+        apertar(&ctx, &mut e, &mut som, Key::Delete, Modifiers::NONE);
+        assert!(texto_atual(&e).contains("<rest/>"));
+        // Uma pausa idêntica à que já está ali não muda nada, e diz.
+        assert!(e.posicionar_entrada(VOZ_1, 0, 0));
+        let antes = texto_atual(&e);
+        apertar(&ctx, &mut e, &mut som, Key::Num0, Modifiers::NONE);
+        assert_eq!(texto_atual(&e), antes);
+        assert!(e.ultima_edicao().expect("msg").contains("Já há uma pausa"));
+        // Colcheia: a pausa de semínima vira colcheia mais o que sobra, e o compasso fecha.
+        apertar(&ctx, &mut e, &mut som, Key::Num4, Modifiers::NONE);
+        apertar(&ctx, &mut e, &mut som, Key::Num0, Modifiers::NONE);
+        assert!(e.ultima_edicao().expect("msg").contains("Pausa inserida"));
+    }
+
+    #[test]
+    fn com_nota_selecionada_a_tecla_de_duracao_muda_a_nota_e_tambem_a_duracao_de_entrada() {
+        let (mut e, mut som, ctx) = com_pausas();
+        assert!(e.posicionar_entrada(VOZ_1, 0, 0));
+        apertar(&ctx, &mut e, &mut som, Key::Num4, Modifiers::NONE);
+        assert_eq!(e.entrada().duracao().tecla, 4);
+        assert!(
+            e.documento.as_ref().expect("doc").editado(),
+            "a nota foi encurtada"
+        );
+        apertar(&ctx, &mut e, &mut som, Key::Period, Modifiers::NONE);
+        assert_eq!(e.entrada().duracao().pontos, 1);
+        assert!(e.nome_da_duracao_de_entrada().contains("pontuada"));
+        // A tecla 9 (longa) segue recusada e não muda a duração de entrada.
+        apertar(&ctx, &mut e, &mut som, Key::Num9, Modifiers::NONE);
+        assert!(e.ultima_edicao().expect("msg").contains("longa"));
+        assert_eq!(e.entrada().duracao().tecla, 4);
+    }
+
+    #[test]
+    fn atalhos_de_entrada_sao_remapeaveis_e_o_antigo_fica_livre() {
+        let (mut e, mut som, ctx) = com_pausas();
+        e.remapear_atalho(AcaoAtalho::InserirNota('E'), Atalho::ctrl(Key::J));
+        assert!(e.aviso_de_atalho().expect("aviso").contains("agora é"));
+        assert!(e.posicionar_entrada(VOZ_1, 0, 1));
+        apertar(&ctx, &mut e, &mut som, Key::E, Modifiers::NONE);
+        assert!(
+            !e.documento.as_ref().expect("doc").editado(),
+            "E não é mais a letra"
+        );
+        apertar(&ctx, &mut e, &mut som, Key::J, Modifiers::COMMAND);
+        assert!(e.documento.as_ref().expect("doc").editado());
+        // O que já estava no mapa segue onde estava: Delete ainda apaga a nota selecionada.
+        assert_eq!(
+            e.atalhos.atalho(AcaoAtalho::Apagar),
+            Some(AcaoAtalho::Apagar.padrao())
+        );
+    }
+
+    #[test]
+    fn a_coluna_clicada_vira_posicao_de_entrada_sem_pixel_e_o_cursor_e_desenhado() {
+        let (mut e, mut som, ctx) = com_pausas();
+        let layout = e.visual.ultimo_layout.clone().expect("layout");
+        // O x de cada coluna do layout acerta a própria coluna (em sp, não em pixel de tela).
+        for (k, (_, x)) in layout.compassos[0].colunas.iter().enumerate() {
+            assert_eq!(layout.coluna_mais_proxima(0, *x + 0.05), Some(k));
+            assert_eq!(layout.x_da_coluna(0, k), Some(*x));
+        }
+        assert_eq!(layout.coluna_mais_proxima(99, 0.0), None);
+        // Sem posição anterior o clique cai na primeira voz; depois, na voz em que o cursor está.
+        assert!(e.clicar_na_coluna(0, 1));
+        assert_eq!(e.entrada().posicao().expect("p").faixa, VOZ_1);
+        assert!(e.pausa_selecionada().is_some());
+        assert!(e.posicionar_entrada(VOZ_5, 0, 0));
+        assert!(e.clicar_na_coluna(1, 0));
+        assert_eq!(e.entrada().posicao().expect("p").faixa, VOZ_5);
+        // Coluna que não existe: recusada, a posição não muda.
+        assert!(!e.clicar_na_coluna(0, 9));
+        assert_eq!(e.entrada().posicao().expect("p").compasso, 1);
+        // O quadro desenha o cursor sobre uma pausa e sobre uma nota, sem pânico.
+        quadro(&ctx, &mut e, &mut som);
+        assert!(e.posicionar_entrada(VOZ_1, 0, 0));
+        quadro(&ctx, &mut e, &mut som);
+        let l = e.visual.ultimo_layout.clone().expect("layout");
+        assert!(l.x_da_coluna(0, 0).is_some());
+    }
+
+    #[test]
+    fn trocar_de_documento_ou_desfazer_a_insercao_deixa_o_cursor_valido() {
+        let (mut e, mut som, ctx) = com_pausas();
+        assert!(e.posicionar_entrada(VOZ_1, 0, 1));
+        apertar(&ctx, &mut e, &mut som, Key::C, Modifiers::NONE);
+        assert!(e.documento.as_ref().expect("doc").editado());
+        apertar(&ctx, &mut e, &mut som, Key::Z, Modifiers::COMMAND);
+        // O cursor existe e aponta para uma coluna que existe.
+        let pos = e.entrada().posicao().expect("posição");
+        let colunas =
+            crate::cursor_entrada::colunas_do_compasso(e.partitura().expect("p"), pos.compasso);
+        assert!(pos.coluna < colunas.len());
+        // Outro documento: o cursor é limpo (a duração de entrada fica).
+        assert!(e.entrada().duracao().tecla == 5);
+        e.abrir_xml("outra", PECA_COM_PAUSAS.to_owned())
+            .expect("abre");
+        assert_eq!(e.entrada().posicao(), None);
+    }
+
+    // --- Ticket 17b: arquivo lateral de identidades das notas ----------------------------------
+
+    /// Encurta a primeira nota: nascem pausas, que ganham `IdNota` novo (o contador avança).
+    fn encurtar_a_primeira_nota(e: &mut EstadoPartitura) {
+        e.navegar(Comando::Seguinte);
+        assert!(e.mudar_duracao(4).is_some(), "{:?}", e.ultima_edicao());
+    }
+
+    fn texto_e_ids(e: &EstadoPartitura) -> (String, piano_tutor_core::documento::TabelaIds) {
+        e.documento
+            .as_ref()
+            .expect("doc")
+            .exportado_com_ids()
+            .expect("exporta")
+    }
+
+    #[test]
+    fn exportar_grava_o_arquivo_de_ids_ao_lado_e_abrir_o_usa_com_as_mesmas_identidades() {
+        let (d, mut e, _xml) = com_oficina();
+        assert_eq!(
+            *e.documento.as_ref().expect("doc").situacao_dos_ids(),
+            SituacaoDosIds::Nenhum
+        );
+        encurtar_a_primeira_nota(&mut e);
+        let (texto, tabela) = texto_e_ids(&e);
+        let destino = d.path().join("saida.musicxml");
+        e.sobrescrever = false;
+        e.exportar(&destino.to_string_lossy()).expect("exporta");
+        let lateral = d.path().join("saida.musicxml.ids");
+        assert!(lateral.is_file(), "o arquivo lateral vai ao lado do texto");
+        let gravado = crate::ids_lateral::ler(&lateral)
+            .expect("existe")
+            .expect("lê");
+        assert_eq!(gravado.tabela.proximo(), tabela.proximo());
+        assert_eq!(std::fs::read_to_string(&destino).expect("lê"), texto);
+
+        // Reabrir o exportado reencontra as identidades de antes (e o contador).
+        let mut outro = EstadoPartitura::novo(None);
+        outro.abrir_caminho(&destino.to_string_lossy());
+        assert!(outro.erro.is_none(), "{:?}", outro.erro);
+        let doc = outro.documento.as_ref().expect("doc");
+        assert_eq!(*doc.situacao_dos_ids(), SituacaoDosIds::Usado);
+        assert_eq!(
+            doc.ids(),
+            e.documento.as_ref().expect("doc").ids(),
+            "mesmas identidades de nota"
+        );
+        assert_eq!(texto_e_ids(&outro).1.proximo(), tabela.proximo());
+    }
+
+    #[test]
+    fn arquivo_de_ids_de_outro_texto_ou_estragado_e_ignorado_com_aviso_sem_erro_fatal() {
+        let (d, mut e, _xml) = com_oficina();
+        encurtar_a_primeira_nota(&mut e);
+        let destino = d.path().join("saida.musicxml");
+        e.exportar(&destino.to_string_lossy()).expect("exporta");
+        let lateral = d.path().join("saida.musicxml.ids");
+        // Tabela do texto original colada ao lado do texto editado: é de outro texto.
+        let outra = {
+            let o =
+                DocumentoPartitura::de_texto("o".into(), EMBUTIDAS[3].1.to_owned()).expect("abre");
+            o.exportado_com_ids().expect("exporta").1
+        };
+        std::fs::write(&lateral, IdsGravados::nova(outra, None).para_texto()).expect("troca");
+        let mut novo = EstadoPartitura::novo(None);
+        novo.abrir_caminho(&destino.to_string_lossy());
+        assert!(novo.erro.is_none(), "{:?}", novo.erro);
+        assert!(novo.documento.is_some(), "a partitura abre do mesmo jeito");
+        assert!(matches!(
+            novo.documento.as_ref().expect("doc").situacao_dos_ids(),
+            SituacaoDosIds::Recusado(_)
+        ));
+        assert!(novo.aviso.as_deref().expect("aviso").contains("ignorado"));
+        // Arquivo estragado: o mesmo.
+        std::fs::write(&lateral, "lixo").expect("estraga");
+        let mut novo = EstadoPartitura::novo(None);
+        novo.abrir_caminho(&destino.to_string_lossy());
+        assert!(novo.erro.is_none() && novo.documento.is_some());
+        assert!(novo.aviso.is_some());
+        // Sem arquivo: nem aviso.
+        std::fs::remove_file(&lateral).expect("apaga");
+        let mut novo = EstadoPartitura::novo(None);
+        novo.abrir_caminho(&destino.to_string_lossy());
+        assert!(novo.erro.is_none() && novo.aviso.is_none());
+    }
+
+    #[test]
+    fn salvar_versao_guarda_as_identidades_com_a_linhagem_e_o_diff_pareia_por_idnota() {
+        let (_d, mut e, _xml) = com_oficina();
+        let hipotese = hash_do_conteudo(EMBUTIDAS[3].1.as_bytes());
+        assert_eq!(
+            e.documento.as_ref().expect("doc").base_de_ids(),
+            Some(hipotese.as_str()),
+            "recém-aberta: as identidades são as da Hipótese"
+        );
+        encurtar_a_primeira_nota(&mut e);
+        let v1 = match e.salvar_versao().expect("salva") {
+            ResultadoDoSalvar::Criada(v) => v.hash,
+            outro => panic!("{outro:?}"),
+        };
+        let versoes = e.versoes.clone().expect("oficina");
+        let g1 = versoes.ids_da_versao(&v1).expect("a Versão guarda os ids");
+        assert_eq!(g1.derivada_de.as_deref(), Some(hipotese.as_str()));
+        assert_eq!(
+            e.documento.as_ref().expect("doc").base_de_ids(),
+            Some(v1.as_str()),
+            "depois de salvar, o documento descende da Versão"
+        );
+        // Segunda edição na mesma sessão: descende de v1.
+        e.navegar(Comando::Seguinte);
+        assert!(e.remover_nota_selecionada().is_some());
+        let v2 = match e.salvar_versao().expect("salva") {
+            ResultadoDoSalvar::Criada(v) => v.hash,
+            outro => panic!("{outro:?}"),
+        };
+        assert_eq!(
+            versoes.ids_da_versao(&v2).expect("ids").derivada_de,
+            Some(v1.clone())
+        );
+        assert!(versoes.ids_comparaveis(&hipotese, &v2));
+        assert!(versoes.ids_comparaveis(&v1, &v2));
+        let d = diff_entre_versoes(&versoes, &v1, &v2).expect("diff");
+        assert!(!d.diff.vazio());
+    }
+
+    #[test]
+    fn rascunho_do_autosave_guarda_as_identidades_e_a_recuperacao_as_devolve() {
+        let (_d, mut e, xml) = com_oficina();
+        encurtar_a_primeira_nota(&mut e);
+        let antes = texto_e_ids(&e);
+        let base = e
+            .documento
+            .as_ref()
+            .expect("doc")
+            .base_de_ids()
+            .map(str::to_owned);
+        e.autosave_tick(0);
+        let iv = e.config_autosave.intervalo_ms;
+        tick_ate_gravar(&mut e, iv);
+        let ids_do_rascunho =
+            arquivo_do_rascunho(&xml).with_file_name(crate::autosave::ARQUIVO_DAS_IDS);
+        assert!(ids_do_rascunho.is_file(), "o rascunho leva as identidades");
+        drop(e);
+
+        let mut novo = EstadoPartitura::novo(None);
+        novo.abrir_caminho(&xml.to_string_lossy());
+        novo.recuperar_rascunho();
+        let d = novo.documento.as_ref().expect("doc");
+        assert_eq!(*d.situacao_dos_ids(), SituacaoDosIds::Usado);
+        assert_eq!(
+            d.base_de_ids().map(str::to_owned),
+            base,
+            "a linhagem sobrevive à queda"
+        );
+        let depois = texto_e_ids(&novo);
+        assert_eq!(
+            depois, antes,
+            "mesmo texto, mesmas identidades e mesmo contador"
+        );
+        // Salvar a Versão apaga o rascunho e as identidades dele.
+        novo.salvar_versao().expect("salva");
+        assert!(!ids_do_rascunho.exists());
+    }
+
+    #[test]
+    fn rascunho_com_ids_de_outro_texto_recupera_sem_elas_e_avisa() {
+        let (_d, mut e, xml) = com_oficina();
+        encurtar_a_primeira_nota(&mut e);
+        e.autosave_tick(0);
+        let iv = e.config_autosave.intervalo_ms;
+        tick_ate_gravar(&mut e, iv);
+        let ids_do_rascunho =
+            arquivo_do_rascunho(&xml).with_file_name(crate::autosave::ARQUIVO_DAS_IDS);
+        // Queda entre as duas gravações: as identidades são de um texto mais antigo.
+        let antigo = DocumentoPartitura::de_texto("o".into(), EMBUTIDAS[3].1.to_owned())
+            .expect("abre")
+            .exportado_com_ids()
+            .expect("exporta")
+            .1;
+        std::fs::write(
+            &ids_do_rascunho,
+            IdsGravados::nova(antigo, None).para_texto(),
+        )
+        .expect("troca");
+        drop(e);
+        let mut novo = EstadoPartitura::novo(None);
+        novo.abrir_caminho(&xml.to_string_lossy());
+        novo.recuperar_rascunho();
+        assert!(novo.documento.is_some());
+        assert!(
+            novo.aviso_de_versoes()
+                .expect("aviso")
+                .contains("identidades das notas")
+        );
+        assert!(matches!(
+            novo.documento.as_ref().expect("doc").situacao_dos_ids(),
+            SituacaoDosIds::Recusado(_)
+        ));
+    }
 
     #[test]
     fn decidir_versao_exige_motivo_recusa_transicao_invalida_e_registra_o_estado() {

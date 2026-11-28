@@ -16,6 +16,7 @@
 //! <oficina>/partituras/<id>.versoes/
 //!     indice.toml                  índice: origem + lista encadeada (uma `[[versao]]` por Versão)
 //!     objetos/<sha256>.musicxml    conteúdo imutável de cada Versão, nome = hash do conteúdo
+//!     objetos/<sha256>.ids         (opcional) identidades das notas dessa Versão, ver abaixo
 //! ```
 //!
 //! `indice.toml`:
@@ -42,6 +43,23 @@
 //! no meio deixa, no pior caso, um objeto órfão (inofensivo) e o índice anterior íntegro.
 //! A migração ao Acervo é copiar `objetos/` e importar as linhas `[[versao]]`; campos
 //! desconhecidos do índice são preservados ao acrescentar uma Versão.
+//!
+//! # Identidades das notas por Versão (ticket 17b)
+//!
+//! Cada Versão pode trazer ao lado do conteúdo o arquivo lateral de `IdNota`
+//! (`objetos/<hash>.ids`, formato do núcleo mais a linha opcional `derivada-de=<hash>`; ver
+//! [`crate::ids_lateral`]). É **aditivo**: o índice não muda, Versões antigas ou salvas por
+//! [`Versoes::salvar`] simplesmente não têm o arquivo e são abertas e comparadas como sempre
+//! (pareamento por conteúdo). Gravado uma vez, junto do objeto e antes do índice, e nunca
+//! sobrescrito.
+//!
+//! **Linhagem.** O `pai` do índice diz de quem a Versão foi salva (a ponta da cadeia), mas as
+//! identidades podem descender de outra: a Oficina reabre a Hipótese a cada sessão e a numeração
+//! recomeça dali. Por isso o arquivo `.ids` guarda `derivada-de`: a Versão cujas identidades o
+//! documento herdou. [`Versoes::ids_comparaveis`] só diz que duas Versões têm `IdNota`
+//! comparáveis quando uma descende da outra por essa linha. Duas Versões irmãs (filhas da mesma
+//! base) herdam o mesmo contador e podem dar o mesmo `IdNota` a notas inseridas diferentes: não
+//! descendem uma da outra e o diff delas usa o conteúdo.
 //!
 //! Decisões registradas:
 //! - Salvar sem mudança (conteúdo igual ao da Versão-pai) **não cria Versão**: devolve
@@ -99,10 +117,12 @@
 //! índice é trocado por `rename` atômico). A trava é liberada ao fim do ciclo (ou se o processo
 //! cair). Em sistema de arquivos que não suporta trava (`Unsupported`), segue sem ela.
 
+use crate::ids_lateral::{self, IdsGravados};
 use crate::revisao::{
     Estado, ItemPartitura, NOTA_DA_APROVACAO_DIRETA, aprovacao_direta_valida, estado_de_texto,
     estado_para_texto, gravar_atomico, rotulo_do_estado, transicao_valida,
 };
+use piano_tutor_core::documento::{DocumentoAberto, Formato, TabelaIds};
 use serde::Deserialize;
 use sha2::{Digest, Sha256};
 use std::fmt;
@@ -345,6 +365,19 @@ pub enum ResultadoDoSalvar {
 pub struct VersaoAberta {
     pub versao: Versao,
     pub conteudo: String,
+    /// Identidades das notas guardadas com a Versão (ticket 17b); `None` se não há arquivo
+    /// `.ids` ou ele não serve (nunca é erro: a Versão abre do mesmo jeito).
+    pub ids: Option<IdsGravados>,
+}
+
+/// Identidades das notas que acompanham o conteúdo ao salvar uma Versão (ticket 17b).
+#[derive(Clone, Copy, Debug)]
+pub struct IdsDaVersao<'a> {
+    /// A tabela que vale para o conteúdo salvo (`DocumentoAberto::tabela_ids_para`).
+    pub tabela: &'a TabelaIds,
+    /// A Versão de cujas identidades o documento descende. Só vale se for uma Versão do índice
+    /// da mesma série de identidades; senão é descartada (e a Versão fica sem linhagem).
+    pub derivada_de: Option<&'a str>,
 }
 
 /// Situação de um original diante do hash registrado.
@@ -769,6 +802,7 @@ impl Versoes {
         let hash = hash_do_conteudo(&bytes);
         let pdf = self.pdf.as_deref().and_then(hash_do_arquivo);
         self.gravar_objeto(&hash, &bytes)?;
+        self.gravar_ids_da_hipotese(&hash, &bytes);
         let raiz = Versao {
             hash: hash.clone(),
             pai: None,
@@ -813,9 +847,25 @@ impl Versoes {
         autor: &str,
         em: &str,
     ) -> Result<ResultadoDoSalvar, ErroVersoes> {
-        self.salvar_com(pai, conteudo, nota, autor, em, Queda::Nenhuma)
+        self.salvar_completo(pai, conteudo, None, nota, autor, em, Queda::Nenhuma)
     }
 
+    /// Como [`Self::salvar`], guardando junto as identidades das notas (`objetos/<hash>.ids`,
+    /// ticket 17b). O arquivo é gravado antes do índice, uma vez, e nunca sobrescrito; se a Versão
+    /// já existe (sem mudança ou repetida), nada é gravado.
+    pub fn salvar_com_ids(
+        &self,
+        pai: Option<&str>,
+        conteudo: &str,
+        ids: Option<IdsDaVersao<'_>>,
+        nota: Option<&str>,
+        autor: &str,
+        em: &str,
+    ) -> Result<ResultadoDoSalvar, ErroVersoes> {
+        self.salvar_completo(pai, conteudo, ids, nota, autor, em, Queda::Nenhuma)
+    }
+
+    #[cfg(test)]
     pub(crate) fn salvar_com(
         &self,
         pai: Option<&str>,
@@ -825,13 +875,29 @@ impl Versoes {
         em: &str,
         queda: Queda,
     ) -> Result<ResultadoDoSalvar, ErroVersoes> {
-        self.com_trava(|| self.salvar_sem_trava(pai, conteudo, nota, autor, em, queda))
+        self.salvar_completo(pai, conteudo, None, nota, autor, em, queda)
     }
 
+    #[allow(clippy::too_many_arguments)]
+    fn salvar_completo(
+        &self,
+        pai: Option<&str>,
+        conteudo: &str,
+        ids: Option<IdsDaVersao<'_>>,
+        nota: Option<&str>,
+        autor: &str,
+        em: &str,
+        queda: Queda,
+    ) -> Result<ResultadoDoSalvar, ErroVersoes> {
+        self.com_trava(|| self.salvar_sem_trava(pai, conteudo, ids, nota, autor, em, queda))
+    }
+
+    #[allow(clippy::too_many_arguments)]
     fn salvar_sem_trava(
         &self,
         pai: Option<&str>,
         conteudo: &str,
+        ids: Option<IdsDaVersao<'_>>,
         nota: Option<&str>,
         autor: &str,
         em: &str,
@@ -863,6 +929,9 @@ impl Versoes {
         }
         // O objeto primeiro; o índice só depois (a queda no meio deixa o índice anterior íntegro).
         self.gravar_objeto(&hash, conteudo.as_bytes())?;
+        if let Some(i) = ids {
+            self.gravar_ids_da_versao(&hash, &i, &indice)?;
+        }
         if queda == Queda::AposObjeto {
             return Err(ErroVersoes::Disco("queda simulada após o objeto".into()));
         }
@@ -1095,21 +1164,119 @@ impl Versoes {
                 Err(ErroVersoes::Corrompida(hash.to_owned()))
             };
         }
-        let tmp = dir.join(format!(".{hash}.{}.tmp", std::process::id()));
+        self.gravar_sem_substituir(&dir, &destino, bytes)
+    }
+
+    /// Cria `destino` por temporário e `hard_link` (que falha se já existe): nunca substitui.
+    fn gravar_sem_substituir(
+        &self,
+        dir: &Path,
+        destino: &Path,
+        bytes: &[u8],
+    ) -> Result<(), ErroVersoes> {
+        let nome = destino
+            .file_name()
+            .map(|n| n.to_string_lossy().into_owned())
+            .unwrap_or_default();
+        let tmp = dir.join(format!(".{nome}.{}.tmp", std::process::id()));
         let r = (|| {
             let mut f = fs::File::create(&tmp)?;
             f.write_all(bytes)?;
             f.sync_all()?;
             // `hard_link` falha se o destino já existe: nunca substitui um objeto.
-            match fs::hard_link(&tmp, &destino) {
+            match fs::hard_link(&tmp, destino) {
                 Ok(()) => Ok(()),
                 Err(e) if e.kind() == std::io::ErrorKind::AlreadyExists => Ok(()),
-                Err(_) if !destino.exists() => fs::rename(&tmp, &destino),
+                Err(_) if !destino.exists() => fs::rename(&tmp, destino),
                 Err(e) => Err(e),
             }
         })();
         let _ = fs::remove_file(&tmp);
-        r.map_err(|e| disco(&destino, &e))
+        r.map_err(|e| disco(destino, &e))
+    }
+
+    fn arquivo_dos_ids(&self, hash: &str) -> PathBuf {
+        self.pasta
+            .join(PASTA_DOS_OBJETOS)
+            .join(format!("{hash}.{}", ids_lateral::EXTENSAO))
+    }
+
+    /// Lê as identidades guardadas com a Versão `hash`. Ausente, ilegível ou de formato
+    /// desconhecido é `None`: nunca é erro, a Versão abre sem elas.
+    pub fn ids_da_versao(&self, hash: &str) -> Option<IdsGravados> {
+        if !hash_valido(hash) {
+            return None;
+        }
+        ids_lateral::ler(&self.arquivo_dos_ids(hash))?.ok()
+    }
+
+    /// Grava `objetos/<hash>.ids` (uma vez; se já existe, fica como está). A linhagem só vale se a
+    /// Versão-base existe no índice e, havendo arquivo de identidades dela, é da mesma série.
+    fn gravar_ids_da_versao(
+        &self,
+        hash: &str,
+        ids: &IdsDaVersao<'_>,
+        indice: &Indice,
+    ) -> Result<(), ErroVersoes> {
+        let derivada = ids
+            .derivada_de
+            .filter(|b| indice.versao(b).is_some())
+            .filter(|b| {
+                self.ids_da_versao(b)
+                    .is_none_or(|g| g.tabela.serie() == ids.tabela.serie())
+            });
+        let texto = IdsGravados::nova(ids.tabela.clone(), derivada).para_texto();
+        let destino = self.arquivo_dos_ids(hash);
+        if destino.exists() {
+            return Ok(());
+        }
+        let dir = self.pasta.join(PASTA_DOS_OBJETOS);
+        fs::create_dir_all(&dir).map_err(|e| disco(&dir, &e))?;
+        self.gravar_sem_substituir(&dir, &destino, texto.as_bytes())
+    }
+
+    /// Ao registrar a origem, guarda as identidades da Hipótese tal como a Oficina as numera ao
+    /// abri-la (a numeração é determinística): as Versões que descendem dela as usam. Melhor
+    /// esforço: Hipótese que não abre como partitura simplesmente fica sem o arquivo.
+    fn gravar_ids_da_hipotese(&self, hash: &str, bytes: &[u8]) {
+        let Ok(d) =
+            DocumentoAberto::abrir_bytes_com_ids("hipotese", bytes, Formato::MusicXml, None)
+        else {
+            return;
+        };
+        let destino = self.arquivo_dos_ids(hash);
+        if destino.exists() {
+            return;
+        }
+        let texto = IdsGravados::nova(d.tabela_ids(), None).para_texto();
+        let dir = self.pasta.join(PASTA_DOS_OBJETOS);
+        let _ = self.gravar_sem_substituir(&dir, &destino, texto.as_bytes());
+    }
+
+    /// As identidades de `a` e de `b` são comparáveis? Só se são a mesma Versão ou uma descende
+    /// da outra pela linhagem `derivada-de` dos arquivos `.ids` (ver o módulo). Irmãs, primas e
+    /// Versões sem arquivo de identidades: não (o diff usa o conteúdo).
+    pub fn ids_comparaveis(&self, a: &str, b: &str) -> bool {
+        a == b || self.descende_por_ids(a, b) || self.descende_por_ids(b, a)
+    }
+
+    /// `descendente` herdou as identidades de `ancestral`, direta ou indiretamente?
+    pub fn descende_por_ids(&self, ancestral: &str, descendente: &str) -> bool {
+        let mut atual = descendente.to_owned();
+        // Cada passo é uma Versão diferente da cadeia: o teto evita laço em arquivo adulterado.
+        for _ in 0..4096 {
+            let Some(base) = self.ids_da_versao(&atual).and_then(|g| g.derivada_de) else {
+                return false;
+            };
+            if base == ancestral {
+                return true;
+            }
+            if base == atual {
+                return false;
+            }
+            atual = base;
+        }
+        false
     }
 
     fn gravar_indice(&self, texto: &str, queda: Queda) -> Result<(), ErroVersoes> {
@@ -1146,7 +1313,12 @@ impl Versoes {
         }
         let conteudo = String::from_utf8(bytes)
             .map_err(|_| ErroVersoes::Formato("a Versão não é UTF-8".into()))?;
-        Ok(VersaoAberta { versao, conteudo })
+        let ids = self.ids_da_versao(hash);
+        Ok(VersaoAberta {
+            versao,
+            conteudo,
+            ids,
+        })
     }
 
     /// Confere os originais (Hipótese e PDF) contra os hashes registrados. Chamar após qualquer
