@@ -1,0 +1,60 @@
+# Medicao do spike 08 (ADR-0017): saida de comandos, nao editada a mao
+# 2026-11-27T21:19Z | rustc 1.98.0 (88d9e12ae 2026-08-18) | Linux 6.18.44-fc-v880
+
+## cargo test --release -p piano-tutor-fixtures --test documento_medicao -- --nocapture --test-threads=1
+running 2 tests
+test contagem_de_variantes_adversas ... variantes adversas: 192/192 idênticas byte a byte
+test tabela_de_medicao_por_fixture ... fixture                     bytes part   comp  notas   A1  abrir_ms   expo_ms   edit_ms   regen_B    regen_%
+anacruse                     1411    1      3      5   ok      0.03      0.00      0.01       347     24.59%
+duas-vozes                   1590    1      2      6   ok      0.02      0.00      0.01       667     41.95%
+tercina                      1644    1      1      5   ok      0.02      0.00      0.01      1226     74.57%
+repeticao                    1510    1      3      3   ok      0.02      0.00      0.01       428     28.34%
+letra                        1812    1      2      6   ok      0.03      0.00      0.01       974     53.75%
+cifra                        1366    1      2      3   ok      0.02      0.00      0.01       670     49.05%
+dedilhado                    1850    1      2      6   ok      0.02      0.00      0.01       987     53.35%
+dinamica                     1574    1      2      4   ok      0.02      0.00      0.01       558     35.45%
+ornamento                    1363    1      2      4   ok      0.02      0.00      0.01       747     54.81%
+desconhecido                 1352    1      2      3   ok      0.02      0.00      0.01       755     55.84%
+cem-compassos               54694    1    100    400   ok      0.80      0.13      0.13       707      1.29%
+brahms-wiegenlied          125652    2     38    267   ok      1.18      0.28      0.36      1547      1.23%
+schubert-heidenroeslein    111496    2     32    250   ok      1.01      0.26      0.28      4227      3.79%
+faure-barcarolle           289659    2     84    682   ok      4.26      0.70      0.78      4352      1.50%
+beethoven-ode               23501    1     16     94   ok      0.33      0.05      0.06      1898      8.08%
+brilha-brilha               16969    1     12     66   ok      0.22      0.04      0.04      1900     11.20%
+notas=1804 sem_altura_nao_pausa=0 sem_duracao_nao_graca=0
+test result: ok. 2 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.24s
+
+## cargo test --release -p piano-tutor-fixtures --test documento_a2 -- --ignored --nocapture
+A2 exaustivo: 1717 edições conferidas
+test a2_exaustivo_toda_nota_afinada_do_corpus ... ok
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 11 filtered out; finished in 26.17s
+
+## cargo test --release -p piano-tutor-fixtures --test documento_ids -- --nocapture
+test id_do_musicxml_segue_a_nota_mesmo_se_a_ordem_mudar_e_nunca_e_reutilizado ... ok
+test tabela_amarrada_ao_texto_e_recusada_se_o_arquivo_mudou ... ok
+test tabela_lateral_grava_e_le_sem_perda ... ok
+test chave_por_posicao_sem_amarra_ao_texto_deslocaria_os_ids_por_isso_a_amarra_e_obrigatoria ... ok
+corpus: 1804 notas, 0 com atributo id no MusicXML
+test corpus_nao_usa_id_de_nota_do_musicxml_portanto_a_chave_e_a_posicao ... ok
+test sem_edicao_estrutural_reabrir_da_os_mesmos_ids_sem_arquivo_lateral ... ok
+test result: ok. 6 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.03s
+
+## linhas de codigo (wc -l)
+   50 crates/piano-tutor-fixtures/src/documento/duracao.rs
+  327 crates/piano-tutor-fixtures/src/documento/edicao.rs
+   64 crates/piano-tutor-fixtures/src/documento/erro.rs
+  127 crates/piano-tutor-fixtures/src/documento/exportar.rs
+  143 crates/piano-tutor-fixtures/src/documento/ids.rs
+  265 crates/piano-tutor-fixtures/src/documento/leitura.rs
+  150 crates/piano-tutor-fixtures/src/documento/mod.rs
+  230 crates/piano-tutor-fixtures/src/documento/texto.rs
+ 1356 total
+   98 crates/piano-tutor-fixtures/tests/documento_a1.rs
+  418 crates/piano-tutor-fixtures/tests/documento_a2.rs
+  161 crates/piano-tutor-fixtures/tests/documento_duracao.rs
+  167 crates/piano-tutor-fixtures/tests/documento_ids.rs
+  116 crates/piano-tutor-fixtures/tests/documento_medicao.rs
+  151 crates/piano-tutor-fixtures/tests/documento_patches.rs
+   59 crates/piano-tutor-fixtures/tests/documento_preservacao.rs
+   92 crates/piano-tutor-fixtures/tests/comum/mod.rs
+ 1262 total

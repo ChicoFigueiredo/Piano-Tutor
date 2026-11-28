@@ -2,8 +2,11 @@
 //!
 //! O **plano** (TOML escrito à mão) descreve a estrutura do Curso: metadados, Seções, Lições e
 //! Exercícios. A **oficina** (fora do git) traz as partituras, os estados de revisão, o áudio,
-//! os Alinhamentos e o Roteiro. O importador nunca promove conteúdo: o estado de cada Exercício
-//! é o de `partituras/<id>.estado.toml` (ausente = Hipótese).
+//! os Alinhamentos e o Roteiro. O importador nunca promove conteúdo: quem decide o estado de cada
+//! Exercício é um [`DecideEstado`]. O padrão ([`DecisorPorHash`], usado por [`importar`], pela CLI
+//! e pelo app) decide **pelo hash do conteúdo** (a aprovação da Versão, tickets 23 e 25): o
+//! `estado.toml` deixa de ser a autoridade da aprovação (continua dando `bpm_sugerido` e
+//! `trecho_aula`). [`EstadoDoArquivo`] é o decisor legado, só via [`importar_com`] explícito.
 //!
 //! Formato do plano: `docs/specs/FORMATO-PACOTE-DE-CURSO.md`, seção "Plano de importação".
 
@@ -14,6 +17,7 @@ use std::time::{SystemTime, UNIX_EPOCH};
 use serde::Deserialize;
 
 use crate::FORMATO_VERSAO;
+use crate::aprovacao::DecisorPorHash;
 use crate::erro::ErroPacote;
 use crate::modelo::{
     AssinaturaInfo, Aula, Autor, Contagem, EstadoConteudo, Exercicio, Licao, Licenciado, Manifesto,
@@ -78,6 +82,40 @@ struct EstadoOficina {
     bpm_sugerido: Option<f64>,
 }
 
+/// Quem decide o estado de cada Exercício na importação.
+///
+/// `conteudo` são os bytes de `partituras/<id>.musicxml` que entrarão no pacote (`None` se o
+/// arquivo não existe). Um decisor por hash consulta a aprovação do **conteúdo**, nunca o nome do
+/// arquivo. `Ok(None)` = sem decisão: entra como Hipótese, com aviso.
+pub trait DecideEstado {
+    fn estado_do_exercicio(
+        &self,
+        oficina: &Path,
+        id: &str,
+        conteudo: Option<&[u8]>,
+    ) -> Result<Option<EstadoConteudo>, ErroPacote>;
+
+    /// Texto do aviso para os Exercícios sem decisão (a lista de ids vem depois dos dois pontos).
+    fn aviso_sem_decisao(&self) -> &'static str {
+        "sem partituras/<id>.estado.toml (entram como hipótese)"
+    }
+}
+
+/// Decisor legado (não é mais o padrão): o `estado` de `partituras/<id>.estado.toml` (ausente = sem decisão).
+#[derive(Debug, Clone, Copy, Default)]
+pub struct EstadoDoArquivo;
+
+impl DecideEstado for EstadoDoArquivo {
+    fn estado_do_exercicio(
+        &self,
+        oficina: &Path,
+        id: &str,
+        _conteudo: Option<&[u8]>,
+    ) -> Result<Option<EstadoConteudo>, ErroPacote> {
+        Ok(ler_estado(oficina, id)?.and_then(|e| e.estado))
+    }
+}
+
 /// Arquivo da oficina a copiar para a pasta-origem.
 struct Copia {
     relativo: String,
@@ -117,13 +155,31 @@ pub fn importar(
     destino: &Path,
     somente_aprovadas: bool,
 ) -> Result<Resumo, ErroPacote> {
+    importar_com(
+        plano_path,
+        oficina,
+        destino,
+        somente_aprovadas,
+        &DecisorPorHash,
+    )
+}
+
+/// Como [`importar`], com o estado de cada Exercício decidido por `decisor` (por exemplo, a
+/// aprovação por hash das Versões do app).
+pub fn importar_com(
+    plano_path: &Path,
+    oficina: &Path,
+    destino: &Path,
+    somente_aprovadas: bool,
+    decisor: &dyn DecideEstado,
+) -> Result<Resumo, ErroPacote> {
     let texto = ler_texto(plano_path)?;
     let plano: Plano = toml::from_str(&texto)
         .map_err(|e| importacao(format!("plano {}: {e}", plano_path.display())))?;
     conferir_formato_versao(plano.formato_versao, "plano de importação")?;
     exigir_destino_vazio(destino)?;
 
-    let montado = montar(&plano, oficina, somente_aprovadas)?;
+    let montado = montar(&plano, oficina, somente_aprovadas, decisor)?;
     gravar(destino, &montado)?;
 
     let contagem = montado.manifesto.contagem();
@@ -167,7 +223,12 @@ struct Montado {
     avisos: Vec<String>,
 }
 
-fn montar(plano: &Plano, oficina: &Path, somente: bool) -> Result<Montado, ErroPacote> {
+fn montar(
+    plano: &Plano,
+    oficina: &Path,
+    somente: bool,
+    decisor: &dyn DecideEstado,
+) -> Result<Montado, ErroPacote> {
     let mut copias = Vec::new();
     let mut avisos = Vec::new();
     let mut sem_estado = Vec::new();
@@ -188,20 +249,19 @@ fn montar(plano: &Plano, oficina: &Path, somente: bool) -> Result<Montado, ErroP
                     });
                 }
                 let estado = ler_estado(oficina, &ex.id)?;
-                if estado.is_none() {
+                let partitura = format!("partituras/{}.musicxml", ex.id);
+                let origem = oficina.join(&partitura);
+                let conteudo = fs::read(&origem).ok();
+                let decidido = decisor.estado_do_exercicio(oficina, &ex.id, conteudo.as_deref())?;
+                if decidido.is_none() {
                     sem_estado.push(ex.id.clone());
                 }
-                let estado_conteudo = estado
-                    .as_ref()
-                    .and_then(|e| e.estado)
-                    .unwrap_or(EstadoConteudo::Hipotese);
+                let estado_conteudo = decidido.unwrap_or(EstadoConteudo::Hipotese);
                 if somente && estado_conteudo != EstadoConteudo::Aprovada {
                     omitidos_exercicios += 1;
                     continue;
                 }
 
-                let partitura = format!("partituras/{}.musicxml", ex.id);
-                let origem = oficina.join(&partitura);
                 if !origem.is_file() {
                     return Err(importacao(format!(
                         "o exercício {:?} não tem partitura na oficina: falta {}",
@@ -288,7 +348,8 @@ fn montar(plano: &Plano, oficina: &Path, somente: bool) -> Result<Montado, ErroP
 
     if !sem_estado.is_empty() {
         avisos.push(format!(
-            "sem partituras/<id>.estado.toml (entram como hipótese): {}",
+            "{}: {}",
+            decisor.aviso_sem_decisao(),
             sem_estado.join(", ")
         ));
     }

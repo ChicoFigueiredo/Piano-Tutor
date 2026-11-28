@@ -3,6 +3,7 @@ name = "piano-tutor-app"
 description = "Piano Tutor: teclado MIDI, espelho de 61 teclas e som SoundFont sobre a bancada-casca (M1)"
 version.workspace = true
 edition.workspace = true
+license.workspace = true
 rust-version.workspace = true
 publish = false
 build = "build.rs"
@@ -49,6 +50,10 @@ bancada-casca = { git = "https://github.com/ChicoFigueiredo/bancada", rev = "6d2
 [dev-dependencies]
 # Pastas temporárias nos testes de revisão: MIT OR Apache-2.0.
 tempfile = "=3.27.0"
+# Spike do ticket 09 (render com Bravura, ADR-0018): corpus de fixtures do ticket 07 e leitura do
+# MusicXML para letra, cifra e dedilhado. Só testes; roxmltree é o mesmo do core.
+piano-tutor-fixtures = { path = "../piano-tutor-fixtures" }
+roxmltree = "=0.21.2"  # MIT OR Apache-2.0
 
 # Mesmos lints do workspace, exceto `unsafe_code`: `forbid` (workspace) vira `deny` aqui para que
 # SÓ o módulo `video_embutido` (dlopen da libmpv, ADR-0011) o libere com `#![allow(unsafe_code)]`.

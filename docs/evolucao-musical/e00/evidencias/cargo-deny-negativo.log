@@ -1,0 +1,5 @@
+error[rejected]: failed to satisfy license requirements
+21 │ license = "MPL-2.0"
+   │            rejected: license is not explicitly allowed
+   ├ MPL-2.0 - Mozilla Public License 2.0:
+licenses FAILED

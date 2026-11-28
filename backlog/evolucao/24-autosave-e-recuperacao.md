@@ -1,0 +1,47 @@
+# 24: Autosave em intervalos curtos e recuperação após queda (A7)
+
+**Fase:** E01
+
+**R-IDs/critérios:** R-E02; A7; história 14
+
+**Seam:** S1
+
+**Modelo sugerido:** Sonnet / alto
+
+**What to build:** O trabalho em andamento é salvo sozinho em intervalos curtos num arquivo de recuperação separado das Versões. Se o app for encerrado abruptamente, ao reabrir a Oficina oferece recuperar o trabalho, com perda de no máximo o intervalo de autosave. O autosave nunca cria Versão e nunca toca o original.
+
+**Blocked by:** 15 (Transação com undo/redo por snapshot do compasso (A5))
+
+**Status:** feito, aguarda revisão — A7 reaberto pela revisão independente (R1) corrigido e fechado com teste; falta a re-revisão independente do gate 27 (item 3) e o aceite humano. NÃO VERIFICADO com processo morto real nem em janela.
+
+- [x] A7: simulando encerramento abrupto (processo morto sem fechar) com edições não salvas, a reabertura oferece a recuperação e o trabalho recuperado equivale ao último autosave; a perda máxima é o intervalo configurado (teste com relógio injetado). (`tela_partitura::testes::a7_queda_com_edicoes_oferece_recuperar_...` e, para o rascunho **pendente de outra sessão**, `testes_revisao::r1_*`)
+- [x] O autosave é atômico: queda durante a escrita não corrompe o arquivo anterior (teste de interrupção simulada).
+- [x] O arquivo de recuperação é apagado ao salvar uma Versão ou ao descartar a recuperação; recusar a recuperação não apaga o original nem as Versões.
+- [x] O autosave não roda se não há edição, não bloqueia a interface e não aparece como Versão; o intervalo e o local são configuráveis e documentados.
+- [x] Recuperar restaura o documento e o histórico de undo, ou apenas o documento (decisão registrada; undo perdido é aviso explícito).
+- [x] A pasta de recuperação é por documento e não mistura partituras de usuários diferentes.
+
+
+**Supervisor (2026-11-27):** A7 pede que a reabertura do app ofereça a recuperação e que a gravação não bloqueie a interface. Até agora isso só foi provado no módulo, então os dois critérios ficam abertos até a ligação com a tela. Outro ponto: o documento recuperado precisa contar como modificado.
+
+**Ligação à tela (2026-11-28):** `EstadoPartitura::autosave_tick(ms)` roda a cada quadro (exporta o texto e grava numa thread via `GravadorDeRascunho`; a interface só consulta o canal); `Autosave::pendente()` ao abrir partitura da Oficina mostra "Recuperar"/"Descartar"; `ao_salvar_versao()` após salvar Versão; o recuperado usa `DocumentoPartitura::de_recuperado` (novo `DocumentoAberto::marcar_modificado` em `historico.rs`) e conta como modificado, com aviso de desfazer perdido. Testes egui sem janela com relógio injetado em ms: sem edição não grava e não vira Versão; queda simulada (reabre pelo arquivo) oferece e recupera igual ao último autosave; descartar só apaga o rascunho. Intervalo/pasta: `config_autosave` (padrão 30 s, ao lado da partitura); tela de Preferências não feita. NÃO VERIFICADO com processo morto real nem em janela.
+
+
+**Supervisor (2026-11-28, revisão independente):** A7 reaberto. R1 (P0): salvar uma Versão apaga o rascunho de recuperação que ainda espera decisão. Ver docs/evolucao-musical/e01/REVISAO-CODIGO.md.
+
+
+**Correção da revisão independente (2026-11-28):** R1 (P0) corrigido. Teste que reproduz escrito antes (red: `r1_salvar_versao_fica_bloqueado_com_dica_enquanto_ha_rascunho_pendente` e `r1_descartar_o_rascunho_pendente_libera_o_salvar` falhavam: o salvar passava e o rascunho sumia), depois a correção.
+- **Decisão registrada (a mais segura das duas):** enquanto há rascunho pendente de decisão, "Salvar como Versão" fica **bloqueado** com a dica "recupere ou descarte o rascunho antes de salvar uma Versão" (`pode_salvar_versao` e `motivo_sem_salvar_versao`); `salvar_versao` recusa pelo mesmo motivo, então `ao_salvar_versao()` nunca roda com rascunho de outra sessão. Preservar o rascunho e salvar mesmo assim foi descartado: a Versão salva seria a do documento aberto, que não contém o trabalho do rascunho, e dois rascunhos disputariam a mesma pasta. Também fica bloqueado "Continuar a partir desta Versão" (ticket 21) pelo mesmo motivo.
+- Depois de Recuperar (o documento passa a ser o do rascunho) ou Descartar, o salvar volta a valer e apaga o rascunho como antes ("o trabalho virou Versão" agora é verdade). O critério "o arquivo de recuperação é apagado ao salvar uma Versão ou ao descartar" segue [x].
+- Lacuna conhecida, não corrigida aqui: com a decisão pendente o `autosave_tick` não grava, então edições feitas nesse intervalo não têm proteção até o usuário decidir (e Recuperar as substitui). O banner continua visível; não se bloqueou a edição para não mudar o comportamento da tela além do pedido.
+
+**Supervisor (2026-11-28):** aceito bloquear o salvar enquanto há rascunho pendente. A lacuna aberta ainda é perda de dados: editar com o rascunho pendente não tem autosave, e "Recuperar" substitui essas edições. A correção é bloquear a edição até o titular escolher entre recuperar e descartar, e vai para a rodada de re-revisão.
+
+**Correção da lacuna do R1 (2026-11-28):** com rascunho pendente, todo comando de edição (altura, duração, ponto, inserir nota/pausa, remover, acorde, desfazer/refazer) é recusado por um guarda único, `EstadoPartitura::recusar_em_leitura` (agora também checa `rascunho_pendente`), com o aviso "Recupere ou descarte o rascunho antes de editar"; "Continuar a partir desta Versão" já recusava. O banner de Recuperar/Descartar passou a usar a cor de aviso e repete a instrução. Red registrado antes: `rascunho_pendente_recusa_todo_comando_de_edicao_e_o_documento_nao_muda` e `r1_salvar_versao_fica_bloqueado_...` (agora com a edição recusada) falhavam, pois a edição passava. Green: esses dois mais `depois_de_descartar_edita_normalmente`, `depois_de_recuperar_edita_normalmente` e `cair_reabrir_tentar_editar_recuperar_nao_perde_nada` (`testes_revisao.rs`). A "lacuna conhecida" acima está fechada: sem edição durante a decisão, nada fica sem proteção. NÃO VERIFICADO em janela. Aguarda a re-revisão independente.
+
+
+**Segunda revisão independente (2026-11-28):** N1 (P1) e N2 (P2) corrigidos, N9 (b) tratado; cada um com o teste que reproduz escrito antes (red registrado: `n1_recuperar_com_versao_em_leitura_...`, `n2_recuperar_que_falha_...` e `n2_descartar_que_falha_...` falhavam). Ver "Correções da segunda revisão" em docs/evolucao-musical/e01/REVISAO-CODIGO.md.
+- N1, decisão registrada: **Recuperar sai primeiro do modo leitura** (devolve o documento em edição) e só então instala o rascunho como documento em edição, modificado, sem o sufixo "(leitura)"; o rascunho da sessão que caiu só some ao virar Versão ou por "Descartar" explícito, e "Voltar à edição" já não tem o que descartar. Abrir uma Versão com o banner pendente segue permitido (comparar).
+- N2: Recuperar ou Descartar que falha mantém o rascunho pendente (banner, edição e salvar bloqueados) e deixa o aviso visível ("Descarte-o para voltar a editar"); o autosave só fica quieto com o banner na tela. Um rascunho que nunca abre só sai por "Descartar".
+- N9 (b): `pdf_lateral.rs` não consulta mais o disco a cada quadro (cache por mudança de página).
+- Aguarda a nova rodada de re-revisão independente e o aceite humano. NÃO VERIFICADO em janela real nem com processo morto real.

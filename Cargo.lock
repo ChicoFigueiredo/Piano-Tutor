@@ -2960,8 +2960,10 @@ dependencies = [
  "piano-tutor-audio",
  "piano-tutor-core",
  "piano-tutor-curso",
+ "piano-tutor-fixtures",
  "piano-tutor-midi",
  "png",
+ "roxmltree",
  "rusqlite",
  "serde",
  "serde_json",
@@ -3016,6 +3018,17 @@ dependencies = [
  "piano-tutor-core",
  "tracing",
  "tracing-subscriber",
+]
+
+[[package]]
+name = "piano-tutor-fixtures"
+version = "0.1.0"
+dependencies = [
+ "flate2",
+ "piano-tutor-core",
+ "roxmltree",
+ "sha2 0.11.1",
+ "zip",
 ]
 
 [[package]]

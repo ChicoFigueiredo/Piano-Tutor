@@ -1,0 +1,8 @@
+# Preparo do corpus OMR (ticket 04). Versoes fixadas; Python 3.13 (testado 3.13).
+verovio==6.4.1
+cairosvg==2.9.1
+augraphy==8.2.6
+# Dependencias transitivas relevantes para reproducibilidade de pixels (registradas no manifesto):
+numpy==2.5.5
+opencv-python==5.1.0.95
+pillow==13.0.0

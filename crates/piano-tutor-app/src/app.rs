@@ -330,6 +330,7 @@ impl AppPianoTutor {
             s::CURSOS => r::retrato_cursos(&self.cursos),
             s::REVISAO => r::retrato_revisao(&self.revisao),
             s::TIMBRES => r::retrato_timbres(&self.seletor),
+            s::ATALHOS => r::retrato_atalhos(&self.partitura),
             // Telas que não se lembram (Calibração, Sobre) e o quadro antes da primeira tela
             // deixam valer a última rota gravada.
             s::APP => match rota_lembrada(&self.rota_atual) {
@@ -362,6 +363,7 @@ impl AppPianoTutor {
                 s::CURSOS => r::aplicar_cursos(&mut self.cursos, &t),
                 s::REVISAO => r::aplicar_revisao(&mut self.revisao, &t),
                 s::TIMBRES => r::aplicar_timbres(&mut self.seletor, &t),
+                s::ATALHOS => r::aplicar_atalhos(&mut self.partitura, &t),
                 // A rota só vale na abertura (`rota_inicial`); trocar de perfil não muda de tela.
                 s::APP => {
                     self.retratos_gravados.push((secao, t));
@@ -1187,6 +1189,8 @@ pub fn config() -> ConfigCasca {
     let mut config = ConfigCasca::nova(TITULO, TOKENS_JSON, TEMAS_JSON);
     config.tema_inicial = TEMAS[0].id.to_owned();
     config.icones = crate::icones::familia();
+    // Bravura (SMuFL, OFL-1.1): o dedilhado da partitura usa seus glifos (ADR-0018, ticket 19).
+    config.definicoes_de_fontes = Some(crate::partitura_visual::bravura::fontes_com_bravura());
     config.icone_janela = Some(crate::icones::icone_janela());
     config.id_app = Some("piano-tutor".to_owned());
     config
@@ -1667,6 +1671,34 @@ mod testes {
     }
 
     #[test]
+    fn atalhos_remapeados_da_oficina_sao_salvos_no_perfil_e_lidos_de_volta() {
+        use crate::atalhos_partitura::AcaoAtalho;
+        use bancada_casca::Atalho;
+        let mut b = bancada();
+        let fabrica = b.app.perfis().1.expect("ativo");
+        let novo = Atalho::ctrl(Key::J).com_shift();
+        b.app
+            .partitura
+            .remapear_atalho(AcaoAtalho::NotaSeguinte, novo);
+        b.app.partitura.atalhos.remover(AcaoAtalho::Apagar);
+        b.app.gravar_retratos();
+        let meu = b.app.perfis().1.expect("ativo");
+        assert!(!meu.de_fabrica, "mudar o mapa cria Meu perfil");
+
+        b.app.trocar_perfil(fabrica.id);
+        assert_eq!(
+            b.app.partitura.atalhos.atalho(AcaoAtalho::NotaSeguinte),
+            Some(AcaoAtalho::NotaSeguinte.padrao())
+        );
+        b.app.trocar_perfil(meu.id);
+        assert_eq!(
+            b.app.partitura.atalhos.atalho(AcaoAtalho::NotaSeguinte),
+            Some(novo)
+        );
+        assert_eq!(b.app.partitura.atalhos.atalho(AcaoAtalho::Apagar), None);
+    }
+
+    #[test]
     fn opcoes_do_player_cursos_revisao_partitura_e_timbres_voltam_com_o_perfil() {
         use piano_tutor_core::pratica::Retomada;
         let mut b = bancada();
@@ -2135,6 +2167,39 @@ mod testes {
             textos.iter().any(|t| t == "MIDI: Desconectado"),
             "{textos:?}"
         );
+        assert!(c.estado.erros.is_empty(), "{:?}", c.estado.erros);
+    }
+
+    #[test]
+    fn partitura_em_foco_navega_sem_atrapalhar_panico_nem_paleta() {
+        let mut c = casca();
+        let ctx = Context::default();
+        c.abrir(&ctx, ROTA_PARTITURA.into(), Local::Centro);
+        quadro(&mut c, &ctx, Vec::new(), Modifiers::NONE);
+        quadro(&mut c, &ctx, Vec::new(), Modifiers::NONE);
+        let id = c.app.partitura.id_da_vista.expect("a vista foi desenhada");
+        // Sem foco na partitura, a seta não seleciona nada.
+        apertar(&mut c, &ctx, Key::ArrowRight, Modifiers::NONE);
+        assert_eq!(c.app.partitura.nota_selecionada(), None);
+        // Com foco, a seta seleciona.
+        ctx.memory_mut(|m| m.request_focus(id));
+        quadro(&mut c, &ctx, Vec::new(), Modifiers::NONE);
+        quadro(&mut c, &ctx, Vec::new(), Modifiers::NONE);
+        apertar(&mut c, &ctx, Key::ArrowRight, Modifiers::NONE);
+        let nota = c.app.partitura.nota_selecionada().expect("selecionou");
+        // Pânico (Ctrl+.) continua valendo e não mexe na seleção.
+        // (O pânico para o ritmo em andamento: é o efeito observável sem saída de áudio.)
+        c.app.ritmo.iniciar_em(0);
+        assert!(c.app.ritmo.tocando());
+        apertar(&mut c, &ctx, Key::Period, Modifiers::COMMAND);
+        assert!(!c.app.ritmo.tocando(), "Ctrl+. deve disparar o pânico");
+        assert_eq!(c.app.partitura.nota_selecionada(), Some(nota));
+        // Paleta (Ctrl+K) continua abrindo; com ela aberta (campo de busca em foco) as setas
+        // não movem a seleção da partitura.
+        apertar(&mut c, &ctx, Key::K, Modifiers::COMMAND);
+        assert!(c.estado.paleta.aberta);
+        apertar(&mut c, &ctx, Key::ArrowRight, Modifiers::NONE);
+        assert_eq!(c.app.partitura.nota_selecionada(), Some(nota));
         assert!(c.estado.erros.is_empty(), "{:?}", c.estado.erros);
     }
 

@@ -1,0 +1,41 @@
+diff --git a/crates/piano-tutor-app/src/tela_partitura/pdf_lateral.rs b/crates/piano-tutor-app/src/tela_partitura/pdf_lateral.rs
+index 1980348..f5dd561 100644
+--- a/crates/piano-tutor-app/src/tela_partitura/pdf_lateral.rs
++++ b/crates/piano-tutor-app/src/tela_partitura/pdf_lateral.rs
+@@ -592,4 +592,36 @@ mod testes {
+         let depois: Vec<String> = arquivos.iter().map(|a| hash(a)).collect();
+         assert_eq!(antes, depois);
+     }
++
++    #[test]
++    fn zz3_pdf_pagina_ausente_depois_aparece() {
++        let (_d, mut e, raiz) = oficina(COM_PDF);
++        let (mut som, ctx) = banco();
++        let p1 = raiz.join("paginas/p-1.png");
++        let guardado = std::fs::read(&p1).unwrap();
++        std::fs::remove_file(&p1).unwrap();
++        quadro(&ctx, &mut e, &mut som, 1280.0);
++        println!("SONDA3 [pdf ausente] erro={:?} tam={:?}", e.pdf_lateral.erro(), e.pdf_lateral.tamanho_da_pagina());
++        std::fs::write(&p1, &guardado).unwrap();
++        for _ in 0..5 {
++            quadro(&ctx, &mut e, &mut som, 1280.0);
++        }
++        println!("SONDA3 [pdf ausente, depois criado] erro={:?} tam={:?}", e.pdf_lateral.erro(), e.pdf_lateral.tamanho_da_pagina());
++        // reabrir a mesma partitura (a Oficina refez o PNG com outro tamanho)
++        let mut enc_buf = Vec::new();
++        {
++            let mut enc = png::Encoder::new(&mut enc_buf, 8, 12);
++            enc.set_color(png::ColorType::Rgb);
++            enc.set_depth(png::BitDepth::Eight);
++            let mut w = enc.write_header().unwrap();
++            w.write_image_data(&[10u8; 8 * 12 * 3]).unwrap();
++        }
++        std::fs::write(&p1, &enc_buf).unwrap();
++        let xml = raiz.join("partituras/ode.musicxml");
++        e.abrir_caminho(&xml.to_string_lossy());
++        for _ in 0..3 {
++            quadro(&ctx, &mut e, &mut som, 1280.0);
++        }
++        println!("SONDA3 [pdf reaberto com PNG novo 8x12] erro={:?} tam={:?}", e.pdf_lateral.erro(), e.pdf_lateral.tamanho_da_pagina());
++    }
+ }

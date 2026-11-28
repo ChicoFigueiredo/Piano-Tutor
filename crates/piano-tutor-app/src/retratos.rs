@@ -51,10 +51,12 @@ pub mod secoes {
     pub const CURSOS: &str = "tela.cursos";
     pub const REVISAO: &str = "tela.revisao";
     pub const TIMBRES: &str = "tela.timbres";
+    /// Mapa de atalhos da Oficina de partitura (ticket 13).
+    pub const ATALHOS: &str = "tela.atalhos";
     /// A última tela aberta. Fica por último: o app só a grava depois das outras, para que uma
     /// mudança que cria "Meu perfil" já a leve junto.
     pub const APP: &str = "tela.app";
-    pub const TODAS: [&str; 11] = [
+    pub const TODAS: [&str; 12] = [
         TECLADO,
         ACORDES,
         RITMOS,
@@ -65,6 +67,7 @@ pub mod secoes {
         CURSOS,
         REVISAO,
         TIMBRES,
+        ATALHOS,
         APP,
     ];
 }
@@ -274,6 +277,15 @@ pub fn aplicar_gravacao(g: &mut EstadoGravacao, t: &str) {
         .ler::<u16>("bpm_contagem")
         .filter(|b| (40..=200).contains(b))
         .unwrap_or(p.bpm_contagem);
+}
+
+/// Mapa de atalhos da Oficina (ação para combinação), no perfil.
+pub fn retrato_atalhos(e: &EstadoPartitura) -> String {
+    e.atalhos.para_texto()
+}
+
+pub fn aplicar_atalhos(e: &mut EstadoPartitura, t: &str) {
+    e.atalhos = crate::atalhos_partitura::MapaAtalhos::de_texto(t);
 }
 
 pub fn retrato_partitura(e: &EstadoPartitura) -> String {

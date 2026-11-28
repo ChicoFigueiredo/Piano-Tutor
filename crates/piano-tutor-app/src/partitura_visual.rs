@@ -1,7 +1,8 @@
-//! Partitura na tela (F07, somente leitura): diagramação e desenho com o `Painter` do egui,
-//! sem fonte musical. Tudo é medido em **espaços de pauta** (sp; 1 sp = distância entre duas
-//! linhas): a escala (zoom) só converte sp em pixels, de modo que a diagramação é proporcional
-//! em qualquer tamanho. Regras de gravura em `docs/referencias/COMPONENTES-VISUAIS.md`:
+//! Partitura na tela (F07, somente leitura): diagramação própria e desenho com o `Painter` do
+//! egui, sem fonte musical. O layout usa só os tipos de [`crate::geometria`] (sem egui); o egui
+//! entra apenas em `adaptador_egui`. Tudo é medido em **espaços de pauta** (sp; 1 sp = distância
+//! entre duas linhas): a escala (zoom) só converte sp em pixels, de modo que a diagramação é
+//! proporcional em qualquer tamanho. Regras de gravura em `docs/referencias/COMPONENTES-VISUAIS.md`:
 //! linha de pauta 0,13 sp, haste 3,5 sp (0,12 sp de espessura), viga 0,5 sp com no máximo 1 sp
 //! de desnível, linha suplementar 0,16 sp que avança 0,4 sp além da cabeça, espaçamento
 //! horizontal pelo logaritmo da duração, coluna de acidentes e quebra de linha sempre em
@@ -15,10 +16,8 @@
 // deles deixaria o código menos claro.
 #![allow(clippy::needless_range_loop)]
 
-use bancada_casca::egui::{
-    Align, Align2, Color32, FontId, Painter, Pos2, Rect, ScrollArea, Sense, Shape, Stroke, Ui,
-    pos2, vec2,
-};
+use crate::geometria::{Ancora, IdNota, Ponto, Retangulo, ponto, vetor};
+use piano_tutor_core::documento::{Exibicao, IdsPorNota};
 use piano_tutor_core::partitura::{
     Acidente, Altura, Armadura, Barra, Clave, Compasso, DirecaoHaste, EstadoViga, Figura, Fracao,
     InfoCompasso, MarcaLigadura, Nota, Partitura, SimboloForma, SinalClave,
@@ -60,52 +59,19 @@ pub const FRACAO_CURSOR_FITA: f32 = 1.0 / 3.0;
 
 // --- Paleta --------------------------------------------------------------------------------
 
-/// Cores da partitura (tokens do tema do app: Noite e Claro).
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub struct Paleta {
-    pub papel: Color32,
-    pub tinta: Color32,
-    pub suave: Color32,
-    pub direita: Color32,
-    pub esquerda: Color32,
-    /// Nota acertada na prática.
-    pub acerto: Color32,
-    /// Nota errada ou perdida na prática.
-    pub erro: Color32,
-}
+pub mod adaptador_egui;
+pub mod bravura;
+mod textos;
 
-impl Paleta {
-    pub fn para_tema(escuro: bool) -> Self {
-        if escuro {
-            Self {
-                papel: Color32::from_rgb(0x1E, 0x21, 0x29),
-                tinta: Color32::from_rgb(0xE8, 0xE4, 0xDA),
-                suave: Color32::from_rgb(0x8C, 0x8A, 0x84),
-                direita: Color32::from_rgb(0xE2, 0xA2, 0x4B),
-                esquerda: Color32::from_rgb(0x4F, 0xA3, 0xC7),
-                acerto: Color32::from_rgb(0x4C, 0xC3, 0x6B),
-                erro: Color32::from_rgb(0xE8, 0x5A, 0x50),
-            }
-        } else {
-            Self {
-                papel: Color32::from_rgb(0xFF, 0xFF, 0xFF),
-                tinta: Color32::from_rgb(0x1D, 0x1B, 0x17),
-                suave: Color32::from_rgb(0x6B, 0x67, 0x5F),
-                direita: Color32::from_rgb(0xB5, 0x65, 0x1D),
-                esquerda: Color32::from_rgb(0x1F, 0x6F, 0x8B),
-                acerto: Color32::from_rgb(0x1B, 0x8A, 0x3C),
-                erro: Color32::from_rgb(0xC6, 0x28, 0x28),
-            }
-        }
-    }
+#[cfg(test)]
+mod captura_testes;
+#[cfg(test)]
+mod textos_testes;
+pub use adaptador_egui::*;
 
-    fn mao(&self, m: Mao) -> Color32 {
-        match m {
-            Mao::Direita => self.direita,
-            Mao::Esquerda => self.esquerda,
-        }
-    }
-}
+// Spike do ticket 09 (ADR-0018): protótipo de render com a Bravura, só em testes.
+#[cfg(test)]
+mod spike_bravura;
 
 // --- Primitivas ----------------------------------------------------------------------------
 
@@ -135,21 +101,21 @@ pub struct Alvo {
 #[derive(Clone, Debug, PartialEq)]
 pub enum Forma {
     Linha {
-        a: Pos2,
-        b: Pos2,
+        a: Ponto,
+        b: Ponto,
         espessura: f32,
     },
     /// Polígono convexo preenchido.
     Preenchido {
-        pontos: Vec<Pos2>,
+        pontos: Vec<Ponto>,
     },
     Caminho {
-        pontos: Vec<Pos2>,
+        pontos: Vec<Ponto>,
         espessura: f32,
     },
     /// Cabeça de nota: elipse inclinada (oca para mínima e semibreve).
     Cabeca {
-        centro: Pos2,
+        centro: Ponto,
         rx: f32,
         ry: f32,
         rotacao: f32,
@@ -157,20 +123,27 @@ pub enum Forma {
         rotacao_oco: f32,
     },
     Disco {
-        centro: Pos2,
+        centro: Ponto,
         raio: f32,
     },
     Texto {
-        pos: Pos2,
+        pos: Ponto,
         texto: String,
         altura: f32,
-        ancora: Align2,
+        ancora: Ancora,
+    },
+    /// Glifo da fonte musical Bravura (SMuFL): `pos` é a origem na linha de base, à esquerda do
+    /// glifo; `escala` 1,0 é o corpo de 4 sp do SMuFL. Hoje só o dedilhado o usa.
+    Glifo {
+        pos: Ponto,
+        caractere: char,
+        escala: f32,
     },
 }
 
 impl Forma {
     fn deslocar(&mut self, dx: f32, dy: f32) {
-        let d = vec2(dx, dy);
+        let d = vetor(dx, dy);
         match self {
             Forma::Linha { a, b, .. } => {
                 *a += d;
@@ -182,30 +155,41 @@ impl Forma {
                 }
             }
             Forma::Cabeca { centro, .. } | Forma::Disco { centro, .. } => *centro += d,
-            Forma::Texto { pos, .. } => *pos += d,
+            Forma::Texto { pos, .. } | Forma::Glifo { pos, .. } => *pos += d,
         }
     }
 
     /// Retângulo envolvente (aproximado), em sp.
-    fn limites(&self) -> Rect {
+    fn limites(&self) -> Retangulo {
         match self {
-            Forma::Linha { a, b, .. } => Rect::from_two_pos(*a, *b),
+            Forma::Linha { a, b, .. } => Retangulo::from_two_pos(*a, *b),
             Forma::Preenchido { pontos } | Forma::Caminho { pontos, .. } => {
-                let mut r = Rect::NOTHING;
+                let mut r = Retangulo::NOTHING;
                 for p in pontos {
                     r.extend_with(*p);
                 }
                 r
             }
             Forma::Cabeca { centro, rx, .. } => {
-                Rect::from_center_size(*centro, vec2(*rx, *rx) * 2.0)
+                Retangulo::from_center_size(*centro, vetor(*rx, *rx) * 2.0)
             }
             Forma::Disco { centro, raio } => {
-                Rect::from_center_size(*centro, vec2(*raio, *raio) * 2.0)
+                Retangulo::from_center_size(*centro, vetor(*raio, *raio) * 2.0)
             }
             Forma::Texto { pos, altura, .. } => {
-                Rect::from_center_size(*pos, vec2(*altura, *altura))
+                Retangulo::from_center_size(*pos, vetor(*altura, *altura))
             }
+            Forma::Glifo {
+                pos,
+                caractere,
+                escala,
+            } => Retangulo::from_min_max(
+                ponto(pos.x, pos.y - bravura::ALTURA_DO_ALGARISMO * escala),
+                ponto(
+                    pos.x + bravura::avanco_do_glifo(*caractere) * escala,
+                    pos.y + 0.05 * escala,
+                ),
+            ),
         }
     }
 }
@@ -215,6 +199,11 @@ pub struct Item {
     pub forma: Forma,
     pub cor: Cor,
     pub alvo: Option<Alvo>,
+    /// Identidade estável da nota a que a primitiva pertence (cabeça, ponto de aumento,
+    /// acidente e, desde o ticket 19, a letra e o dedilhado da nota). O serviço de documento a
+    /// preenche (ticket 10); enquanto for `None` vale o vínculo antigo por compasso (`alvo`).
+    /// Só a cabeça é alvo de clique (`Layout::nota_em`).
+    pub nota: Option<IdNota>,
 }
 
 fn item(forma: Forma) -> Item {
@@ -222,10 +211,11 @@ fn item(forma: Forma) -> Item {
         forma,
         cor: Cor::Tinta,
         alvo: None,
+        nota: None,
     }
 }
 
-fn linha(a: Pos2, b: Pos2, espessura: f32) -> Item {
+fn linha(a: Ponto, b: Ponto, espessura: f32) -> Item {
     item(Forma::Linha { a, b, espessura })
 }
 
@@ -254,6 +244,18 @@ pub struct CompassoLay {
     pub colunas: Vec<(f64, f32)>,
     pub duracao: f64,
 }
+
+/// Resultado de [`Layout::acertar`].
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum Acerto {
+    Nota(IdNota),
+    Compasso(usize),
+}
+
+/// Tolerância padrão do hit test de nota, em sp (folga ao redor da cabeça).
+pub const TOLERANCIA_NOTA_SP: f32 = 0.25;
+/// Folga vertical (sp) fora do sistema onde ainda se procuram notas (linhas suplementares).
+const MARGEM_NOTA_SP: f32 = 4.0;
 
 #[derive(Clone, Debug)]
 pub struct Layout {
@@ -287,6 +289,22 @@ impl Layout {
         }
     }
 
+    /// Coluna do compasso `c` (índice em [`CompassoLay::colunas`]) mais próxima de `x`, em sp
+    /// (ticket 17b: o clique no compasso vira posição de entrada por coluna, não por pixel).
+    pub fn coluna_mais_proxima(&self, c: usize, x: f32) -> Option<usize> {
+        let cl = self.compassos.get(c)?;
+        cl.colunas
+            .iter()
+            .enumerate()
+            .min_by(|(_, a), (_, b)| (a.1 - x).abs().total_cmp(&(b.1 - x).abs()))
+            .map(|(i, _)| i)
+    }
+
+    /// Centro x (sp) da coluna `coluna` do compasso `c`.
+    pub fn x_da_coluna(&self, c: usize, coluna: usize) -> Option<f32> {
+        self.compassos.get(c)?.colunas.get(coluna).map(|(_, x)| *x)
+    }
+
     /// Compasso sob o ponto `(x, y)` em sp, se houver.
     pub fn compasso_em(&self, x: f32, y: f32) -> Option<usize> {
         let s = self
@@ -296,12 +314,70 @@ impl Layout {
         (self.sistemas[s].primeiro..self.sistemas[s].fim)
             .find(|c| x >= self.compassos[*c].x0 && x <= self.compassos[*c].x1)
     }
+
+    /// Nota (por identidade) sob o ponto `p` em sp: a cabeça cuja elipse, alargada em `tol` sp,
+    /// contém o ponto; havendo várias, a de menor distância relativa ao centro. Primitivas sem
+    /// identidade nunca são devolvidas.
+    pub fn nota_em(&self, p: Ponto, tol: f32) -> Option<IdNota> {
+        let mut melhor: Option<(f32, IdNota)> = None;
+        for s in &self.sistemas {
+            if p.y < s.y_topo - MARGEM_NOTA_SP || p.y > s.y_base + MARGEM_NOTA_SP {
+                continue;
+            }
+            for it in &s.itens {
+                let (
+                    Some(id),
+                    Forma::Cabeca {
+                        centro,
+                        rx,
+                        ry,
+                        rotacao,
+                        ..
+                    },
+                ) = (it.nota, &it.forma)
+                else {
+                    continue;
+                };
+                // Ponto no referencial da elipse (girada por `rotacao`).
+                let (dx, dy) = (p.x - centro.x, p.y - centro.y);
+                let (sen, cos) = rotacao.sin_cos();
+                let (u, v) = (dx * cos + dy * sen, -dx * sen + dy * cos);
+                let d = (u / (rx + tol)).powi(2) + (v / (ry + tol)).powi(2);
+                if d <= 1.0 && melhor.is_none_or(|(m, _)| d < m) {
+                    melhor = Some((d, id));
+                }
+            }
+        }
+        melhor.map(|(_, id)| id)
+    }
+
+    /// Sistema e centro (em sp) da cabeça da nota `id`, se o layout a tiver (ticket 12: anel de
+    /// seleção e rolagem até a nota).
+    pub fn cabeca_da_nota(&self, id: IdNota) -> Option<(usize, Ponto)> {
+        self.sistemas.iter().enumerate().find_map(|(i, s)| {
+            s.itens.iter().find_map(|it| match (it.nota, &it.forma) {
+                (Some(n), Forma::Cabeca { centro, .. }) if n == id => Some((i, *centro)),
+                _ => None,
+            })
+        })
+    }
+
+    /// Hit test completo: a nota sob o ponto, se alguma primitiva com identidade o contiver;
+    /// senão o compasso (comportamento antigo, o único possível sem identidades).
+    pub fn acertar(&self, p: Ponto, tol: f32) -> Option<Acerto> {
+        if let Some(id) = self.nota_em(p, tol) {
+            return Some(Acerto::Nota(id));
+        }
+        self.compasso_em(p.x, p.y).map(Acerto::Compasso)
+    }
 }
 
 // --- Análise de uma pauta em um compasso ---------------------------------------------------
 
 #[derive(Clone, Debug)]
 struct NotaL {
+    /// Identidade da nota no documento (`None` quando o layout é calculado sem identidades).
+    id: Option<IdNota>,
     /// Meios espaços acima da linha inferior (0 = linha inferior, 8 = superior).
     s: i32,
     acc: Option<Acidente>,
@@ -389,9 +465,15 @@ fn analisar_pauta(
     pauta: u8,
     clave_ini: Clave,
     trocas: &[(Fracao, Clave)],
+    ids: &dyn Fn(usize) -> Option<IdNota>,
 ) -> AnalisePauta {
-    let notas: Vec<&Nota> = comp.notas.iter().filter(|n| n.pauta == pauta).collect();
-    let mut vozes: Vec<u8> = notas.iter().map(|n| n.voz).collect();
+    let notas: Vec<(usize, &Nota)> = comp
+        .notas
+        .iter()
+        .enumerate()
+        .filter(|(_, n)| n.pauta == pauta)
+        .collect();
+    let mut vozes: Vec<u8> = notas.iter().map(|(_, n)| n.voz).collect();
     vozes.sort_unstable();
     vozes.dedup();
     let n_vozes = vozes.len();
@@ -401,9 +483,10 @@ fn analisar_pauta(
     };
     for (rank, voz) in vozes.iter().enumerate() {
         let primeiro_idx = a.eventos.len();
-        for n in notas.iter().filter(|n| n.voz == *voz) {
+        for &(ordinal, n) in notas.iter().filter(|(_, n)| n.voz == *voz) {
             let clave = clave_em(clave_ini, trocas, n.posicao);
             let nl = n.altura.map(|alt| NotaL {
+                id: ids(ordinal),
                 s: s_de(alt, clave),
                 acc: n.acidente,
                 acc_col: 0,
@@ -600,7 +683,11 @@ fn largura_acidente(a: Acidente) -> f32 {
     }
 }
 
-fn planejar_compasso(analises: &[AnalisePauta], info: &InfoCompasso) -> PlanoCompasso {
+fn planejar_compasso(
+    analises: &[AnalisePauta],
+    info: &InfoCompasso,
+    textos: &[(Fracao, f32)],
+) -> PlanoCompasso {
     let mut pos: Vec<Fracao> = analises
         .iter()
         .flat_map(|a| a.eventos.iter().map(|e| e.pos))
@@ -642,9 +729,19 @@ fn planejar_compasso(analises: &[AnalisePauta], info: &InfoCompasso) -> PlanoCom
             }
         }
     }
+    // Largura do texto (letra e cifra) de cada coluna: sem textos, tudo zero e nada muda.
+    let larg: Vec<f32> = pos
+        .iter()
+        .map(|p| {
+            textos
+                .iter()
+                .filter(|(q, _)| q == p)
+                .fold(0.0f32, |m, (_, w)| m.max(*w))
+        })
+        .collect();
     let rep_ini = if info.repeticao_inicio { 1.8 } else { 0.0 };
     let rep_fim = if info.repeticao_fim { 1.8 } else { 0.0 };
-    let dx0 = 1.0 + rep_ini + sala[0];
+    let dx0 = (1.0 + rep_ini + sala[0]).max(larg[0] / 2.0 + 0.3);
     let dur = info.duracao.como_f64();
     let mut dx = vec![dx0];
     for k in 0..n - 1 {
@@ -652,11 +749,14 @@ fn planejar_compasso(analises: &[AnalisePauta], info: &InfoCompasso) -> PlanoCom
         let natural = largura_da_duracao(d);
         let minimo = meia[k] + meia[k + 1] + pontos[k] + sala[k + 1] + 0.4;
         let anterior = dx[k];
-        dx.push(anterior + natural.max(minimo));
+        let texto = (larg[k] + larg[k + 1]) / 2.0 + 0.5;
+        dx.push(anterior + natural.max(minimo).max(texto));
     }
     let d_ultimo = (dur - pos[n - 1].como_f64()).max(0.25);
-    let cauda =
-        (0.85 * largura_da_duracao(d_ultimo)).max(meia[n - 1] + pontos[n - 1] + 0.9) + rep_fim;
+    let cauda = (0.85 * largura_da_duracao(d_ultimo))
+        .max(meia[n - 1] + pontos[n - 1] + 0.9)
+        .max(larg[n - 1] / 2.0 + 0.9)
+        + rep_fim;
     let largura = dx[n - 1] + cauda;
     PlanoCompasso {
         pos,
@@ -690,13 +790,13 @@ const LARGURA_FORMA: f32 = 3.0;
 
 // --- Primitivas de glifos ------------------------------------------------------------------
 
-fn cubica(p0: Pos2, p1: Pos2, p2: Pos2, p3: Pos2, n: usize) -> Vec<Pos2> {
+fn cubica(p0: Ponto, p1: Ponto, p2: Ponto, p3: Ponto, n: usize) -> Vec<Ponto> {
     (0..=n)
         .map(|i| {
             let t = i as f32 / n as f32;
             let u = 1.0 - t;
             let (a, b, c, d) = (u * u * u, 3.0 * u * u * t, 3.0 * u * t * t, t * t * t);
-            pos2(
+            ponto(
                 a * p0.x + b * p1.x + c * p2.x + d * p3.x,
                 a * p0.y + b * p1.y + c * p2.y + d * p3.y,
             )
@@ -704,19 +804,19 @@ fn cubica(p0: Pos2, p1: Pos2, p2: Pos2, p3: Pos2, n: usize) -> Vec<Pos2> {
         .collect()
 }
 
-fn juntar(mut a: Vec<Pos2>, b: Vec<Pos2>) -> Vec<Pos2> {
+fn juntar(mut a: Vec<Ponto>, b: Vec<Ponto>) -> Vec<Ponto> {
     a.extend(b.into_iter().skip(1));
     a
 }
 
-fn caminho(pontos: Vec<Pos2>, espessura: f32) -> Item {
+fn caminho(pontos: Vec<Ponto>, espessura: f32) -> Item {
     item(Forma::Caminho { pontos, espessura })
 }
 
 /// Clave de sol: `(x, y_g)` é o canto esquerdo na linha do Sol.
 fn glifo_clave_sol(x: f32, y: f32, escala: f32) -> Vec<Item> {
     let e = escala;
-    let p = |a: f32, b: f32| pos2(x + a * e, y + b * e);
+    let p = |a: f32, b: f32| ponto(x + a * e, y + b * e);
     let mut tracado = cubica(
         p(1.55, -4.4),
         p(2.15, -4.2),
@@ -770,7 +870,7 @@ fn glifo_clave_sol(x: f32, y: f32, escala: f32) -> Vec<Item> {
 /// Clave de fá: `(x, y_f)` é o canto esquerdo na linha do Fá.
 fn glifo_clave_fa(x: f32, y: f32, escala: f32) -> Vec<Item> {
     let e = escala;
-    let p = |a: f32, b: f32| pos2(x + a * e, y + b * e);
+    let p = |a: f32, b: f32| ponto(x + a * e, y + b * e);
     let mut tracado = cubica(
         p(0.55, -0.55),
         p(1.5, -0.7),
@@ -802,7 +902,7 @@ fn glifo_clave_fa(x: f32, y: f32, escala: f32) -> Vec<Item> {
 /// Clave de dó: `(x, y_c)` é o canto esquerdo na linha do Dó.
 fn glifo_clave_do(x: f32, y: f32, escala: f32) -> Vec<Item> {
     let e = escala;
-    let p = |a: f32, b: f32| pos2(x + a * e, y + b * e);
+    let p = |a: f32, b: f32| ponto(x + a * e, y + b * e);
     let mut cima = cubica(p(1.2, -0.1), p(1.6, -0.9), p(2.4, -1.1), p(2.6, -1.7), 8);
     cima = juntar(
         cima,
@@ -834,18 +934,18 @@ fn glifo_clave(c: Clave, x: f32, y_topo: f32, escala: f32) -> Vec<Item> {
             vec![
                 item(Forma::Preenchido {
                     pontos: vec![
-                        pos2(x + 0.3, y - 0.9),
-                        pos2(x + 0.7, y - 0.9),
-                        pos2(x + 0.7, y + 0.9),
-                        pos2(x + 0.3, y + 0.9),
+                        ponto(x + 0.3, y - 0.9),
+                        ponto(x + 0.7, y - 0.9),
+                        ponto(x + 0.7, y + 0.9),
+                        ponto(x + 0.3, y + 0.9),
                     ],
                 }),
                 item(Forma::Preenchido {
                     pontos: vec![
-                        pos2(x + 1.1, y - 0.9),
-                        pos2(x + 1.5, y - 0.9),
-                        pos2(x + 1.5, y + 0.9),
-                        pos2(x + 1.1, y + 0.9),
+                        ponto(x + 1.1, y - 0.9),
+                        ponto(x + 1.5, y - 0.9),
+                        ponto(x + 1.5, y + 0.9),
+                        ponto(x + 1.1, y + 0.9),
                     ],
                 }),
             ]
@@ -858,10 +958,10 @@ fn glifo_clave(c: Clave, x: f32, y_topo: f32, escala: f32) -> Vec<Item> {
             (y_topo - 1.4, "8")
         };
         v.push(item(Forma::Texto {
-            pos: pos2(x + 1.4 * escala, y),
+            pos: ponto(x + 1.4 * escala, y),
             texto: txt.into(),
             altura: 1.5,
-            ancora: Align2::CENTER_CENTER,
+            ancora: Ancora::CENTER_CENTER,
         }));
     }
     v
@@ -882,7 +982,7 @@ fn posicoes_armadura(quintas: i8, clave: Clave) -> Vec<i32> {
 }
 
 fn glifo_acidente(a: Acidente, x: f32, y: f32) -> Vec<Item> {
-    let p = |dx: f32, dy: f32| pos2(x + dx, y + dy);
+    let p = |dx: f32, dy: f32| ponto(x + dx, y + dy);
     match a {
         Acidente::Sustenido => vec![
             linha(p(0.3, -1.4), p(0.3, 1.5), 0.1),
@@ -922,19 +1022,19 @@ fn glifo_acidente(a: Acidente, x: f32, y: f32) -> Vec<Item> {
     }
 }
 
-fn elipse_pontos(c: Pos2, rx: f32, ry: f32, rot: f32, n: usize) -> Vec<Pos2> {
+fn elipse_pontos(c: Ponto, rx: f32, ry: f32, rot: f32, n: usize) -> Vec<Ponto> {
     let (s, co) = rot.sin_cos();
     (0..n)
         .map(|i| {
             let t = i as f32 / n as f32 * std::f32::consts::TAU;
             let (x, y) = (rx * t.cos(), ry * t.sin());
-            pos2(c.x + x * co - y * s, c.y + x * s + y * co)
+            ponto(c.x + x * co - y * s, c.y + x * s + y * co)
         })
         .collect()
 }
 
 fn glifo_pausa(fig: Figura, x: f32, y: f32) -> Vec<Item> {
-    let p = |dx: f32, dy: f32| pos2(x + dx, y + dy);
+    let p = |dx: f32, dy: f32| ponto(x + dx, y + dy);
     match fig {
         Figura::Semibreve | Figura::Breve => vec![item(Forma::Preenchido {
             pontos: vec![p(-0.6, -1.0), p(0.6, -1.0), p(0.6, -0.5), p(-0.6, -0.5)],
@@ -998,26 +1098,26 @@ fn glifo_chave(x_dir: f32, y0: f32, y1: f32) -> Vec<Item> {
     let xr = x_dir - 0.15;
     let xv = x_dir - 0.75;
     let mut centro = cubica(
-        pos2(xr, y0),
-        pos2(xv - 0.35, y0 + 0.02 * h),
-        pos2(xv, y0 + 0.1 * h),
-        pos2(xv, y0 + 0.27 * h),
+        ponto(xr, y0),
+        ponto(xv - 0.35, y0 + 0.02 * h),
+        ponto(xv, y0 + 0.1 * h),
+        ponto(xv, y0 + 0.27 * h),
         10,
     );
     centro = juntar(
         centro,
         cubica(
-            pos2(xv, y0 + 0.27 * h),
-            pos2(xv, y0 + 0.40 * h),
-            pos2(xl + 0.5, ym - 0.04 * h),
-            pos2(xl, ym),
+            ponto(xv, y0 + 0.27 * h),
+            ponto(xv, y0 + 0.40 * h),
+            ponto(xl + 0.5, ym - 0.04 * h),
+            ponto(xl, ym),
             10,
         ),
     );
-    let mut baixo: Vec<Pos2> = centro
+    let mut baixo: Vec<Ponto> = centro
         .iter()
         .rev()
-        .map(|p| pos2(p.x, 2.0 * ym - p.y))
+        .map(|p| ponto(p.x, 2.0 * ym - p.y))
         .collect();
     let mut total = centro;
     total.extend(baixo.drain(1..));
@@ -1036,7 +1136,7 @@ fn glifo_chave(x_dir: f32, y0: f32, y1: f32) -> Vec<Item> {
             continue;
         }
         let d = (b - a).normalized();
-        let nrm = vec2(-d.y, d.x);
+        let nrm = vetor(-d.y, d.x);
         let (wa, wb) = (espessura(i) / 2.0, espessura(i + 1) / 2.0);
         itens.push(item(Forma::Preenchido {
             pontos: vec![a + nrm * wa, b + nrm * wb, b - nrm * wb, a - nrm * wa],
@@ -1045,7 +1145,7 @@ fn glifo_chave(x_dir: f32, y0: f32, y1: f32) -> Vec<Item> {
     itens
 }
 
-fn texto_item(pos: Pos2, t: &str, altura: f32, ancora: Align2, cor: Cor) -> Item {
+fn texto_item(pos: Ponto, t: &str, altura: f32, ancora: Ancora, cor: Cor) -> Item {
     Item {
         forma: Forma::Texto {
             pos,
@@ -1055,6 +1155,7 @@ fn texto_item(pos: Pos2, t: &str, altura: f32, ancora: Align2, cor: Cor) -> Item
         },
         cor,
         alvo: None,
+        nota: None,
     }
 }
 
@@ -1109,7 +1210,7 @@ fn emitir_cabeca(ctx: &mut ContextoPauta<'_>, ev: &Evento, n: &NotaL, x: f32, es
     };
     ctx.itens.push(Item {
         forma: Forma::Cabeca {
-            centro: pos2(xc, yc),
+            centro: ponto(xc, yc),
             rx: rx * escala,
             ry: ry * escala,
             rotacao: if semibreve { 0.0 } else { -0.38 },
@@ -1118,6 +1219,7 @@ fn emitir_cabeca(ctx: &mut ContextoPauta<'_>, ev: &Evento, n: &NotaL, x: f32, es
         },
         cor: Cor::Tinta,
         alvo: Some(alvo),
+        nota: n.id,
     });
     // Linhas suplementares.
     if escala >= 0.99 {
@@ -1138,8 +1240,8 @@ fn emitir_cabeca(ctx: &mut ContextoPauta<'_>, ev: &Evento, n: &NotaL, x: f32, es
         for sl in linhas {
             let y = y_de_s(sl);
             ctx.itens.push(linha(
-                pos2(xc - hw - SUPLEMENTAR_EXTENSAO, y),
-                pos2(xc + hw + SUPLEMENTAR_EXTENSAO, y),
+                ponto(xc - hw - SUPLEMENTAR_EXTENSAO, y),
+                ponto(xc + hw + SUPLEMENTAR_EXTENSAO, y),
                 SUPLEMENTAR_ESPESSURA,
             ));
         }
@@ -1154,11 +1256,12 @@ fn emitir_cabeca(ctx: &mut ContextoPauta<'_>, ev: &Evento, n: &NotaL, x: f32, es
             + 0.5 * f32::from(k);
         ctx.itens.push(Item {
             forma: Forma::Disco {
-                centro: pos2(xd, yc + dy),
+                centro: ponto(xd, yc + dy),
                 raio: 0.2 * escala,
             },
             cor: Cor::Tinta,
             alvo: Some(alvo),
+            nota: n.id,
         });
     }
     // Acidente.
@@ -1175,6 +1278,7 @@ fn emitir_cabeca(ctx: &mut ContextoPauta<'_>, ev: &Evento, n: &NotaL, x: f32, es
         let larg = largura_acidente(a);
         for mut it in glifo_acidente(a, borda - larg, yc) {
             it.alvo = Some(alvo);
+            it.nota = n.id;
             ctx.itens.push(it);
         }
     }
@@ -1217,9 +1321,9 @@ fn emitir_cabeca(ctx: &mut ContextoPauta<'_>, ev: &Evento, n: &NotaL, x: f32, es
     }
 }
 
-fn pontos_da_bandeirola(x: f32, y: f32, cima: bool) -> Vec<Pos2> {
+fn pontos_da_bandeirola(x: f32, y: f32, cima: bool) -> Vec<Ponto> {
     let sinal = if cima { 1.0 } else { -1.0 };
-    let p = |dx: f32, dy: f32| pos2(x + dx, y + sinal * dy);
+    let p = |dx: f32, dy: f32| ponto(x + dx, y + sinal * dy);
     juntar(
         cubica(p(0.0, 0.0), p(0.15, 1.2), p(1.5, 1.4), p(1.05, 3.1), 10),
         cubica(p(1.05, 3.1), p(1.25, 2.1), p(0.45, 1.45), p(0.0, 1.5), 8),
@@ -1290,7 +1394,7 @@ fn emitir_eventos(ctx: &mut ContextoPauta<'_>) {
             ctx.itens.extend(gl);
             for k in 0..ev.pontos {
                 ctx.itens.push(item(Forma::Disco {
-                    centro: pos2(xr + 1.0 + 0.5 * f32::from(k), ycentro - 0.5),
+                    centro: ponto(xr + 1.0 + 0.5 * f32::from(k), ycentro - 0.5),
                     raio: 0.2,
                 }));
             }
@@ -1351,12 +1455,13 @@ fn emitir_eventos(ctx: &mut ContextoPauta<'_>) {
             pontas[*i] = Some((h.x, ponta));
             ctx.itens.push(Item {
                 forma: Forma::Linha {
-                    a: pos2(h.x, h.base),
-                    b: pos2(h.x, ponta),
+                    a: ponto(h.x, h.base),
+                    b: ponto(h.x, ponta),
                     espessura: HASTE_ESPESSURA,
                 },
                 cor: Cor::Tinta,
                 alvo: Some(alvo_de(ev, ctx.compasso)),
+                nota: None,
             });
             feitos.insert(*i);
         }
@@ -1404,10 +1509,10 @@ fn emitir_eventos(ctx: &mut ContextoPauta<'_>) {
                 };
                 ctx.itens.push(item(Forma::Preenchido {
                     pontos: vec![
-                        pos2(xa, ya),
-                        pos2(xb, yb),
-                        pos2(xb, yb + esp),
-                        pos2(xa, ya + esp),
+                        ponto(xa, ya),
+                        ponto(xb, yb),
+                        ponto(xb, yb + esp),
+                        ponto(xa, ya + esp),
                     ],
                 }));
             }
@@ -1421,12 +1526,13 @@ fn emitir_eventos(ctx: &mut ContextoPauta<'_>) {
         pontas[i] = Some((h.x, h.ponta));
         ctx.itens.push(Item {
             forma: Forma::Linha {
-                a: pos2(h.x, h.base),
-                b: pos2(h.x, h.ponta),
+                a: ponto(h.x, h.base),
+                b: ponto(h.x, h.ponta),
                 espessura: HASTE_ESPESSURA,
             },
             cor: Cor::Tinta,
             alvo: Some(alvo_de(ev, ctx.compasso)),
+            nota: None,
         });
         for k in 0..ev.figura.bandeirolas() {
             let desloc = f32::from(k) * 0.95 * if ev.cima { 1.0 } else { -1.0 };
@@ -1505,16 +1611,18 @@ fn emitir_tercinas(ctx: &mut ContextoPauta<'_>, pontas: &[Option<(f32, f32)>]) {
             let xm = (xa + xb) / 2.0;
             if !tudo_vigado && xb > xa + 1.0 {
                 let tick = if cima { 0.5 } else { -0.5 };
-                ctx.itens.push(linha(pos2(xa, y + tick), pos2(xa, y), 0.1));
-                ctx.itens.push(linha(pos2(xa, y), pos2(xm - 0.9, y), 0.1));
-                ctx.itens.push(linha(pos2(xm + 0.9, y), pos2(xb, y), 0.1));
-                ctx.itens.push(linha(pos2(xb, y), pos2(xb, y + tick), 0.1));
+                ctx.itens
+                    .push(linha(ponto(xa, y + tick), ponto(xa, y), 0.1));
+                ctx.itens.push(linha(ponto(xa, y), ponto(xm - 0.9, y), 0.1));
+                ctx.itens.push(linha(ponto(xm + 0.9, y), ponto(xb, y), 0.1));
+                ctx.itens
+                    .push(linha(ponto(xb, y), ponto(xb, y + tick), 0.1));
             }
             ctx.itens.push(texto_item(
-                pos2(xm, y),
+                ponto(xm, y),
                 &numero.to_string(),
                 1.5,
-                Align2::CENTER_CENTER,
+                Ancora::CENTER_CENTER,
                 Cor::Tinta,
             ));
             i = j + 1;
@@ -1534,10 +1642,10 @@ fn arco(x1: f32, y1: f32, x2: f32, y2: f32, acima: bool, expressao: bool) -> Ite
         (0.4 + dx * 0.05).min(1.0)
     };
     let sinal = if acima { -1.0 } else { 1.0 };
-    let c1 = pos2(x1 + dx * 0.28, y1 + sinal * altura * 1.33);
-    let c2 = pos2(x2 - dx * 0.28, y2 + sinal * altura * 1.33);
+    let c1 = ponto(x1 + dx * 0.28, y1 + sinal * altura * 1.33);
+    let c2 = ponto(x2 - dx * 0.28, y2 + sinal * altura * 1.33);
     caminho(
-        cubica(pos2(x1, y1), c1, c2, pos2(x2, y2), 16),
+        cubica(ponto(x1, y1), c1, c2, ponto(x2, y2), 16),
         if expressao { 0.13 } else { 0.2 },
     )
 }
@@ -1624,31 +1732,31 @@ fn claves_da_pauta(p: &Partitura, parte: usize, pauta: u8) -> EstadoClaves {
 fn desenhar_barra(itens: &mut Vec<Item>, x: f32, y0: f32, y1: f32, b: Barra, rep_fim: bool) {
     let fina = 0.16;
     if rep_fim {
-        itens.push(linha(pos2(x - 1.0, y0), pos2(x - 1.0, y1), fina));
+        itens.push(linha(ponto(x - 1.0, y0), ponto(x - 1.0, y1), fina));
         itens.push(item(Forma::Preenchido {
             pontos: vec![
-                pos2(x - 0.5, y0),
-                pos2(x, y0),
-                pos2(x, y1),
-                pos2(x - 0.5, y1),
+                ponto(x - 0.5, y0),
+                ponto(x, y0),
+                ponto(x, y1),
+                ponto(x - 0.5, y1),
             ],
         }));
         return;
     }
     match b {
-        Barra::Simples => itens.push(linha(pos2(x, y0), pos2(x, y1), fina)),
+        Barra::Simples => itens.push(linha(ponto(x, y0), ponto(x, y1), fina)),
         Barra::Dupla => {
-            itens.push(linha(pos2(x - 0.45, y0), pos2(x - 0.45, y1), fina));
-            itens.push(linha(pos2(x, y0), pos2(x, y1), fina));
+            itens.push(linha(ponto(x - 0.45, y0), ponto(x - 0.45, y1), fina));
+            itens.push(linha(ponto(x, y0), ponto(x, y1), fina));
         }
         Barra::Final => {
-            itens.push(linha(pos2(x - 0.95, y0), pos2(x - 0.95, y1), fina));
+            itens.push(linha(ponto(x - 0.95, y0), ponto(x - 0.95, y1), fina));
             itens.push(item(Forma::Preenchido {
                 pontos: vec![
-                    pos2(x - 0.5, y0),
-                    pos2(x, y0),
-                    pos2(x, y1),
-                    pos2(x - 0.5, y1),
+                    ponto(x - 0.5, y0),
+                    ponto(x, y0),
+                    ponto(x, y1),
+                    ponto(x - 0.5, y1),
                 ],
             }));
         }
@@ -1659,7 +1767,7 @@ fn desenhar_barra(itens: &mut Vec<Item>, x: f32, y0: f32, y1: f32, b: Barra, rep
 fn pontos_de_repeticao(itens: &mut Vec<Item>, x: f32, y_topo: f32) {
     for dy in [1.5, 2.5] {
         itens.push(item(Forma::Disco {
-            centro: pos2(x, y_topo + dy),
+            centro: ponto(x, y_topo + dy),
             raio: 0.25,
         }));
     }
@@ -1671,19 +1779,59 @@ struct SistemaTrabalho {
     esticar: f32,
 }
 
-/// Diagrama a partitura para uma largura disponível, em sp, quebrando em sistemas.
+/// Diagrama a partitura para uma largura disponível, em sp, quebrando em sistemas. Sem
+/// identidades de nota: as primitivas da nota não carregam [`IdNota`] (`Item::nota` é `None`).
 pub fn calcular_layout(p: &Partitura, largura_sp: f32) -> Layout {
-    calcular_layout_com(p, largura_sp, false)
+    calcular_layout_com(p, None, None, largura_sp, false)
+}
+
+/// Como [`calcular_layout`], mas as primitivas de cada nota (cabeça, pontos de aumento e
+/// acidente) carregam a identidade que o serviço de documento atribuiu a ela (ticket 10). A
+/// geometria é a mesma: só `Item::nota` muda.
+pub fn calcular_layout_com_ids(p: &Partitura, ids: &IdsPorNota, largura_sp: f32) -> Layout {
+    calcular_layout_com(p, Some(ids), None, largura_sp, false)
+}
+
+/// Como [`calcular_layout_com_ids`], e ainda desenha a letra (uma linha por estrofe, com a
+/// altura reservada), a cifra e o dedilhado que a [`Exibicao`] traz, junto das notas a que
+/// pertencem (ticket 19). Cada texto carrega a identidade da sua nota em `Item::nota`.
+pub fn calcular_layout_com_exibicao(
+    p: &Partitura,
+    ids: &IdsPorNota,
+    exibicao: &Exibicao,
+    largura_sp: f32,
+) -> Layout {
+    calcular_layout_com(p, Some(ids), Some(exibicao), largura_sp, false)
 }
 
 /// Diagrama a partitura como **fita contínua**: um único sistema sem quebras de linha, na
 /// largura natural dos compassos (sem esticar). Clave e armadura só aparecem no início e onde
 /// mudam. `Layout::largura` é a largura total da fita, em sp.
 pub fn calcular_layout_fita(p: &Partitura) -> Layout {
-    calcular_layout_com(p, LARGURA_MINIMA, true)
+    calcular_layout_com(p, None, None, LARGURA_MINIMA, true)
 }
 
-fn calcular_layout_com(p: &Partitura, largura_sp: f32, fita: bool) -> Layout {
+/// A fita contínua com as identidades de nota (ver [`calcular_layout_com_ids`]).
+pub fn calcular_layout_fita_com_ids(p: &Partitura, ids: &IdsPorNota) -> Layout {
+    calcular_layout_com(p, Some(ids), None, LARGURA_MINIMA, true)
+}
+
+/// A fita contínua com letra, cifra e dedilhado (ver [`calcular_layout_com_exibicao`]).
+pub fn calcular_layout_fita_com_exibicao(
+    p: &Partitura,
+    ids: &IdsPorNota,
+    exibicao: &Exibicao,
+) -> Layout {
+    calcular_layout_com(p, Some(ids), Some(exibicao), LARGURA_MINIMA, true)
+}
+
+fn calcular_layout_com(
+    p: &Partitura,
+    ids: Option<&IdsPorNota>,
+    exibicao: Option<&Exibicao>,
+    largura_sp: f32,
+    fita: bool,
+) -> Layout {
     let largura = largura_sp.max(LARGURA_MINIMA);
     let n_comp = p.compassos.len();
     let pautas: Vec<PautaGlobal> = p
@@ -1708,13 +1856,29 @@ fn calcular_layout_com(p: &Partitura, largura_sp: f32, fita: bool) -> Layout {
                         g.pauta,
                         claves[i].inicio[m],
                         &claves[i].internas[m],
+                        &|ordinal| ids.and_then(|t| t.id(g.parte, m, ordinal)),
                     )
                 })
                 .collect()
         })
         .collect();
+    // Letra, cifra e dedilhado: só com identidades de nota e algo para mostrar.
+    let extras = match (ids, exibicao) {
+        (Some(i), Some(e)) if !e.vazia() => Some((i, e)),
+        _ => None,
+    };
+    let estrofes = extras.map_or_else(Vec::new, |(i, e)| {
+        textos::estrofes_das_pautas(p, i, e, &pautas)
+    });
+    let textos_de: Vec<textos::TextosCompasso> = (0..n_comp)
+        .map(|m| {
+            extras.map_or_else(Default::default, |(i, e)| {
+                textos::coletar(p, i, e, &pautas, &estrofes, m)
+            })
+        })
+        .collect();
     let planos: Vec<PlanoCompasso> = (0..n_comp)
-        .map(|m| planejar_compasso(&analises[m], &p.compassos[m]))
+        .map(|m| planejar_compasso(&analises[m], &p.compassos[m], &textos_de[m].larguras()))
         .collect();
 
     // Larguras de prefixo.
@@ -1806,6 +1970,12 @@ fn calcular_layout_com(p: &Partitura, largura_sp: f32, fita: bool) -> Layout {
         let primeiro_sistema = is == 0;
         let mut por_pauta: Vec<Vec<Item>> = vec![Vec::new(); n_pautas];
         let mut marcas: Vec<Vec<MarcaArco>> = vec![Vec::new(); n_pautas];
+        // Letra e cifra esperam o fim do sistema (a altura delas depende do resto da pauta);
+        // o dedilhado já é desenhado junto das notas.
+        let mut letras_pend: Vec<Vec<(f32, &textos::LetraL)>> = vec![Vec::new(); n_pautas];
+        let mut cifras_pend: Vec<Vec<(f32, &textos::CifraL)>> = vec![Vec::new(); n_pautas];
+        let mut dedo_acima = vec![0.0f32; n_pautas];
+        let mut dedo_abaixo = vec![0.0f32; n_pautas];
         let mut x = MARGEM_ESQUERDA;
         let x_inicio = x;
         let mut barras_x: Vec<(f32, Barra, bool)> = Vec::new();
@@ -1901,6 +2071,27 @@ fn calcular_layout_com(p: &Partitura, largura_sp: f32, fita: bool) -> Layout {
                 }
                 por_pauta[k].extend(ctx.itens);
                 marcas[k].extend(ctx.arcos);
+                let t = &textos_de[m];
+                let dedos: Vec<&textos::DedoL> = t.dedos.iter().filter(|d| d.k == k).collect();
+                if !dedos.is_empty() {
+                    let (itens, ac, ab) =
+                        textos::itens_do_dedilhado(&dedos, &analises[m][k], &x_de);
+                    por_pauta[k].extend(itens);
+                    dedo_acima[k] = dedo_acima[k].max(ac);
+                    dedo_abaixo[k] = dedo_abaixo[k].max(ab);
+                }
+                letras_pend[k].extend(
+                    t.letras
+                        .iter()
+                        .filter(|l| l.k == k)
+                        .map(|l| (x_de(l.pos), l)),
+                );
+                cifras_pend[k].extend(
+                    t.cifras
+                        .iter()
+                        .filter(|c| c.k == k)
+                        .map(|c| (x_de(c.pos), c)),
+                );
             }
             barras_x.push((x_fim, inf.barra_final, inf.repeticao_fim));
             // Casas de repetição, números de compasso e colunas para o cursor.
@@ -1949,9 +2140,24 @@ fn calcular_layout_com(p: &Partitura, largura_sp: f32, fita: bool) -> Layout {
                 por_pauta[k].push(it);
             }
         }
-        // Posição vertical.
         let tem_casa = (t.primeiro..t.fim).any(|m| !p.compassos[m].casas.is_empty());
         let reserva_topo = if tem_casa { 3.6 } else { 2.6 };
+        // Dedilhado, letra (uma linha por estrofe, abaixo de tudo o que a pauta já tem embaixo)
+        // e cifra (acima de tudo o que a pauta já tem em cima, do número do compasso e das casas):
+        // a altura reservada entra na da pauta, e a pauta de baixo é empurrada.
+        for k in 0..n_pautas {
+            acima[k] = acima[k].max(dedo_acima[k]);
+            abaixo[k] = abaixo[k].max(dedo_abaixo[k]);
+            let (itens, novo_abaixo) = textos::itens_da_letra(&letras_pend[k], abaixo[k]);
+            por_pauta[k].extend(itens);
+            abaixo[k] = novo_abaixo;
+            // As pautas de baixo não têm número de compasso nem casas acima delas.
+            let reserva = if k == 0 { reserva_topo } else { 1.0 };
+            let (itens, novo_acima) = textos::itens_da_cifra(&cifras_pend[k], acima[k], reserva);
+            por_pauta[k].extend(itens);
+            acima[k] = novo_acima;
+        }
+        // Posição vertical.
         let y_topo_sistema = y_cursor;
         let mut ys: Vec<f32> = Vec::with_capacity(n_pautas);
         let mut y = y_topo_sistema + acima[0].max(reserva_topo);
@@ -1974,14 +2180,14 @@ fn calcular_layout_com(p: &Partitura, largura_sp: f32, fita: bool) -> Layout {
         for k in 0..n_pautas {
             for l in 0..5 {
                 itens.push(linha(
-                    pos2(x_inicio, ys[k] + l as f32),
-                    pos2(x_fim_sistema, ys[k] + l as f32),
+                    ponto(x_inicio, ys[k] + l as f32),
+                    ponto(x_fim_sistema, ys[k] + l as f32),
                     LINHA_PAUTA,
                 ));
             }
         }
         // Barra inicial, chaves e barras de compasso.
-        itens.push(linha(pos2(x_inicio, ys[0]), pos2(x_inicio, y_base), 0.16));
+        itens.push(linha(ponto(x_inicio, ys[0]), ponto(x_inicio, y_base), 0.16));
         let mut k = 0;
         while k < n_pautas {
             let mut fim = k;
@@ -2005,15 +2211,15 @@ fn calcular_layout_com(p: &Partitura, largura_sp: f32, fita: bool) -> Layout {
                 if p.compassos[*m].repeticao_inicio {
                     itens.push(item(Forma::Preenchido {
                         pontos: vec![
-                            pos2(xc + 0.2, ys[k]),
-                            pos2(xc + 0.7, ys[k]),
-                            pos2(xc + 0.7, ys[fim] + ALTURA_PAUTA),
-                            pos2(xc + 0.2, ys[fim] + ALTURA_PAUTA),
+                            ponto(xc + 0.2, ys[k]),
+                            ponto(xc + 0.7, ys[k]),
+                            ponto(xc + 0.7, ys[fim] + ALTURA_PAUTA),
+                            ponto(xc + 0.2, ys[fim] + ALTURA_PAUTA),
                         ],
                     }));
                     itens.push(linha(
-                        pos2(xc + 1.0, ys[k]),
-                        pos2(xc + 1.0, ys[fim] + ALTURA_PAUTA),
+                        ponto(xc + 1.0, ys[k]),
+                        ponto(xc + 1.0, ys[fim] + ALTURA_PAUTA),
                         0.16,
                     ));
                     pontos_de_repeticao(&mut itens, xc + 1.6, ys[k]);
@@ -2037,10 +2243,10 @@ fn calcular_layout_com(p: &Partitura, largura_sp: f32, fita: bool) -> Layout {
         let rotulo = &p.compassos[m0].numero;
         if rotulo != "0" {
             itens.push(texto_item(
-                pos2(x_primeiro - 0.2, ys[0] - 1.1),
+                ponto(x_primeiro - 0.2, ys[0] - 1.1),
                 rotulo,
                 1.25,
-                Align2::LEFT_BOTTOM,
+                Ancora::LEFT_BOTTOM,
                 Cor::Suave,
             ));
         }
@@ -2058,14 +2264,14 @@ fn calcular_layout_com(p: &Partitura, largura_sp: f32, fita: bool) -> Layout {
             }
             let (xa, xb) = (xc + 0.2, medidas[f].2 - 0.2);
             let yv = ys[0] - 2.4;
-            itens.push(linha(pos2(xa, yv), pos2(xb, yv), 0.12));
-            itens.push(linha(pos2(xa, yv), pos2(xa, yv + 1.2), 0.12));
+            itens.push(linha(ponto(xa, yv), ponto(xb, yv), 0.12));
+            itens.push(linha(ponto(xa, yv), ponto(xa, yv + 1.2), 0.12));
             let nome: Vec<String> = casas.iter().map(|n| format!("{n}.")).collect();
             itens.push(texto_item(
-                pos2(xa + 0.5, yv + 0.2),
+                ponto(xa + 0.5, yv + 0.2),
                 &nome.join(" "),
                 1.25,
-                Align2::LEFT_TOP,
+                Ancora::LEFT_TOP,
                 Cor::Tinta,
             ));
             c = f + 1;
@@ -2126,35 +2332,35 @@ fn forma_itens(inf: &InfoCompasso, x: f32) -> Vec<Item> {
     let centro = x + 1.3;
     match f.simbolo {
         Some(SimboloForma::Comum) => vec![texto_item(
-            pos2(centro, 2.0),
+            ponto(centro, 2.0),
             "C",
             3.6,
-            Align2::CENTER_CENTER,
+            Ancora::CENTER_CENTER,
             Cor::Tinta,
         )],
         Some(SimboloForma::Cortado) => vec![
             texto_item(
-                pos2(centro, 2.0),
+                ponto(centro, 2.0),
                 "C",
                 3.6,
-                Align2::CENTER_CENTER,
+                Ancora::CENTER_CENTER,
                 Cor::Tinta,
             ),
-            linha(pos2(centro, 0.2), pos2(centro, 3.8), 0.14),
+            linha(ponto(centro, 0.2), ponto(centro, 3.8), 0.14),
         ],
         None => vec![
             texto_item(
-                pos2(centro, 1.0),
+                ponto(centro, 1.0),
                 &f.batidas.to_string(),
                 2.9,
-                Align2::CENTER_CENTER,
+                Ancora::CENTER_CENTER,
                 Cor::Tinta,
             ),
             texto_item(
-                pos2(centro, 3.0),
+                ponto(centro, 3.0),
                 &f.unidade.to_string(),
                 2.9,
-                Align2::CENTER_CENTER,
+                Ancora::CENTER_CENTER,
                 Cor::Tinta,
             ),
         ],
@@ -2234,38 +2440,6 @@ impl MapaResultados {
     }
 }
 
-#[cfg(test)]
-fn cor_do_item(it: &Item, pal: &Paleta, destaque: Option<Destaque>) -> Color32 {
-    cor_do_item_com(it, pal, destaque, None)
-}
-
-fn cor_do_item_com(
-    it: &Item,
-    pal: &Paleta,
-    destaque: Option<Destaque>,
-    resultados: Option<&MapaResultados>,
-) -> Color32 {
-    if let (Some(a), Some(r)) = (it.alvo.as_ref(), resultados)
-        && let Some(res) = r.de(a)
-    {
-        return match res {
-            ResultadoNota::Acertou => pal.acerto,
-            ResultadoNota::Errou => pal.erro,
-        };
-    }
-    if let (Some(a), Some(d)) = (it.alvo, destaque)
-        && a.compasso == d.compasso
-        && d.tempo + 1e-9 >= a.inicio
-        && d.tempo < a.fim - 1e-9
-    {
-        return pal.mao(a.mao);
-    }
-    match it.cor {
-        Cor::Tinta => pal.tinta,
-        Cor::Suave => pal.suave,
-    }
-}
-
 fn forma_finita(f: &Forma) -> bool {
     match f {
         Forma::Linha { a, b, espessura } => a.is_finite() && b.is_finite() && espessura.is_finite(),
@@ -2282,380 +2456,15 @@ fn forma_finita(f: &Forma) -> bool {
         } => centro.is_finite() && rx.is_finite() && ry.is_finite() && rotacao.is_finite(),
         Forma::Disco { centro, raio } => centro.is_finite() && raio.is_finite(),
         Forma::Texto { pos, altura, .. } => pos.is_finite() && altura.is_finite(),
+        Forma::Glifo { pos, escala, .. } => pos.is_finite() && escala.is_finite(),
     }
-}
-
-fn espessura_px(sp: f32, esp: f32) -> f32 {
-    (sp * esp).max(1.0)
-}
-
-/// Pinta as primitivas de um sistema. `origem` é o canto superior esquerdo do layout.
-pub fn pintar_itens(
-    painter: &Painter,
-    origem: Pos2,
-    esp: f32,
-    itens: &[Item],
-    pal: &Paleta,
-    marcas: Marcas<'_>,
-    com_texto: bool,
-) {
-    let px = |p: Pos2| pos2(origem.x + p.x * esp, origem.y + p.y * esp);
-    // Só pinta o que cruza a região visível (a fita contínua tem milhares de primitivas).
-    let corte = painter.clip_rect().expand(MARGEM_CORTE_SP * esp);
-    for it in itens {
-        let lim = it.forma.limites();
-        // Defesa final: forma com coordenada não finita nunca chega ao epaint.
-        if !(lim.min.is_finite() && lim.max.is_finite()) || !forma_finita(&it.forma) {
-            continue;
-        }
-        if !corte.intersects(Rect::from_min_max(px(lim.min), px(lim.max))) {
-            continue;
-        }
-        let cor = cor_do_item_com(it, pal, marcas.destaque, marcas.resultados);
-        match &it.forma {
-            Forma::Linha { a, b, espessura } => {
-                let (mut pa, mut pb) = (px(*a), px(*b));
-                if (pa.y - pb.y).abs() < 1e-3 {
-                    pa.y = pa.y.round();
-                    pb.y = pb.y.round();
-                }
-                painter.add(Shape::line_segment(
-                    [pa, pb],
-                    Stroke::new(espessura_px(*espessura, esp), cor),
-                ));
-            }
-            Forma::Preenchido { pontos } => {
-                painter.add(Shape::convex_polygon(
-                    pontos.iter().map(|p| px(*p)).collect(),
-                    cor,
-                    Stroke::NONE,
-                ));
-            }
-            Forma::Caminho { pontos, espessura } => {
-                painter.add(Shape::line(
-                    pontos.iter().map(|p| px(*p)).collect(),
-                    Stroke::new((espessura * esp).max(0.8), cor),
-                ));
-            }
-            Forma::Cabeca {
-                centro,
-                rx,
-                ry,
-                rotacao,
-                oca,
-                rotacao_oco,
-            } => {
-                let c = px(*centro);
-                painter.add(Shape::convex_polygon(
-                    elipse_pontos(c, rx * esp, ry * esp, *rotacao, 28),
-                    cor,
-                    Stroke::NONE,
-                ));
-                if *oca {
-                    let (irx, iry) = if rotacao_oco.abs() > 1.0 {
-                        (rx * 0.34, ry * 0.8)
-                    } else {
-                        (rx * 0.72, ry * 0.32)
-                    };
-                    painter.add(Shape::convex_polygon(
-                        elipse_pontos(c, irx * esp, iry * esp, *rotacao_oco, 24),
-                        pal.papel,
-                        Stroke::NONE,
-                    ));
-                }
-            }
-            Forma::Disco { centro, raio } => {
-                let r = (raio * esp).max(0.7);
-                painter.add(Shape::convex_polygon(
-                    elipse_pontos(px(*centro), r, r, 0.0, 20),
-                    cor,
-                    Stroke::NONE,
-                ));
-            }
-            Forma::Texto {
-                pos,
-                texto,
-                altura,
-                ancora,
-            } => {
-                if com_texto {
-                    // Altura de algarismo ≈ 0,7 do corpo da fonte.
-                    let corpo = (altura * esp / 0.72).max(11.0);
-                    painter.text(px(*pos), *ancora, texto, FontId::proportional(corpo), cor);
-                }
-            }
-        }
-    }
-}
-
-type ChaveLayout = (u32, u32, ModoRolagem);
-
-/// Estado persistente do componente (cache do layout e rolagem).
-#[derive(Default)]
-pub struct EstadoVisual {
-    cache: Option<(ChaveLayout, u64, Arc<Layout>)>,
-    versao: u64,
-    ultimo_sistema: Option<usize>,
-    /// Último layout calculado (para testes e consultas).
-    pub ultimo_layout: Option<Arc<Layout>>,
-}
-
-impl EstadoVisual {
-    /// Descarta o layout em cache (chamar ao trocar de partitura).
-    pub fn invalidar(&mut self) {
-        self.versao += 1;
-        self.cache = None;
-        self.ultimo_sistema = None;
-        self.ultimo_layout = None;
-    }
-}
-
-/// Como a partitura acompanha a execução.
-#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Hash)]
-pub enum ModoRolagem {
-    /// Sistemas empilhados; ao chegar ao seguinte a vista salta para ele (atual no topo).
-    #[default]
-    Sistemas,
-    /// Um único sistema comprido, rolado na horizontal com o cursor parado a 1/3 da largura.
-    Fita,
-}
-
-impl ModoRolagem {
-    pub const TODOS: [ModoRolagem; 2] = [ModoRolagem::Sistemas, ModoRolagem::Fita];
-
-    pub fn rotulo(self) -> &'static str {
-        match self {
-            ModoRolagem::Sistemas => "Sistema a sistema",
-            ModoRolagem::Fita => "Fita contínua",
-        }
-    }
-
-    /// Nome estável usado nas preferências salvas.
-    pub fn chave(self) -> &'static str {
-        match self {
-            ModoRolagem::Sistemas => "sistemas",
-            ModoRolagem::Fita => "fita",
-        }
-    }
-
-    pub fn de_chave(s: &str) -> Option<Self> {
-        Self::TODOS.into_iter().find(|m| m.chave() == s.trim())
-    }
-}
-
-/// Opções de exibição.
-#[derive(Clone, Copy, Debug)]
-pub struct OpcoesVisuais {
-    pub zoom: f32,
-    /// Acompanhar a execução (rolagem automática).
-    pub seguir: bool,
-    pub modo: ModoRolagem,
-    /// Força a paleta clara (papel branco, tinta escura) mesmo com o tema Noite.
-    pub papel_branco: bool,
-}
-
-impl Default for OpcoesVisuais {
-    fn default() -> Self {
-        Self {
-            zoom: 1.0,
-            seguir: true,
-            modo: ModoRolagem::Sistemas,
-            papel_branco: false,
-        }
-    }
-}
-
-/// O que o usuário fez na partitura neste quadro.
-#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
-pub struct RespostaPartitura {
-    /// Compasso clicado.
-    pub compasso_clicado: Option<usize>,
-}
-
-/// Compasso em seleção (ponto de partida) e destaque de execução.
-#[derive(Clone, Copy, Debug, Default)]
-pub struct Marcas<'a> {
-    pub destaque: Option<Destaque>,
-    pub selecionado: Option<usize>,
-    /// Notas acertadas (verde) e erradas (vermelho) da prática.
-    pub resultados: Option<&'a MapaResultados>,
-}
-
-/// Desenha a partitura com rolagem própria. A largura do layout acompanha a do `ui`.
-pub fn desenhar_partitura(
-    ui: &mut Ui,
-    p: &Partitura,
-    estado: &mut EstadoVisual,
-    opc: OpcoesVisuais,
-    marcas: Marcas<'_>,
-) -> RespostaPartitura {
-    let zoom = opc.zoom.clamp(ZOOM_MIN, ZOOM_MAX);
-    let esp = ESP_BASE_PX * zoom;
-    let fita = opc.modo == ModoRolagem::Fita;
-    let largura_px = (ui.available_width() - 12.0).max(120.0);
-    let altura_vista = ui.available_height();
-    let largura_sp = (largura_px / esp).max(LARGURA_MINIMA);
-    // Na fita a largura da vista não muda o layout: a chave só distingue o modo.
-    let chave: ChaveLayout = (
-        if fita {
-            0
-        } else {
-            (largura_sp * 8.0).round() as u32
-        },
-        (zoom * 1000.0).round() as u32,
-        opc.modo,
-    );
-    let layout = match &estado.cache {
-        Some((k, v, l)) if *k == chave && *v == estado.versao => l.clone(),
-        _ => {
-            let l = Arc::new(if fita {
-                calcular_layout_fita(p)
-            } else {
-                calcular_layout(p, largura_sp)
-            });
-            estado.cache = Some((chave, estado.versao, l.clone()));
-            estado.ultimo_sistema = None;
-            l
-        }
-    };
-    estado.ultimo_layout = Some(layout.clone());
-    let pal = Paleta::para_tema(ui.visuals().dark_mode && !opc.papel_branco);
-    let mut resposta = RespostaPartitura::default();
-    let mut area = ScrollArea::both()
-        .id_salt(if fita {
-            "partitura-fita"
-        } else {
-            "partitura-rolagem"
-        })
-        .auto_shrink([false, false]);
-    if fita
-        && opc.seguir
-        && let Some(d) = marcas.destaque
-        && let Some(x) = layout.x_no_compasso(d.compasso, d.tempo)
-    {
-        // Cursor parado a 1/3 da largura visível: a fita é que anda, a cada quadro.
-        area = area.horizontal_scroll_offset((x * esp - largura_px * FRACAO_CURSOR_FITA).max(0.0));
-    }
-    area.show(ui, |ui| {
-        let altura_px = layout.altura * esp + 8.0;
-        let tamanho = vec2(
-            layout.largura * esp,
-            if fita {
-                altura_px.max(altura_vista)
-            } else {
-                altura_px
-            },
-        );
-        let (resp, painter) = ui.allocate_painter(tamanho, Sense::click());
-        // Na fita o sistema fica centrado na vertical, sobre o papel que ocupa a vista.
-        let origem = resp.rect.min + vec2(0.0, ((tamanho.y - altura_px) / 2.0).max(0.0).floor());
-        painter.rect_filled(resp.rect, 4.0, pal.papel);
-        let visivel = ui.clip_rect();
-        for (i, s) in layout.sistemas.iter().enumerate() {
-            let faixa = Rect::from_min_max(
-                pos2(origem.x, origem.y + (s.y_topo - 6.0) * esp),
-                pos2(
-                    origem.x + layout.largura * esp,
-                    origem.y + (s.y_base + 6.0) * esp,
-                ),
-            );
-            let _ = i;
-            if !faixa.intersects(visivel) {
-                continue;
-            }
-            // Seleção e compasso atual.
-            for c in s.primeiro..s.fim {
-                let cl = &layout.compassos[c];
-                let r = Rect::from_min_max(
-                    pos2(origem.x + cl.x0 * esp, origem.y + (s.y_topo - 1.0) * esp),
-                    pos2(origem.x + cl.x1 * esp, origem.y + (s.y_base + 1.0) * esp),
-                );
-                if marcas.selecionado == Some(c) {
-                    painter.rect_filled(
-                        r,
-                        2.0,
-                        Color32::from_rgba_unmultiplied(
-                            pal.esquerda.r(),
-                            pal.esquerda.g(),
-                            pal.esquerda.b(),
-                            26,
-                        ),
-                    );
-                }
-                if marcas.destaque.map(|d| d.compasso) == Some(c) {
-                    painter.rect_filled(
-                        r,
-                        2.0,
-                        Color32::from_rgba_unmultiplied(
-                            pal.direita.r(),
-                            pal.direita.g(),
-                            pal.direita.b(),
-                            14,
-                        ),
-                    );
-                }
-            }
-            if let Some(d) = marcas.destaque
-                && (s.primeiro..s.fim).contains(&d.compasso)
-                && let Some(x) = layout.x_no_compasso(d.compasso, d.tempo)
-            {
-                let r = Rect::from_min_max(
-                    pos2(
-                        origem.x + (x - 1.1) * esp,
-                        origem.y + (s.y_topo - 1.5) * esp,
-                    ),
-                    pos2(
-                        origem.x + (x + 1.1) * esp,
-                        origem.y + (s.y_base + 1.5) * esp,
-                    ),
-                );
-                painter.rect_filled(
-                    r,
-                    2.0,
-                    Color32::from_rgba_unmultiplied(
-                        pal.direita.r(),
-                        pal.direita.g(),
-                        pal.direita.b(),
-                        38,
-                    ),
-                );
-            }
-            pintar_itens(&painter, origem, esp, &s.itens, &pal, marcas, true);
-        }
-        if let Some(d) = marcas.destaque
-            && opc.seguir
-            && !fita
-        {
-            let atual = layout.compassos.get(d.compasso).map(|c| c.sistema);
-            if atual.is_some() && atual != estado.ultimo_sistema {
-                if let Some(s) = atual.and_then(|i| layout.sistemas.get(i)) {
-                    // Sistema atual no topo (com folga para número de compasso e casas):
-                    // o seguinte fica visível logo abaixo, para o leitor olhar adiante.
-                    let r = Rect::from_min_max(
-                        pos2(origem.x, origem.y + (s.y_topo - 4.0) * esp),
-                        pos2(origem.x + 10.0, origem.y + (s.y_base + 3.0) * esp),
-                    );
-                    ui.scroll_to_rect(r, Some(Align::Min));
-                }
-                estado.ultimo_sistema = atual;
-            }
-        } else if marcas.destaque.is_none() {
-            estado.ultimo_sistema = None;
-        }
-        if resp.clicked()
-            && let Some(pos) = resp.interact_pointer_pos()
-        {
-            let (x, y) = ((pos.x - origem.x) / esp, (pos.y - origem.y) / esp);
-            resposta.compasso_clicado = layout.compasso_em(x, y);
-        }
-    });
-    resposta
 }
 
 #[cfg(test)]
 mod testes {
+    use super::adaptador_egui::{cor_do_item, cor_do_item_com};
     use super::*;
-    use bancada_casca::egui::{Context, RawInput};
+    use bancada_casca::egui::{self, Context, RawInput, Shape};
     use piano_tutor_core::partitura::Partitura;
 
     const MINIMA: &str = r#"<score-partwise><part-list><score-part id="P1"><part-name>x</part-name></score-part></part-list>
@@ -2675,7 +2484,7 @@ mod testes {
         ][i]
     }
 
-    fn cabecas(l: &Layout) -> Vec<(Pos2, bool)> {
+    fn cabecas(l: &Layout) -> Vec<(Ponto, bool)> {
         l.sistemas
             .iter()
             .flat_map(|s| &s.itens)
@@ -2767,7 +2576,7 @@ mod testes {
         let p = Partitura::de_musicxml(MINIMA).expect("válida");
         let l = calcular_layout(&p, 60.0);
         let s = &l.sistemas[0];
-        let vigas: Vec<&Vec<Pos2>> = s
+        let vigas: Vec<&Vec<Ponto>> = s
             .itens
             .iter()
             .filter_map(|i| match &i.forma {
@@ -2893,7 +2702,10 @@ mod testes {
         destaque: Option<Destaque>,
     ) -> usize {
         let entrada = RawInput {
-            screen_rect: Some(Rect::from_min_size(pos2(0.0, 0.0), vec2(1280.0, 800.0))),
+            screen_rect: Some(egui::Rect::from_min_size(
+                egui::pos2(0.0, 0.0),
+                egui::vec2(1280.0, 800.0),
+            )),
             ..Default::default()
         };
         let mut n = 0;
@@ -3006,7 +2818,10 @@ mod testes {
     ) -> Vec<Shape> {
         let ctx = Context::default();
         let entrada = RawInput {
-            screen_rect: Some(Rect::from_min_size(pos2(0.0, 0.0), vec2(1280.0, 800.0))),
+            screen_rect: Some(egui::Rect::from_min_size(
+                egui::pos2(0.0, 0.0),
+                egui::vec2(1280.0, 800.0),
+            )),
             ..Default::default()
         };
         let mut saida = ctx.run_ui(entrada, |ui| {
@@ -3041,7 +2856,7 @@ mod testes {
     fn papel_branco_usa_a_paleta_clara_mesmo_no_tema_noite() {
         let p = Partitura::de_musicxml(arq(0)).expect("válida");
         let (escura, clara) = (Paleta::para_tema(true), Paleta::para_tema(false));
-        assert_eq!(clara.papel, Color32::WHITE);
+        assert_eq!(clara.papel, egui::Color32::WHITE);
         let mut est = EstadoVisual::default();
         let normal = quadro_com(true, &p, &mut est, OpcoesVisuais::default(), None);
         assert!(cor_do_papel(&normal, &escura));
@@ -3205,7 +3020,10 @@ mod testes {
                 let ctx = Context::default();
                 let mut est = EstadoVisual::default();
                 let entrada = RawInput {
-                    screen_rect: Some(Rect::from_min_size(pos2(0.0, 0.0), vec2(1100.0, 4000.0))),
+                    screen_rect: Some(egui::Rect::from_min_size(
+                        egui::pos2(0.0, 0.0),
+                        egui::vec2(1100.0, 4000.0),
+                    )),
                     ..Default::default()
                 };
                 let mut saida = ctx.run_ui(entrada, |ui| {
@@ -3280,6 +3098,502 @@ mod testes {
                 .expect("gravar");
             }
         }
+    }
+
+    // --- Golden de primitivas (ticket 06) ---------------------------------------------------
+    // Assinaturas FNV-1a do layout (formas em sp, por bits) e dos triângulos tesselados do egui
+    // (sem texto), das partituras embutidas a 100% e 150%. Capturadas ANTES da migração para a
+    // camada geométrica própria: qualquer mudança no desenho muda a assinatura.
+
+    struct Fnv(u64);
+    impl Fnv {
+        fn novo() -> Self {
+            Self(0xcbf2_9ce4_8422_2325)
+        }
+        fn u64(&mut self, v: u64) {
+            for b in v.to_le_bytes() {
+                self.0 = (self.0 ^ u64::from(b)).wrapping_mul(0x0000_0100_0000_01b3);
+            }
+        }
+        fn f(&mut self, v: f32) {
+            self.u64(u64::from(v.to_bits()));
+        }
+        fn p(&mut self, p: Ponto) {
+            self.f(p.x);
+            self.f(p.y);
+        }
+    }
+
+    fn ancora_id(a: Ancora) -> u64 {
+        if a == Ancora::CENTER_CENTER {
+            1
+        } else if a == Ancora::LEFT_BOTTOM {
+            2
+        } else if a == Ancora::LEFT_TOP {
+            3
+        } else {
+            99
+        }
+    }
+
+    fn assinatura_item(it: &Item) -> u64 {
+        let mut h = Fnv::novo();
+        h.u64(match it.cor {
+            Cor::Tinta => 1,
+            Cor::Suave => 2,
+        });
+        match &it.alvo {
+            None => h.u64(0),
+            Some(a) => {
+                h.u64(1);
+                h.u64(a.compasso as u64);
+                h.u64(a.inicio.to_bits());
+                h.u64(a.fim.to_bits());
+                h.u64(match a.mao {
+                    Mao::Direita => 1,
+                    Mao::Esquerda => 2,
+                });
+            }
+        }
+        match &it.forma {
+            Forma::Linha { a, b, espessura } => {
+                h.u64(10);
+                h.p(*a);
+                h.p(*b);
+                h.f(*espessura);
+            }
+            Forma::Preenchido { pontos } => {
+                h.u64(11);
+                pontos.iter().for_each(|q| h.p(*q));
+            }
+            Forma::Caminho { pontos, espessura } => {
+                h.u64(12);
+                pontos.iter().for_each(|q| h.p(*q));
+                h.f(*espessura);
+            }
+            Forma::Cabeca {
+                centro,
+                rx,
+                ry,
+                rotacao,
+                oca,
+                rotacao_oco,
+            } => {
+                h.u64(13);
+                h.p(*centro);
+                h.f(*rx);
+                h.f(*ry);
+                h.f(*rotacao);
+                h.u64(u64::from(*oca));
+                h.f(*rotacao_oco);
+            }
+            Forma::Disco { centro, raio } => {
+                h.u64(14);
+                h.p(*centro);
+                h.f(*raio);
+            }
+            Forma::Texto {
+                pos,
+                texto,
+                altura,
+                ancora,
+            } => {
+                h.u64(15);
+                h.p(*pos);
+                texto.bytes().for_each(|b| h.u64(u64::from(b)));
+                h.f(*altura);
+                h.u64(ancora_id(*ancora));
+            }
+            Forma::Glifo {
+                pos,
+                caractere,
+                escala,
+            } => {
+                h.u64(16);
+                h.p(*pos);
+                h.u64(u64::from(*caractere as u32));
+                h.f(*escala);
+            }
+        }
+        h.0
+    }
+
+    fn assinatura_layout(l: &Layout) -> u64 {
+        let mut h = Fnv::novo();
+        h.f(l.largura);
+        h.f(l.altura);
+        for s in &l.sistemas {
+            h.f(s.y_topo);
+            h.f(s.y_base);
+            h.f(s.x0);
+            h.f(s.x1);
+            h.u64(s.primeiro as u64);
+            h.u64(s.fim as u64);
+            // Soma comutativa: independe da ordem de desenho de itens equivalentes.
+            let mut soma = 0u64;
+            for it in &s.itens {
+                soma = soma.wrapping_add(assinatura_item(it));
+            }
+            h.u64(soma);
+        }
+        for c in &l.compassos {
+            h.u64(c.sistema as u64);
+            h.f(c.x0);
+            h.f(c.x1);
+            h.u64(c.duracao.to_bits());
+            for (t, x) in &c.colunas {
+                h.u64(t.to_bits());
+                h.f(*x);
+            }
+        }
+        h.0
+    }
+
+    fn assinatura_malha(p: &Partitura, zoom: f32) -> (u64, usize) {
+        let ctx = Context::default();
+        let mut est = EstadoVisual::default();
+        let entrada = RawInput {
+            screen_rect: Some(egui::Rect::from_min_size(
+                egui::pos2(0.0, 0.0),
+                egui::vec2(1100.0, 4000.0),
+            )),
+            ..Default::default()
+        };
+        let mut saida = ctx.run_ui(entrada, |ui| {
+            ui.visuals_mut().dark_mode = false;
+            desenhar_partitura(
+                ui,
+                p,
+                &mut est,
+                OpcoesVisuais {
+                    zoom,
+                    seguir: false,
+                    ..OpcoesVisuais::default()
+                },
+                Marcas {
+                    destaque: Some(Destaque {
+                        compasso: 3,
+                        tempo: 0.5,
+                    }),
+                    selecionado: None,
+                    ..Marcas::default()
+                },
+            );
+        });
+        saida.shapes.retain(|c| !matches!(c.shape, Shape::Text(_)));
+        saida.textures_delta.clear();
+        let meshes = ctx.tessellate(std::mem::take(&mut saida.shapes), 1.0);
+        let mut soma = 0u64;
+        let mut n = 0;
+        for m in &meshes {
+            if let bancada_casca::egui::epaint::Primitive::Mesh(mesh) = &m.primitive {
+                for t in mesh.indices.chunks(3) {
+                    let mut h = Fnv::novo();
+                    for i in t {
+                        let v = mesh.vertices[*i as usize];
+                        h.f(v.pos.x);
+                        h.f(v.pos.y);
+                        h.u64(u64::from(u32::from_le_bytes(v.color.to_array())));
+                    }
+                    soma = soma.wrapping_add(h.0);
+                    n += 1;
+                }
+            }
+        }
+        let mut h = Fnv::novo();
+        h.u64(soma);
+        (h.0, n)
+    }
+
+    /// (layout 100%, malha 100%, layout 150%, malha 150%) por partitura embutida.
+    const GOLDEN: [(u64, u64, u64, u64); 5] = [
+        (
+            1024020949450510958,
+            15424379957843765398,
+            16889023980630175934,
+            11783567225301403596,
+        ),
+        (
+            3092051816611255550,
+            1702561511137555275,
+            9294272831556289290,
+            11106701511911798202,
+        ),
+        (
+            1566174185879285142,
+            11368826779549470146,
+            5499259382719335217,
+            7184184929903766057,
+        ),
+        (
+            2199799701033366023,
+            15406921808439581487,
+            18010821381813141312,
+            5940283737368385173,
+        ),
+        (
+            18174550916654093645,
+            17252801736928073200,
+            17418052786301984108,
+            6144444238221826126,
+        ),
+    ];
+
+    #[test]
+    fn golden_de_primitivas_das_partituras_embutidas() {
+        let fontes = [
+            arq(0),
+            arq(1),
+            arq(2),
+            include_str!("../../../assets/partituras/beethoven-ode-a-alegria-tema.musicxml"),
+            include_str!(
+                "../../../assets/partituras/tradicional-brilha-brilha-estrelinha.musicxml"
+            ),
+        ];
+        for (i, f) in fontes.iter().enumerate() {
+            let p = Partitura::de_musicxml(f).expect("válida");
+            let mut obtido = [0u64; 4];
+            for (k, zoom) in [1.0f32, 1.5].into_iter().enumerate() {
+                // Largura do layout em sp como o desenho a usa (1100 px menos margens).
+                let esp = ESP_BASE_PX * zoom;
+                obtido[k * 2] = assinatura_layout(&calcular_layout(&p, 1000.0 / esp));
+                obtido[k * 2 + 1] = assinatura_malha(&p, zoom).0;
+            }
+            eprintln!("GOLDEN {i}: {obtido:?}");
+            let g = GOLDEN[i];
+            assert_eq!(obtido, [g.0, g.1, g.2, g.3], "partitura {i}");
+        }
+    }
+
+    fn cabeca_com_id(centro: Ponto, id: u64) -> Item {
+        Item {
+            forma: Forma::Cabeca {
+                centro,
+                rx: 0.64,
+                ry: 0.45,
+                rotacao: -0.38,
+                oca: false,
+                rotacao_oco: -0.55,
+            },
+            cor: Cor::Tinta,
+            alvo: None,
+            nota: Some(IdNota(id)),
+        }
+    }
+
+    fn layout_com_ids() -> Layout {
+        let p = Partitura::de_musicxml(MINIMA).expect("válida");
+        let mut l = calcular_layout(&p, 60.0);
+        let y = l.sistemas[0].y_topo + 2.0;
+        l.sistemas[0].itens.push(cabeca_com_id(ponto(20.0, y), 7));
+        l.sistemas[0].itens.push(cabeca_com_id(ponto(21.2, y), 8));
+        l
+    }
+
+    #[test]
+    fn hit_test_acha_nota_por_identidade_dentro_e_fora_da_tolerancia() {
+        let l = layout_com_ids();
+        let y = l.sistemas[0].y_topo + 2.0;
+        assert_eq!(l.nota_em(ponto(20.0, y), 0.0), Some(IdNota(7)));
+        // Logo além do raio horizontal (0,64): só a tolerância o inclui.
+        let fora = ponto(20.0 - 0.8, y);
+        assert_eq!(l.nota_em(fora, 0.0), None);
+        assert_eq!(l.nota_em(fora, TOLERANCIA_NOTA_SP), Some(IdNota(7)));
+        // Longe de tudo.
+        assert_eq!(l.nota_em(ponto(20.0, y + 3.0), TOLERANCIA_NOTA_SP), None);
+    }
+
+    #[test]
+    fn hit_test_desempata_pela_mais_proxima() {
+        let l = layout_com_ids();
+        let y = l.sistemas[0].y_topo + 2.0;
+        assert_eq!(l.nota_em(ponto(20.2, y), 0.5), Some(IdNota(7)));
+        assert_eq!(l.nota_em(ponto(21.0, y), 0.5), Some(IdNota(8)));
+    }
+
+    #[test]
+    fn layout_com_ids_carrega_a_identidade_de_cada_cabeca_de_nota() {
+        use piano_tutor_core::documento::DocumentoAberto;
+        let fontes = [
+            MINIMA,
+            arq(0),
+            arq(1),
+            arq(2),
+            include_str!("../../../assets/partituras/beethoven-ode-a-alegria-tema.musicxml"),
+            include_str!(
+                "../../../assets/partituras/tradicional-brilha-brilha-estrelinha.musicxml"
+            ),
+        ];
+        for (i, f) in fontes.iter().enumerate() {
+            let d = DocumentoAberto::abrir_texto("t", f).expect("abre");
+            for fita in [false, true] {
+                let l = if fita {
+                    calcular_layout_fita_com_ids(d.partitura(), d.ids())
+                } else {
+                    calcular_layout_com_ids(d.partitura(), d.ids(), 100.0)
+                };
+                let mut das_cabecas: Vec<IdNota> = Vec::new();
+                for it in l.sistemas.iter().flat_map(|s| &s.itens) {
+                    if matches!(it.forma, Forma::Cabeca { .. }) {
+                        das_cabecas.push(it.nota.expect("toda cabeça carrega a identidade"));
+                    }
+                }
+                let mut esperadas: Vec<IdNota> = Vec::new();
+                for (pi, parte) in d.partitura().partes.iter().enumerate() {
+                    for (ci, c) in parte.compassos.iter().enumerate() {
+                        for (oi, n) in c.notas.iter().enumerate() {
+                            if n.altura.is_some() {
+                                esperadas.push(d.ids().id(pi, ci, oi).expect("id"));
+                            }
+                        }
+                    }
+                }
+                das_cabecas.sort();
+                esperadas.sort();
+                assert_eq!(das_cabecas, esperadas, "fonte {i} fita {fita}");
+                // O hit test devolve a identidade da cabeça sob o ponto.
+                let cab = l
+                    .sistemas
+                    .iter()
+                    .flat_map(|s| &s.itens)
+                    .find_map(|it| match it.forma {
+                        Forma::Cabeca { centro, .. } => Some((centro, it.nota)),
+                        _ => None,
+                    })
+                    .expect("há cabeça");
+                assert_eq!(l.nota_em(cab.0, 0.0), cab.1, "fonte {i}");
+            }
+        }
+    }
+
+    #[test]
+    fn layout_com_ids_so_acrescenta_a_identidade_sem_mudar_a_geometria() {
+        use piano_tutor_core::documento::DocumentoAberto;
+        for f in [MINIMA, arq(0), arq(2)] {
+            let d = DocumentoAberto::abrir_texto("t", f).expect("abre");
+            let sem = calcular_layout(d.partitura(), 100.0);
+            let com = calcular_layout_com_ids(d.partitura(), d.ids(), 100.0);
+            assert_eq!(assinatura_layout(&sem), assinatura_layout(&com));
+            assert_eq!(sem.largura, com.largura);
+            assert_eq!(sem.altura, com.altura);
+        }
+    }
+
+    #[test]
+    fn sem_identidade_o_acerto_cai_no_compasso_como_antes() {
+        let p = Partitura::de_musicxml(MINIMA).expect("válida");
+        let l = calcular_layout(&p, 60.0);
+        assert!(
+            l.sistemas
+                .iter()
+                .flat_map(|s| &s.itens)
+                .all(|i| i.nota.is_none())
+        );
+        let c = &l.compassos[0];
+        let q = ponto((c.x0 + c.x1) / 2.0, l.sistemas[0].y_topo + 2.0);
+        assert_eq!(l.nota_em(q, TOLERANCIA_NOTA_SP), None);
+        assert_eq!(l.acertar(q, TOLERANCIA_NOTA_SP), Some(Acerto::Compasso(0)));
+        assert_eq!(
+            l.acertar(q, TOLERANCIA_NOTA_SP),
+            l.compasso_em(q.x, q.y).map(Acerto::Compasso)
+        );
+        // Fora de qualquer sistema.
+        assert_eq!(l.acertar(ponto(-50.0, -50.0), TOLERANCIA_NOTA_SP), None);
+    }
+
+    #[test]
+    fn cor_da_selecao_tem_contraste_minimo_documentado_contra_o_papel_em_todos_os_temas() {
+        use crate::selecao_partitura::{
+            CONTRASTE_MINIMO, CONTRASTE_MINIMO_ALTO, razao_de_contraste,
+        };
+        let rgb = |c: bancada_casca::egui::Color32| [c.r(), c.g(), c.b()];
+        for escuro in [true, false] {
+            for alto in [false, true] {
+                let pal = Paleta::para_tema_com(escuro, alto);
+                let minimo = if alto {
+                    CONTRASTE_MINIMO_ALTO
+                } else {
+                    CONTRASTE_MINIMO
+                };
+                let r = razao_de_contraste(rgb(pal.selecao), rgb(pal.papel));
+                assert!(
+                    r >= minimo,
+                    "escuro={escuro} alto_contraste={alto}: contraste {r:.2} < {minimo}"
+                );
+                // A seleção não pode ser confundida com nenhuma outra cor de significado.
+                for outra in [pal.direita, pal.esquerda, pal.acerto, pal.erro, pal.tinta] {
+                    assert_ne!(pal.selecao, outra, "escuro={escuro} alto={alto}");
+                }
+            }
+        }
+        // O alto contraste só aumenta o contraste da seleção e não mexe no resto da paleta.
+        for escuro in [true, false] {
+            let (n, a) = (
+                Paleta::para_tema(escuro),
+                Paleta::para_tema_com(escuro, true),
+            );
+            assert!(
+                razao_de_contraste(rgb(a.selecao), rgb(a.papel))
+                    > razao_de_contraste(rgb(n.selecao), rgb(n.papel))
+            );
+            assert_eq!(
+                (
+                    n.papel, n.tinta, n.suave, n.direita, n.esquerda, n.acerto, n.erro
+                ),
+                (
+                    a.papel, a.tinta, a.suave, a.direita, a.esquerda, a.acerto, a.erro
+                )
+            );
+        }
+        assert_eq!(Paleta::para_tema(true), Paleta::para_tema_com(true, false));
+    }
+
+    #[test]
+    fn nota_selecionada_pinta_com_a_cor_da_selecao_e_so_ela() {
+        use piano_tutor_core::documento::DocumentoAberto;
+        let d = DocumentoAberto::abrir_texto("t", MINIMA).expect("abre");
+        let l = calcular_layout_com_ids(d.partitura(), d.ids(), 80.0);
+        let cabecas: Vec<&Item> = l
+            .sistemas
+            .iter()
+            .flat_map(|s| &s.itens)
+            .filter(|i| matches!(i.forma, Forma::Cabeca { .. }) && i.nota.is_some())
+            .collect();
+        assert!(cabecas.len() >= 2);
+        let pal = Paleta::para_tema(true);
+        let sel = cabecas[0].nota.expect("id");
+        let marcas = Marcas {
+            selecao: Some(MarcaSelecao {
+                nota: Some(sel),
+                ..MarcaSelecao::default()
+            }),
+            ..Marcas::default()
+        };
+        assert_eq!(cor_final(cabecas[0], &pal, marcas), pal.selecao);
+        assert_ne!(cor_final(cabecas[1], &pal, marcas), pal.selecao);
+        // Sem seleção, ninguém ganha a cor da seleção.
+        assert_ne!(cor_final(cabecas[0], &pal, Marcas::default()), pal.selecao);
+    }
+
+    #[test]
+    fn cabeca_da_nota_acha_o_sistema_e_o_centro_ou_nada() {
+        let l = layout_com_ids();
+        let y = l.sistemas[0].y_topo + 2.0;
+        assert_eq!(l.cabeca_da_nota(IdNota(8)), Some((0, ponto(21.2, y))));
+        assert_eq!(l.cabeca_da_nota(IdNota(404)), None);
+        // Sem identidades no layout, nenhuma cabeça é achada.
+        let p = Partitura::de_musicxml(MINIMA).expect("válida");
+        assert_eq!(calcular_layout(&p, 60.0).cabeca_da_nota(IdNota(1)), None);
+    }
+
+    #[test]
+    fn acerto_prefere_a_nota_ao_compasso() {
+        let l = layout_com_ids();
+        let y = l.sistemas[0].y_topo + 2.0;
+        assert_eq!(
+            l.acertar(ponto(20.0, y), TOLERANCIA_NOTA_SP),
+            Some(Acerto::Nota(IdNota(7)))
+        );
     }
 
     #[test]

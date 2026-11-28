@@ -12,12 +12,16 @@
 //!   com teto (`take`), de [`MXL_MAX_CONTAINER_BYTES`] para o `container.xml` e de
 //!   [`TAMANHO_MAXIMO_BYTES`] para a partitura, e a taxa descompactado/compactado é limitada
 //!   por [`MXL_TAXA_MAXIMA`];
-//! - o `container.xml` é lido sem DTD e com limite de nós.
+//! - o `container.xml` é lido sem DTD e com limite de nós;
+//! - as mensagens de erro são em português e não reproduzem conteúdo do arquivo além de nomes
+//!   truncados em [`MAX_NOME_EM_MENSAGEM`](crate::xml_seguro::MAX_NOME_EM_MENSAGEM) caracteres;
+//!   nenhum caminho do disco do usuário entra aqui (este módulo só recebe bytes).
 //!
 //! Só é descompactado o `container.xml` e o arquivo principal; as demais entradas (imagens,
 //! PDFs) nunca são lidas.
 
 use crate::partitura::{ErroPartitura, Partitura, TAMANHO_MAXIMO_BYTES};
+use crate::xml_seguro::{mensagem, nome_para_mensagem};
 use roxmltree::{Document, ParsingOptions};
 use std::io::{Cursor, Read, Write};
 use zip::{CompressionMethod, ZipArchive, ZipWriter, write::SimpleFileOptions};
@@ -43,13 +47,22 @@ fn nome_seguro(nome: &str) -> Result<(), ErroPartitura> {
         return Err(recusa("nome de entrada vazio"));
     }
     if nome.contains('\0') || nome.contains('\\') {
-        return Err(recusa(format!("nome de entrada inseguro: {nome:?}")));
+        return Err(recusa(format!(
+            "nome de entrada inseguro: {:?}",
+            nome_para_mensagem(nome)
+        )));
     }
     if nome.starts_with('/') || nome.as_bytes().get(1) == Some(&b':') {
-        return Err(recusa(format!("caminho absoluto recusado: {nome:?}")));
+        return Err(recusa(format!(
+            "caminho absoluto recusado: {:?}",
+            nome_para_mensagem(nome)
+        )));
     }
     if nome.split('/').any(|c| c == "..") {
-        return Err(recusa(format!("caminho com '..' recusado: {nome:?}")));
+        return Err(recusa(format!(
+            "caminho com '..' recusado: {:?}",
+            nome_para_mensagem(nome)
+        )));
     }
     Ok(())
 }
@@ -64,7 +77,7 @@ fn ler_entrada(
     {
         let bruta = zip
             .by_index_raw(indice)
-            .map_err(|e| recusa(format!("entrada ilegível: {e}")))?;
+            .map_err(|_| recusa("entrada ilegível"))?;
         if bruta.encrypted() {
             return Err(recusa("entrada criptografada não é suportada"));
         }
@@ -88,17 +101,17 @@ fn ler_entrada(
     let compactado = {
         let bruta = zip
             .by_index_raw(indice)
-            .map_err(|e| recusa(format!("entrada ilegível: {e}")))?;
+            .map_err(|_| recusa("entrada ilegível"))?;
         bruta.compressed_size()
     };
     let entrada = zip
         .by_index(indice)
-        .map_err(|e| recusa(format!("não foi possível abrir {rotulo}: {e}")))?;
+        .map_err(|_| recusa(format!("não foi possível abrir {rotulo}")))?;
     let mut dados = Vec::new();
     entrada
         .take(limite as u64 + 1)
         .read_to_end(&mut dados)
-        .map_err(|e| recusa(format!("falha ao descompactar {rotulo}: {e}")))?;
+        .map_err(|_| recusa(format!("dados corrompidos ao descompactar {rotulo}")))?;
     if dados.len() > limite {
         return Err(ErroPartitura::LimiteExcedido(
             "bytes descompactados (zip-bomb?)",
@@ -133,7 +146,7 @@ pub fn rootfile_do_container(xml: &str) -> Result<String, ErroPartitura> {
         ..Default::default()
     };
     let doc = Document::parse_with_options(xml, opcoes)
-        .map_err(|e| recusa(format!("container.xml inválido: {e}")))?;
+        .map_err(|e| recusa(format!("container.xml inválido: {}", mensagem(&e))))?;
     let raiz = doc.root_element();
     if raiz.tag_name().name() != "container" {
         return Err(recusa("container.xml sem elemento 'container'"));
@@ -162,7 +175,7 @@ pub fn extrair_musicxml(bytes: &[u8]) -> Result<String, ErroPartitura> {
         return Err(ErroPartitura::GrandeDemais(bytes.len()));
     }
     let mut zip = ZipArchive::new(Cursor::new(bytes))
-        .map_err(|e| recusa(format!("não é um zip válido: {e}")))?;
+        .map_err(|_| recusa("não é um zip válido (diretório central ausente ou corrompido)"))?;
     if zip.len() > MXL_MAX_ENTRADAS {
         return Err(ErroPartitura::LimiteExcedido("número de entradas do zip"));
     }
@@ -171,7 +184,7 @@ pub fn extrair_musicxml(bytes: &[u8]) -> Result<String, ErroPartitura> {
         let nome = zip
             .name_for_index(i)
             .ok_or_else(|| recusa("entrada sem nome"))?
-            .map_err(|e| recusa(format!("nome de entrada ilegível: {e}")))?
+            .map_err(|_| recusa("nome de entrada ilegível"))?
             .into_owned();
         nome_seguro(&nome)?;
         nomes.push(nome);
@@ -188,10 +201,12 @@ pub fn extrair_musicxml(bytes: &[u8]) -> Result<String, ErroPartitura> {
     )?;
     let container = texto_utf8(bruto, "container.xml")?;
     let principal = rootfile_do_container(&container)?;
-    let i_principal = nomes
-        .iter()
-        .position(|n| *n == principal)
-        .ok_or_else(|| recusa(format!("o rootfile '{principal}' não existe no zip")))?;
+    let i_principal = nomes.iter().position(|n| *n == principal).ok_or_else(|| {
+        recusa(format!(
+            "o rootfile '{}' não existe no zip",
+            nome_para_mensagem(&principal)
+        ))
+    })?;
     let bruto = ler_entrada(&mut zip, i_principal, TAMANHO_MAXIMO_BYTES, "partitura")?;
     texto_utf8(bruto, "partitura")
 }

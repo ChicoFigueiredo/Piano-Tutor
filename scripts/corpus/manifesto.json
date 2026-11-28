@@ -1,0 +1,1750 @@
+{
+  "ferramentas_conversao": {
+    "musescore_cli": "NAO VERIFICADO (ausente)"
+  },
+  "ferramentas_degradacao": {
+    "augraphy": "8.2.6",
+    "dpi": 300,
+    "nota_badphotocopy": "augraphy.BadPhotoCopy NAO foi reproduzivel em combinacao (testado: varia entre execucoes mesmo com random, numpy e cv2 semeados); removido dos presets; `BleedThrough` tambem variou (2 saidas distintas em 8 execucoes identicas) e foi trocado por InkBleed forte.",
+    "nota_folding": "augraphy.Folding com parametros aleatorios NAO e reproduzivel mesmo com random/np.random semeados (testado 2x); por isso as dobras usam fold_x fixo, deviation=(0,0), noise=0 (testado: reproduzivel).",
+    "nota_hashseed": "por precaucao o script reexecuta com PYTHONHASHSEED=0.",
+    "numpy": "2.5.5",
+    "opencv-python": "5.1.0.95",
+    "presets": {
+      "dificil": {
+        "descricao": "InkBleed forte + Squish + Faxify + Folding + ruido + Jpeg"
+      },
+      "leve": {
+        "descricao": "scan bom: InkBleed + Jpeg + rotacao <= 1 grau"
+      },
+      "medio": {
+        "descricao": "InkBleed forte + NoiseTexturize + Folding + Jpeg"
+      }
+    },
+    "reproducibilidade": "sha256 por scan fixa a saida para as versoes acima; rode `manifesto --conferir` para checar",
+    "semente_base": 20261127
+  },
+  "ferramentas_pdf": {
+    "cairosvg": "2.9.1",
+    "lilypond": "NAO VERIFICADO (ausente)",
+    "nota": "Para PDF com fontes musicais como texto, renderizar tambem com MuseScore/LilyPond no cerebro (ver 02-PESQUISA-OMR).",
+    "verovio": "6.4.1"
+  },
+  "fonte": {
+    "comando": "git init; git remote add origin https://github.com/OpenScore/Lieder; git fetch --depth 1 origin 38c5db510224d9facdc4b08d741fc788cfb58ea8; git checkout 38c5db510224d9facdc4b08d741fc788cfb58ea8",
+    "data_acesso": "2026-11-27",
+    "licenca": "CC0-1.0",
+    "licenca_arquivo_sha256": "a2010f343487d3f7618affe54f789f5487602331c0a8d03f49e9a7c547cf0499",
+    "nome": "OpenScore Lieder Corpus (espelho GitHub de musescore.com/openscore-lieder-corpus)",
+    "sha": "38c5db510224d9facdc4b08d741fc788cfb58ea8",
+    "url": "https://github.com/OpenScore/Lieder"
+  },
+  "pecas": {
+    "lc4946378": {
+      "compositor": "Beethoven,_Ludwig_van",
+      "conferencia_conversao": {
+        "compassos_iguais": true,
+        "mscx": {
+          "compassos": 30,
+          "notas": 339
+        },
+        "musicxml": {
+          "compassos": 30,
+          "notas": 339
+        },
+        "notas_iguais": true
+      },
+      "conjunto": "6_Lieder,_Op.48",
+      "conversao": {
+        "comando_para_regerar_no_cerebro": "mscore 'scores/Beethoven,_Ludwig_van/6_Lieder,_Op.48/2_Die_Liebe_des_Nächsten/lc4946378.mscx' -o 'lc4946378.musicxml'   # ou: mscore -j data/corpus_conversion.json (lote oficial)",
+        "origem": ".mxl oficial do espelho (gerado pelo mantenedor com MuseScore)",
+        "status": "NAO VERIFICADO: MuseScore CLI ausente neste ambiente; usado o .mxl oficial do espelho; regerar no cerebro com `python scripts/corpus/corpus_omr.py converter`",
+        "versao_software_declarada_no_xml": [
+          "MuseScore 4.5.2"
+        ]
+      },
+      "id": "lc4946378",
+      "licenca": "CC0-1.0",
+      "licenca_fonte": "metaTag copyright no .mscx (+ LICENSE.txt do repositorio, sha 38c5db5102)",
+      "licenca_metadado_peca": "OpenScore (CC0)",
+      "mscx_contagem": {
+        "compassos_por_pauta": [
+          30,
+          30,
+          30
+        ],
+        "letra": true,
+        "notas": 339,
+        "pausas": 33,
+        "pautas": 3
+      },
+      "mscx_sha256": "bb865f4401432ca98623abbc83648c93ea35943dff842fc23839eaab7aa08745",
+      "musicxml": {
+        "arquivo": "data/corpus-omr/musicxml/lc4946378.musicxml",
+        "contagem": {
+          "compassos_por_parte": [
+            30,
+            30
+          ],
+          "notas": 339,
+          "partes": 2,
+          "pausas": 33,
+          "pautas": 3
+        },
+        "sha256": "3b2f1b627389a4caef9049616bcc7ed07945cb6a34ceb2efb91db240a275d155"
+      },
+      "mxl_oficial_sha256": "43096851d2abbb3e0eb74dad3476ed5680ee1f89bd36f5e5d16f8040c90137eb",
+      "origem_mscx": "https://github.com/OpenScore/Lieder/blob/38c5db510224d9facdc4b08d741fc788cfb58ea8/scores/Beethoven,_Ludwig_van/6_Lieder,_Op.48/2_Die_Liebe_des_Nächsten/lc4946378.mscx",
+      "pdf": {
+        "arquivo": "data/corpus-omr/pdf/lc4946378.pdf",
+        "fontes_embutidas_pdffonts": [
+          "OEWOSI+LiberationSerif",
+          "HULYKY+LiberationSerif-BoldItalic",
+          "CNNGVV+LiberationSerif-Italic",
+          "VCCUPM+LiberationSerif-Italic",
+          "XAQEAU+LiberationSerif"
+        ],
+        "gerador": "verovio 6.4.1 -> SVG -> cairosvg 2.9.1 (svg2pdf)",
+        "glifos_musicais": "paths (verovio+cairosvg): serve para raster; NAO serve para extracao vetorial por fonte. Fontes embutidas sao so do texto (titulo/letra).",
+        "opcoes_verovio": {
+          "adjustPageHeight": false,
+          "breaks": "auto",
+          "footer": "none",
+          "header": "auto",
+          "pageHeight": 2970,
+          "pageWidth": 2100,
+          "scale": 40
+        },
+        "paginas": 2,
+        "png_300dpi": {
+          "lc4946378.p1.png": "e235427aa9d36d835ff8aef144d567feb85d906f06684c171825e26a3fb3e508",
+          "lc4946378.p2.png": "18ec79694bd065364ac6b553459da06093137b77ba07b1908ca54e103829db6f"
+        },
+        "reproduzivel_byte_a_byte": "PNG limpo: sim (sha256 estavel em 2 execucoes). PDF: NAO (cairo/pdfunite embutem ids/datas variaveis mesmo com SOURCE_DATE_EPOCH; sha256_PDF muda entre execucoes); a fonte da verdade reproduzivel e o PNG 300 dpi.",
+        "sha256_PDF": "989d0d376e8b2401818d635b4e042617af73c542c46701c96970c96f773038b0"
+      },
+      "scans": {
+        "lc4946378.p1.dificil.png": {
+          "origem_limpa_sha256": "e235427aa9d36d835ff8aef144d567feb85d906f06684c171825e26a3fb3e508",
+          "preset": "dificil",
+          "semente": 917897551,
+          "sha256": "9605554c1b976b56b4e55dbe7b91c069b371fb887eaf44a406b8151060830615"
+        },
+        "lc4946378.p1.leve.png": {
+          "origem_limpa_sha256": "e235427aa9d36d835ff8aef144d567feb85d906f06684c171825e26a3fb3e508",
+          "preset": "leve",
+          "semente": 3082990504,
+          "sha256": "52c1976814ea46e91b91ef6f00589b818b55ea40ae6c81766af1d58cc450d936"
+        },
+        "lc4946378.p1.medio.png": {
+          "origem_limpa_sha256": "e235427aa9d36d835ff8aef144d567feb85d906f06684c171825e26a3fb3e508",
+          "preset": "medio",
+          "semente": 2780955446,
+          "sha256": "947f3a4b8f85a4b16a200ce2de1f440299bb75f653258b13acc7065a3ee2476f"
+        },
+        "lc4946378.p2.dificil.png": {
+          "origem_limpa_sha256": "18ec79694bd065364ac6b553459da06093137b77ba07b1908ca54e103829db6f",
+          "preset": "dificil",
+          "semente": 1007781062,
+          "sha256": "a3eeaaa573375119b7644d732cacf657dcba9664ab358f88b4057ae5136a6bbd"
+        },
+        "lc4946378.p2.leve.png": {
+          "origem_limpa_sha256": "18ec79694bd065364ac6b553459da06093137b77ba07b1908ca54e103829db6f",
+          "preset": "leve",
+          "semente": 1770744648,
+          "sha256": "28b9b8ea17632bc5d35f0608c698838021e41a9e815b3f730d404551d9dab8fb"
+        },
+        "lc4946378.p2.medio.png": {
+          "origem_limpa_sha256": "18ec79694bd065364ac6b553459da06093137b77ba07b1908ca54e103829db6f",
+          "preset": "medio",
+          "semente": 2729142817,
+          "sha256": "0f0f3fd8b4f0ae778192d3910e9bb2aaa55ce93d4697ea65f1fda38f904a1cb5"
+        }
+      },
+      "titulo": "2_Die_Liebe_des_Nächsten"
+    },
+    "lc5057804": {
+      "compositor": "Wolf,_Hugo",
+      "conferencia_conversao": {
+        "compassos_iguais": true,
+        "mscx": {
+          "compassos": 31,
+          "notas": 617
+        },
+        "musicxml": {
+          "compassos": 31,
+          "notas": 617
+        },
+        "notas_iguais": true
+      },
+      "conjunto": "Eichendorff-Lieder",
+      "conversao": {
+        "comando_para_regerar_no_cerebro": "mscore 'scores/Wolf,_Hugo/Eichendorff-Lieder/15_Unfall/lc5057804.mscx' -o 'lc5057804.musicxml'   # ou: mscore -j data/corpus_conversion.json (lote oficial)",
+        "origem": ".mxl oficial do espelho (gerado pelo mantenedor com MuseScore)",
+        "status": "NAO VERIFICADO: MuseScore CLI ausente neste ambiente; usado o .mxl oficial do espelho; regerar no cerebro com `python scripts/corpus/corpus_omr.py converter`",
+        "versao_software_declarada_no_xml": [
+          "MuseScore 4.5.2"
+        ]
+      },
+      "id": "lc5057804",
+      "licenca": "CC0-1.0",
+      "licenca_fonte": "metaTag copyright no .mscx (+ LICENSE.txt do repositorio, sha 38c5db5102)",
+      "licenca_metadado_peca": "OpenScore (CC0)",
+      "mscx_contagem": {
+        "compassos_por_pauta": [
+          31,
+          31,
+          31
+        ],
+        "letra": true,
+        "notas": 617,
+        "pausas": 96,
+        "pautas": 3
+      },
+      "mscx_sha256": "fca3108c8e42ed01aad5f1f81a7d46850f246f5c4ab4d8714ad6d312a8383476",
+      "musicxml": {
+        "arquivo": "data/corpus-omr/musicxml/lc5057804.musicxml",
+        "contagem": {
+          "compassos_por_parte": [
+            31,
+            31
+          ],
+          "notas": 617,
+          "partes": 2,
+          "pausas": 96,
+          "pautas": 3
+        },
+        "sha256": "680e72bbc28ed7a8542633fddf971a5954ed174fd7321d1d99989879d8118668"
+      },
+      "mxl_oficial_sha256": "35dd6a45ee8528c5f8df7ec0b6722b5de50caab62219e2dab20b6fb356a2a140",
+      "origem_mscx": "https://github.com/OpenScore/Lieder/blob/38c5db510224d9facdc4b08d741fc788cfb58ea8/scores/Wolf,_Hugo/Eichendorff-Lieder/15_Unfall/lc5057804.mscx",
+      "pdf": {
+        "arquivo": "data/corpus-omr/pdf/lc5057804.pdf",
+        "fontes_embutidas_pdffonts": [
+          "ZQPMCF+LiberationSerif",
+          "OKZION+LiberationSerif-Italic",
+          "FWBSHY+LiberationSerif-Bold",
+          "KUMMNL+LiberationSerif-Italic",
+          "ICJHVN+LiberationSerif",
+          "KKYLLB+LiberationSerif-Italic",
+          "XJZULK+LiberationSerif"
+        ],
+        "gerador": "verovio 6.4.1 -> SVG -> cairosvg 2.9.1 (svg2pdf)",
+        "glifos_musicais": "paths (verovio+cairosvg): serve para raster; NAO serve para extracao vetorial por fonte. Fontes embutidas sao so do texto (titulo/letra).",
+        "opcoes_verovio": {
+          "adjustPageHeight": false,
+          "breaks": "auto",
+          "footer": "none",
+          "header": "auto",
+          "pageHeight": 2970,
+          "pageWidth": 2100,
+          "scale": 40
+        },
+        "paginas": 3,
+        "png_300dpi": {
+          "lc5057804.p1.png": "6f314c1e41acba4edcb106d4cd0c2cce24bbcc258894fd3298f64359e225fc78",
+          "lc5057804.p2.png": "92f217ab17f4c8b0580162dc20b50c813ba1b1dd2aa59d4dfb77ca473f7eba1a",
+          "lc5057804.p3.png": "3556749d038258557577998f43e6fb1527a20c9bd9a95dfe69b5be2e8a4b955e"
+        },
+        "reproduzivel_byte_a_byte": "PNG limpo: sim (sha256 estavel em 2 execucoes). PDF: NAO (cairo/pdfunite embutem ids/datas variaveis mesmo com SOURCE_DATE_EPOCH; sha256_PDF muda entre execucoes); a fonte da verdade reproduzivel e o PNG 300 dpi.",
+        "sha256_PDF": "b59973bf64b3a0df9f75470d9392a9de14ebc5c13527751f0318e94fb69ae712"
+      },
+      "scans": {
+        "lc5057804.p1.dificil.png": {
+          "origem_limpa_sha256": "6f314c1e41acba4edcb106d4cd0c2cce24bbcc258894fd3298f64359e225fc78",
+          "preset": "dificil",
+          "semente": 2705578758,
+          "sha256": "bfb519cd74554883c046809ae673ad110de02c817fabef74a771121e56da8c86"
+        },
+        "lc5057804.p1.leve.png": {
+          "origem_limpa_sha256": "6f314c1e41acba4edcb106d4cd0c2cce24bbcc258894fd3298f64359e225fc78",
+          "preset": "leve",
+          "semente": 156646726,
+          "sha256": "1bf9f7004f4c6a78c56eb503dce8cc08652a5f48bf70f12fe434c28957edea18"
+        },
+        "lc5057804.p1.medio.png": {
+          "origem_limpa_sha256": "6f314c1e41acba4edcb106d4cd0c2cce24bbcc258894fd3298f64359e225fc78",
+          "preset": "medio",
+          "semente": 2527125981,
+          "sha256": "b175401b90a7e3952432ad9b34fbed59acda5174d66eb347cdbd8c66832cc164"
+        },
+        "lc5057804.p2.dificil.png": {
+          "origem_limpa_sha256": "92f217ab17f4c8b0580162dc20b50c813ba1b1dd2aa59d4dfb77ca473f7eba1a",
+          "preset": "dificil",
+          "semente": 1569690942,
+          "sha256": "9d8982ca8ee9d4b9d713d3bf6875129125eb667469a745650d0c9ba71c01b471"
+        },
+        "lc5057804.p2.leve.png": {
+          "origem_limpa_sha256": "92f217ab17f4c8b0580162dc20b50c813ba1b1dd2aa59d4dfb77ca473f7eba1a",
+          "preset": "leve",
+          "semente": 1007215963,
+          "sha256": "afe878c0f5117651adc836c6b396b839ad3717973e00553d30147992c957d5fe"
+        },
+        "lc5057804.p2.medio.png": {
+          "origem_limpa_sha256": "92f217ab17f4c8b0580162dc20b50c813ba1b1dd2aa59d4dfb77ca473f7eba1a",
+          "preset": "medio",
+          "semente": 3382226211,
+          "sha256": "58abe56238b950f1e108db53348b93df72e6c57c69f9f24981d3990b22815ba5"
+        },
+        "lc5057804.p3.dificil.png": {
+          "origem_limpa_sha256": "3556749d038258557577998f43e6fb1527a20c9bd9a95dfe69b5be2e8a4b955e",
+          "preset": "dificil",
+          "semente": 2469725107,
+          "sha256": "324f804d2836d17f83343377053b9824f6359930c031eecbfc5ab244af9c91b7"
+        },
+        "lc5057804.p3.leve.png": {
+          "origem_limpa_sha256": "3556749d038258557577998f43e6fb1527a20c9bd9a95dfe69b5be2e8a4b955e",
+          "preset": "leve",
+          "semente": 3769347234,
+          "sha256": "a2b1d5c50ec7847f7ca9eed483ffd83533b9b1e978865231ec578a6afb394c02"
+        },
+        "lc5057804.p3.medio.png": {
+          "origem_limpa_sha256": "3556749d038258557577998f43e6fb1527a20c9bd9a95dfe69b5be2e8a4b955e",
+          "preset": "medio",
+          "semente": 2798068563,
+          "sha256": "a5dccabc1fc5a527f5723d25886bba123ca05e0418add4ec024c2ddc6a96526b"
+        }
+      },
+      "titulo": "15_Unfall"
+    },
+    "lc5057847": {
+      "compositor": "Chausson,_Ernest",
+      "conferencia_conversao": {
+        "compassos_iguais": true,
+        "mscx": {
+          "compassos": 30,
+          "notas": 703
+        },
+        "musicxml": {
+          "compassos": 30,
+          "notas": 703
+        },
+        "notas_iguais": true
+      },
+      "conjunto": "Serres_chaudes,_Op.24",
+      "conversao": {
+        "comando_para_regerar_no_cerebro": "mscore 'scores/Chausson,_Ernest/Serres_chaudes,_Op.24/3_Lassitude/lc5057847.mscx' -o 'lc5057847.musicxml'   # ou: mscore -j data/corpus_conversion.json (lote oficial)",
+        "origem": ".mxl oficial do espelho (gerado pelo mantenedor com MuseScore)",
+        "status": "NAO VERIFICADO: MuseScore CLI ausente neste ambiente; usado o .mxl oficial do espelho; regerar no cerebro com `python scripts/corpus/corpus_omr.py converter`",
+        "versao_software_declarada_no_xml": [
+          "MuseScore 4.5.2"
+        ]
+      },
+      "id": "lc5057847",
+      "licenca": "CC0-1.0",
+      "licenca_fonte": "metaTag copyright no .mscx (+ LICENSE.txt do repositorio, sha 38c5db5102)",
+      "licenca_metadado_peca": "OpenScore (CC0)",
+      "mscx_contagem": {
+        "compassos_por_pauta": [
+          30,
+          30,
+          30
+        ],
+        "letra": true,
+        "notas": 703,
+        "pausas": 32,
+        "pautas": 3
+      },
+      "mscx_sha256": "9d1a751c09112097446254f926633aa97956706d5aba86507edd49e9d5413284",
+      "musicxml": {
+        "arquivo": "data/corpus-omr/musicxml/lc5057847.musicxml",
+        "contagem": {
+          "compassos_por_parte": [
+            30,
+            30
+          ],
+          "notas": 703,
+          "partes": 2,
+          "pausas": 32,
+          "pautas": 3
+        },
+        "sha256": "11ee37f5b7be4a1f8f7bbfc7bcbd217a299397eadb38e3953273eb12db807b1a"
+      },
+      "mxl_oficial_sha256": "434dd6492b8c7ee402fd7a2b8a043f91266519df7d75ef7ee8fc5a938d78efc1",
+      "origem_mscx": "https://github.com/OpenScore/Lieder/blob/38c5db510224d9facdc4b08d741fc788cfb58ea8/scores/Chausson,_Ernest/Serres_chaudes,_Op.24/3_Lassitude/lc5057847.mscx",
+      "pdf": {
+        "arquivo": "data/corpus-omr/pdf/lc5057847.pdf",
+        "fontes_embutidas_pdffonts": [
+          "AYTAMW+LiberationSerif",
+          "AAQZUR+LiberationSerif-Bold",
+          "WSRHQB+LiberationSerif-BoldItalic",
+          "VITQHD+Inter-Medium",
+          "HFEIAB+LiberationSerif-Italic",
+          "BPHOUP+LiberationSerif-Italic",
+          "SOZNWO+LiberationSerif",
+          "COHBDC+LiberationSerif-Italic",
+          "CTCADB+LiberationSerif"
+        ],
+        "gerador": "verovio 6.4.1 -> SVG -> cairosvg 2.9.1 (svg2pdf)",
+        "glifos_musicais": "paths (verovio+cairosvg): serve para raster; NAO serve para extracao vetorial por fonte. Fontes embutidas sao so do texto (titulo/letra).",
+        "opcoes_verovio": {
+          "adjustPageHeight": false,
+          "breaks": "auto",
+          "footer": "none",
+          "header": "auto",
+          "pageHeight": 2970,
+          "pageWidth": 2100,
+          "scale": 40
+        },
+        "paginas": 3,
+        "png_300dpi": {
+          "lc5057847.p1.png": "c5ba1869cccbfa7d0dad01963e64b53aed6da543d9386dcf53f099549128a58a",
+          "lc5057847.p2.png": "d8a9114d03d186eed86bb6131fc2a5eb6d8e93208f961f47f9dc5ddd410cea65",
+          "lc5057847.p3.png": "9467fb9783351a3f18ee7ddd190535ce9ab6b2dafdc3463c270a6036b6cfd733"
+        },
+        "reproduzivel_byte_a_byte": "PNG limpo: sim (sha256 estavel em 2 execucoes). PDF: NAO (cairo/pdfunite embutem ids/datas variaveis mesmo com SOURCE_DATE_EPOCH; sha256_PDF muda entre execucoes); a fonte da verdade reproduzivel e o PNG 300 dpi.",
+        "sha256_PDF": "c47d62d8a4d662be9786d5567a01d98e746913e60d4218be06f3e135b2a178c8"
+      },
+      "scans": {
+        "lc5057847.p1.dificil.png": {
+          "origem_limpa_sha256": "c5ba1869cccbfa7d0dad01963e64b53aed6da543d9386dcf53f099549128a58a",
+          "preset": "dificil",
+          "semente": 1240329507,
+          "sha256": "485112fc9d9b32ce5a48d2294765a4172104f7e527dfef2cdaf6e158fd527fb2"
+        },
+        "lc5057847.p1.leve.png": {
+          "origem_limpa_sha256": "c5ba1869cccbfa7d0dad01963e64b53aed6da543d9386dcf53f099549128a58a",
+          "preset": "leve",
+          "semente": 1614269416,
+          "sha256": "ed925e3df53c811f53744056664aa5b27778803c19ad5632e9020e0edabc5e88"
+        },
+        "lc5057847.p1.medio.png": {
+          "origem_limpa_sha256": "c5ba1869cccbfa7d0dad01963e64b53aed6da543d9386dcf53f099549128a58a",
+          "preset": "medio",
+          "semente": 420798402,
+          "sha256": "c03f7b76961b0b2b60558d7780ef4491b4d9b919d383394069eb485027868ff2"
+        },
+        "lc5057847.p2.dificil.png": {
+          "origem_limpa_sha256": "d8a9114d03d186eed86bb6131fc2a5eb6d8e93208f961f47f9dc5ddd410cea65",
+          "preset": "dificil",
+          "semente": 570210463,
+          "sha256": "19fa3be85bf90c0cff88dce3a4c0f2c6b2aa51f432a69484bb99cb3157c48d7e"
+        },
+        "lc5057847.p2.leve.png": {
+          "origem_limpa_sha256": "d8a9114d03d186eed86bb6131fc2a5eb6d8e93208f961f47f9dc5ddd410cea65",
+          "preset": "leve",
+          "semente": 827266262,
+          "sha256": "b4df7ad0f9c5a0d5a11714ca6e4f308767264af0b3842046b6470e66f80a5523"
+        },
+        "lc5057847.p2.medio.png": {
+          "origem_limpa_sha256": "d8a9114d03d186eed86bb6131fc2a5eb6d8e93208f961f47f9dc5ddd410cea65",
+          "preset": "medio",
+          "semente": 2853881744,
+          "sha256": "64ea031517f2d4da23f59e646a859b386bbd748df5f0354837032f28c321b44a"
+        },
+        "lc5057847.p3.dificil.png": {
+          "origem_limpa_sha256": "9467fb9783351a3f18ee7ddd190535ce9ab6b2dafdc3463c270a6036b6cfd733",
+          "preset": "dificil",
+          "semente": 956370756,
+          "sha256": "c39258f1245a73b42c78effa708004f2d515735c557167cd52e95b230d6b3cea"
+        },
+        "lc5057847.p3.leve.png": {
+          "origem_limpa_sha256": "9467fb9783351a3f18ee7ddd190535ce9ab6b2dafdc3463c270a6036b6cfd733",
+          "preset": "leve",
+          "semente": 3147188639,
+          "sha256": "9780f6f93a49f94b46b1b9963d98788dfaf6e60f57edb8b8ae5380a55110f7fa"
+        },
+        "lc5057847.p3.medio.png": {
+          "origem_limpa_sha256": "9467fb9783351a3f18ee7ddd190535ce9ab6b2dafdc3463c270a6036b6cfd733",
+          "preset": "medio",
+          "semente": 1217205571,
+          "sha256": "b7459c7ea4aa0a723d78b3d4b32c61fcdeda0534b898ada07297a09d0069fafd"
+        }
+      },
+      "titulo": "3_Lassitude"
+    },
+    "lc5071622": {
+      "compositor": "Brahms,_Johannes",
+      "conferencia_conversao": {
+        "compassos_iguais": true,
+        "mscx": {
+          "compassos": 38,
+          "notas": 383
+        },
+        "musicxml": {
+          "compassos": 38,
+          "notas": 383
+        },
+        "notas_iguais": true
+      },
+      "conjunto": "7_Lieder,_Op.48",
+      "conversao": {
+        "comando_para_regerar_no_cerebro": "mscore 'scores/Brahms,_Johannes/7_Lieder,_Op.48/2_Der_Überläufer/lc5071622.mscx' -o 'lc5071622.musicxml'   # ou: mscore -j data/corpus_conversion.json (lote oficial)",
+        "origem": ".mxl oficial do espelho (gerado pelo mantenedor com MuseScore)",
+        "status": "NAO VERIFICADO: MuseScore CLI ausente neste ambiente; usado o .mxl oficial do espelho; regerar no cerebro com `python scripts/corpus/corpus_omr.py converter`",
+        "versao_software_declarada_no_xml": [
+          "MuseScore 4.5.2"
+        ]
+      },
+      "id": "lc5071622",
+      "licenca": "CC0-1.0",
+      "licenca_fonte": "metaTag copyright no .mscx (+ LICENSE.txt do repositorio, sha 38c5db5102)",
+      "licenca_metadado_peca": "OpenScore (CC0)",
+      "mscx_contagem": {
+        "compassos_por_pauta": [
+          38,
+          38,
+          38
+        ],
+        "letra": true,
+        "notas": 383,
+        "pausas": 4,
+        "pautas": 3
+      },
+      "mscx_sha256": "66760217f2ef56e1a7f330bda883ad268c24e68da74c7523d23cbcef5009454a",
+      "musicxml": {
+        "arquivo": "data/corpus-omr/musicxml/lc5071622.musicxml",
+        "contagem": {
+          "compassos_por_parte": [
+            38,
+            38
+          ],
+          "notas": 383,
+          "partes": 2,
+          "pausas": 4,
+          "pautas": 3
+        },
+        "sha256": "f6e7c042e0954d643667bb2090115cbcd39721ddf841de5b2a8e8da338eb292a"
+      },
+      "mxl_oficial_sha256": "89d9148c2d8052301a269478d9f9038eba560c6ef12293997cc86969a85e8cfc",
+      "origem_mscx": "https://github.com/OpenScore/Lieder/blob/38c5db510224d9facdc4b08d741fc788cfb58ea8/scores/Brahms,_Johannes/7_Lieder,_Op.48/2_Der_Überläufer/lc5071622.mscx",
+      "pdf": {
+        "arquivo": "data/corpus-omr/pdf/lc5071622.pdf",
+        "fontes_embutidas_pdffonts": [
+          "WDCQPW+LiberationSerif",
+          "MDLLRO+LiberationSerif-Bold",
+          "AIWTKQ+LiberationSerif-Italic"
+        ],
+        "gerador": "verovio 6.4.1 -> SVG -> cairosvg 2.9.1 (svg2pdf)",
+        "glifos_musicais": "paths (verovio+cairosvg): serve para raster; NAO serve para extracao vetorial por fonte. Fontes embutidas sao so do texto (titulo/letra).",
+        "opcoes_verovio": {
+          "adjustPageHeight": false,
+          "breaks": "auto",
+          "footer": "none",
+          "header": "auto",
+          "pageHeight": 2970,
+          "pageWidth": 2100,
+          "scale": 40
+        },
+        "paginas": 1,
+        "png_300dpi": {
+          "lc5071622.p1.png": "3fffb3423c8947229121575af425926a32f5707f1a45c6c023304bed6bf10338"
+        },
+        "reproduzivel_byte_a_byte": "PNG limpo: sim (sha256 estavel em 2 execucoes). PDF: NAO (cairo/pdfunite embutem ids/datas variaveis mesmo com SOURCE_DATE_EPOCH; sha256_PDF muda entre execucoes); a fonte da verdade reproduzivel e o PNG 300 dpi.",
+        "sha256_PDF": "251e122d8af3aa0559fc68ed7df8873b35c3461256da33959f34b24bafb10bc8"
+      },
+      "scans": {
+        "lc5071622.p1.dificil.png": {
+          "origem_limpa_sha256": "3fffb3423c8947229121575af425926a32f5707f1a45c6c023304bed6bf10338",
+          "preset": "dificil",
+          "semente": 2076400676,
+          "sha256": "65f352afd3253d6668065474e6f08d059c8ea87c932feeb20eb14ee62995b79b"
+        },
+        "lc5071622.p1.leve.png": {
+          "origem_limpa_sha256": "3fffb3423c8947229121575af425926a32f5707f1a45c6c023304bed6bf10338",
+          "preset": "leve",
+          "semente": 2319942786,
+          "sha256": "977c454bd011c275b75b9c3bdf8fb8ac937dc2a4bb19dd012ee27f066b4eb7cf"
+        },
+        "lc5071622.p1.medio.png": {
+          "origem_limpa_sha256": "3fffb3423c8947229121575af425926a32f5707f1a45c6c023304bed6bf10338",
+          "preset": "medio",
+          "semente": 1973271850,
+          "sha256": "e2588b722ff36e4c07a74753d8c3773021246b5b4568442f8d84fec203918dae"
+        }
+      },
+      "titulo": "2_Der_Überläufer"
+    },
+    "lc5126921": {
+      "compositor": "Schumann,_Clara",
+      "conferencia_conversao": {
+        "compassos_iguais": true,
+        "mscx": {
+          "compassos": 33,
+          "notas": 725
+        },
+        "musicxml": {
+          "compassos": 33,
+          "notas": 725
+        },
+        "notas_iguais": true
+      },
+      "conjunto": "6_Lieder,_Op.13",
+      "conversao": {
+        "comando_para_regerar_no_cerebro": "mscore 'scores/Schumann,_Clara/6_Lieder,_Op.13/4_Der_Mond_kommt_still_gegangen/lc5126921.mscx' -o 'lc5126921.musicxml'   # ou: mscore -j data/corpus_conversion.json (lote oficial)",
+        "origem": ".mxl oficial do espelho (gerado pelo mantenedor com MuseScore)",
+        "status": "NAO VERIFICADO: MuseScore CLI ausente neste ambiente; usado o .mxl oficial do espelho; regerar no cerebro com `python scripts/corpus/corpus_omr.py converter`",
+        "versao_software_declarada_no_xml": [
+          "MuseScore 4.5.2"
+        ]
+      },
+      "id": "lc5126921",
+      "licenca": "CC0-1.0",
+      "licenca_fonte": "metaTag copyright no .mscx (+ LICENSE.txt do repositorio, sha 38c5db5102)",
+      "licenca_metadado_peca": "OpenScore (CC0)",
+      "mscx_contagem": {
+        "compassos_por_pauta": [
+          33,
+          33,
+          33
+        ],
+        "letra": true,
+        "notas": 725,
+        "pausas": 59,
+        "pautas": 3
+      },
+      "mscx_sha256": "acde517d2bd8c9a2743d6a7c9afabe2fe7d0b79b03960e87365cb4663ec6cf89",
+      "musicxml": {
+        "arquivo": "data/corpus-omr/musicxml/lc5126921.musicxml",
+        "contagem": {
+          "compassos_por_parte": [
+            33,
+            33
+          ],
+          "notas": 725,
+          "partes": 2,
+          "pausas": 59,
+          "pautas": 3
+        },
+        "sha256": "bbb6ed1c21975aa99f6fc46945a784008d0363f6b047ac184a458950db0e6433"
+      },
+      "mxl_oficial_sha256": "bee0c7a4b40b897819da4cc3ec6a4ebe8e2cbd4e8f05041b0020a203f4e7a43f",
+      "origem_mscx": "https://github.com/OpenScore/Lieder/blob/38c5db510224d9facdc4b08d741fc788cfb58ea8/scores/Schumann,_Clara/6_Lieder,_Op.13/4_Der_Mond_kommt_still_gegangen/lc5126921.mscx",
+      "pdf": {
+        "arquivo": "data/corpus-omr/pdf/lc5126921.pdf",
+        "fontes_embutidas_pdffonts": [
+          "GGQXXX+LiberationSerif",
+          "DQGKRE+LiberationSerif-Italic",
+          "TSXNRI+LiberationSerif-Italic",
+          "SPWKLH+LiberationSerif",
+          "BHZVXD+LiberationSerif-BoldItalic"
+        ],
+        "gerador": "verovio 6.4.1 -> SVG -> cairosvg 2.9.1 (svg2pdf)",
+        "glifos_musicais": "paths (verovio+cairosvg): serve para raster; NAO serve para extracao vetorial por fonte. Fontes embutidas sao so do texto (titulo/letra).",
+        "opcoes_verovio": {
+          "adjustPageHeight": false,
+          "breaks": "auto",
+          "footer": "none",
+          "header": "auto",
+          "pageHeight": 2970,
+          "pageWidth": 2100,
+          "scale": 40
+        },
+        "paginas": 2,
+        "png_300dpi": {
+          "lc5126921.p1.png": "48231808b464f5b246d4fe0897d96e0caa75c86fbdf6b28ace655e4175548737",
+          "lc5126921.p2.png": "e747e4b8cd050563374878cbd9f37e72d885d0858ead28b3799c50c154f79aac"
+        },
+        "reproduzivel_byte_a_byte": "PNG limpo: sim (sha256 estavel em 2 execucoes). PDF: NAO (cairo/pdfunite embutem ids/datas variaveis mesmo com SOURCE_DATE_EPOCH; sha256_PDF muda entre execucoes); a fonte da verdade reproduzivel e o PNG 300 dpi.",
+        "sha256_PDF": "b935afe64027f4be2e624c6f9daae6cd73babc6a0a2a48c85dba511de9613121"
+      },
+      "scans": {
+        "lc5126921.p1.dificil.png": {
+          "origem_limpa_sha256": "48231808b464f5b246d4fe0897d96e0caa75c86fbdf6b28ace655e4175548737",
+          "preset": "dificil",
+          "semente": 4039143916,
+          "sha256": "1a6dacb16ebf76fb876ff75b84001236f8fbe97d93f7bab81efdf0ddc1ac8dff"
+        },
+        "lc5126921.p1.leve.png": {
+          "origem_limpa_sha256": "48231808b464f5b246d4fe0897d96e0caa75c86fbdf6b28ace655e4175548737",
+          "preset": "leve",
+          "semente": 3887768636,
+          "sha256": "58bfb0a33ff4120e27d6b61e8a5eba8c1ec0afc4f84d323fbda802695ae8dbd4"
+        },
+        "lc5126921.p1.medio.png": {
+          "origem_limpa_sha256": "48231808b464f5b246d4fe0897d96e0caa75c86fbdf6b28ace655e4175548737",
+          "preset": "medio",
+          "semente": 1764304676,
+          "sha256": "e0f5d2c5cb67a247545abd6b79e03deb6b9adf34e6073fe311bed86c2d42a054"
+        },
+        "lc5126921.p2.dificil.png": {
+          "origem_limpa_sha256": "e747e4b8cd050563374878cbd9f37e72d885d0858ead28b3799c50c154f79aac",
+          "preset": "dificil",
+          "semente": 4081570965,
+          "sha256": "a9516987d254ee7469dfef46b9c6f8e28bcaec4549ae876e1646ad7d16ee7be7"
+        },
+        "lc5126921.p2.leve.png": {
+          "origem_limpa_sha256": "e747e4b8cd050563374878cbd9f37e72d885d0858ead28b3799c50c154f79aac",
+          "preset": "leve",
+          "semente": 3427391998,
+          "sha256": "653a03ca03ff42b55f26fbfb7ad763ee47b4c5fa5083d338f04ea75c183ceec0"
+        },
+        "lc5126921.p2.medio.png": {
+          "origem_limpa_sha256": "e747e4b8cd050563374878cbd9f37e72d885d0858ead28b3799c50c154f79aac",
+          "preset": "medio",
+          "semente": 1813031680,
+          "sha256": "8ad84544ad38fafab502c23c0584d3da8251536d6b42e3ac238fcce3f072e68f"
+        }
+      },
+      "titulo": "4_Der_Mond_kommt_still_gegangen"
+    },
+    "lc6163298": {
+      "compositor": "Zumsteeg,_Emilie",
+      "conferencia_conversao": {
+        "compassos_iguais": true,
+        "mscx": {
+          "compassos": 30,
+          "notas": 430
+        },
+        "musicxml": {
+          "compassos": 30,
+          "notas": 430
+        },
+        "notas_iguais": true
+      },
+      "conjunto": "5_Lieder",
+      "conversao": {
+        "comando_para_regerar_no_cerebro": "mscore 'scores/Zumsteeg,_Emilie/5_Lieder/5_Sehnsucht_der_Liebe/lc6163298.mscx' -o 'lc6163298.musicxml'   # ou: mscore -j data/corpus_conversion.json (lote oficial)",
+        "origem": ".mxl oficial do espelho (gerado pelo mantenedor com MuseScore)",
+        "status": "NAO VERIFICADO: MuseScore CLI ausente neste ambiente; usado o .mxl oficial do espelho; regerar no cerebro com `python scripts/corpus/corpus_omr.py converter`",
+        "versao_software_declarada_no_xml": [
+          "MuseScore 4.5.2"
+        ]
+      },
+      "id": "lc6163298",
+      "licenca": "CC0-1.0",
+      "licenca_fonte": "metaTag copyright no .mscx (+ LICENSE.txt do repositorio, sha 38c5db5102)",
+      "licenca_metadado_peca": "OpenScore (CC0)",
+      "mscx_contagem": {
+        "compassos_por_pauta": [
+          30,
+          30
+        ],
+        "letra": true,
+        "notas": 430,
+        "pausas": 22,
+        "pautas": 2
+      },
+      "mscx_sha256": "45010c1e67bf484e36ae4b4f8f8d6fb7df6423882e753b28aec993b6ebbb185f",
+      "musicxml": {
+        "arquivo": "data/corpus-omr/musicxml/lc6163298.musicxml",
+        "contagem": {
+          "compassos_por_parte": [
+            30,
+            30
+          ],
+          "notas": 430,
+          "partes": 2,
+          "pausas": 22,
+          "pautas": 2
+        },
+        "sha256": "f7b9c48ae2490293bbbef7099e592f0714b959794e168631dc35528fc792e700"
+      },
+      "mxl_oficial_sha256": "899a009656f02ee8062880fe3110d0aa5b31736745b4e6d683ba719c8b8722cf",
+      "origem_mscx": "https://github.com/OpenScore/Lieder/blob/38c5db510224d9facdc4b08d741fc788cfb58ea8/scores/Zumsteeg,_Emilie/5_Lieder/5_Sehnsucht_der_Liebe/lc6163298.mscx",
+      "pdf": {
+        "arquivo": "data/corpus-omr/pdf/lc6163298.pdf",
+        "fontes_embutidas_pdffonts": [
+          "ETLLEU+LiberationSerif",
+          "ZZOGIX+LiberationSerif-Bold",
+          "GZEBGR+LiberationSerif-Italic",
+          "HZRGFR+LiberationSerif-Italic",
+          "CVDGHA+LiberationSerif",
+          "JVTVVZ+LiberationSerif-BoldItalic"
+        ],
+        "gerador": "verovio 6.4.1 -> SVG -> cairosvg 2.9.1 (svg2pdf)",
+        "glifos_musicais": "paths (verovio+cairosvg): serve para raster; NAO serve para extracao vetorial por fonte. Fontes embutidas sao so do texto (titulo/letra).",
+        "opcoes_verovio": {
+          "adjustPageHeight": false,
+          "breaks": "auto",
+          "footer": "none",
+          "header": "auto",
+          "pageHeight": 2970,
+          "pageWidth": 2100,
+          "scale": 40
+        },
+        "paginas": 2,
+        "png_300dpi": {
+          "lc6163298.p1.png": "16fa9054cdd617e5c267e20ee1852b403dda26c1aa5348911238545a33dd8f29",
+          "lc6163298.p2.png": "404f90c86a6e400a6b2aff74354c622e42a536de22a82809ebc190348e790fe0"
+        },
+        "reproduzivel_byte_a_byte": "PNG limpo: sim (sha256 estavel em 2 execucoes). PDF: NAO (cairo/pdfunite embutem ids/datas variaveis mesmo com SOURCE_DATE_EPOCH; sha256_PDF muda entre execucoes); a fonte da verdade reproduzivel e o PNG 300 dpi.",
+        "sha256_PDF": "b65cd188b2cd37c534a23a7f3ce55260f16d724509ff36d8c1d64530dc27da59"
+      },
+      "scans": {
+        "lc6163298.p1.dificil.png": {
+          "origem_limpa_sha256": "16fa9054cdd617e5c267e20ee1852b403dda26c1aa5348911238545a33dd8f29",
+          "preset": "dificil",
+          "semente": 12718070,
+          "sha256": "5b8d0f5c1c07b4df09be4beb02fcc9cbc913f033946ad37ce1cde5d9e47b5a3f"
+        },
+        "lc6163298.p1.leve.png": {
+          "origem_limpa_sha256": "16fa9054cdd617e5c267e20ee1852b403dda26c1aa5348911238545a33dd8f29",
+          "preset": "leve",
+          "semente": 4040777846,
+          "sha256": "5416d07b1dec4a15465f3142f4a1f460f0e28cdf2cbbef71bc2f8431453d7cdf"
+        },
+        "lc6163298.p1.medio.png": {
+          "origem_limpa_sha256": "16fa9054cdd617e5c267e20ee1852b403dda26c1aa5348911238545a33dd8f29",
+          "preset": "medio",
+          "semente": 3239139535,
+          "sha256": "35d1810e19ea43554d999e9f5bae9cdd1780ab08df9e11569bfbcab8ae723f1d"
+        },
+        "lc6163298.p2.dificil.png": {
+          "origem_limpa_sha256": "404f90c86a6e400a6b2aff74354c622e42a536de22a82809ebc190348e790fe0",
+          "preset": "dificil",
+          "semente": 748416138,
+          "sha256": "502767b559aea53e99f1e4fe566e7d0df7540a3a91d3f8055fa5462126267f1e"
+        },
+        "lc6163298.p2.leve.png": {
+          "origem_limpa_sha256": "404f90c86a6e400a6b2aff74354c622e42a536de22a82809ebc190348e790fe0",
+          "preset": "leve",
+          "semente": 999093860,
+          "sha256": "a8fa198f20d313f66eb727c094c702bdabb702d0b0b503a97402518b0587f23c"
+        },
+        "lc6163298.p2.medio.png": {
+          "origem_limpa_sha256": "404f90c86a6e400a6b2aff74354c622e42a536de22a82809ebc190348e790fe0",
+          "preset": "medio",
+          "semente": 432777513,
+          "sha256": "5f1e7f2cf0d29af8701c90fcfdf87080c4d194f9e333642affb3ca24d018a24d"
+        }
+      },
+      "titulo": "5_Sehnsucht_der_Liebe"
+    },
+    "lc6173951": {
+      "compositor": "Greger,_Luise",
+      "conferencia_conversao": {
+        "compassos_iguais": true,
+        "mscx": {
+          "compassos": 34,
+          "notas": 630
+        },
+        "musicxml": {
+          "compassos": 34,
+          "notas": 630
+        },
+        "notas_iguais": true
+      },
+      "conjunto": "3_Lieder,_Opp.122-124",
+      "conversao": {
+        "comando_para_regerar_no_cerebro": "mscore 'scores/Greger,_Luise/3_Lieder,_Opp.122-124/1_Dein/lc6173951.mscx' -o 'lc6173951.musicxml'   # ou: mscore -j data/corpus_conversion.json (lote oficial)",
+        "origem": ".mxl oficial do espelho (gerado pelo mantenedor com MuseScore)",
+        "status": "NAO VERIFICADO: MuseScore CLI ausente neste ambiente; usado o .mxl oficial do espelho; regerar no cerebro com `python scripts/corpus/corpus_omr.py converter`",
+        "versao_software_declarada_no_xml": [
+          "MuseScore 4.5.2"
+        ]
+      },
+      "id": "lc6173951",
+      "licenca": "CC0-1.0",
+      "licenca_fonte": "metaTag copyright no .mscx (+ LICENSE.txt do repositorio, sha 38c5db5102)",
+      "licenca_metadado_peca": "OpenScore (CC0)",
+      "mscx_contagem": {
+        "compassos_por_pauta": [
+          34,
+          34,
+          34
+        ],
+        "letra": true,
+        "notas": 630,
+        "pausas": 27,
+        "pautas": 3
+      },
+      "mscx_sha256": "1b6569e55f3b02059cf85b04b9fd12cc111eab4f06801a53d4af5bde416f0dcd",
+      "musicxml": {
+        "arquivo": "data/corpus-omr/musicxml/lc6173951.musicxml",
+        "contagem": {
+          "compassos_por_parte": [
+            34,
+            34
+          ],
+          "notas": 630,
+          "partes": 2,
+          "pausas": 27,
+          "pautas": 3
+        },
+        "sha256": "1e8ebd36472754b111b96cd2a0d814aaf9d371b5be961c685473693a6de0d955"
+      },
+      "mxl_oficial_sha256": "0f786e86bda62346c1f5e76c38665228523f0bb3251181f7196957ef34dad8c4",
+      "origem_mscx": "https://github.com/OpenScore/Lieder/blob/38c5db510224d9facdc4b08d741fc788cfb58ea8/scores/Greger,_Luise/3_Lieder,_Opp.122-124/1_Dein/lc6173951.mscx",
+      "pdf": {
+        "arquivo": "data/corpus-omr/pdf/lc6173951.pdf",
+        "fontes_embutidas_pdffonts": [
+          "AVCYZW+LiberationSerif",
+          "WJLPIK+LiberationSerif-Italic",
+          "GTUNTE+LiberationSerif-Italic",
+          "KSGASV+LiberationSerif"
+        ],
+        "gerador": "verovio 6.4.1 -> SVG -> cairosvg 2.9.1 (svg2pdf)",
+        "glifos_musicais": "paths (verovio+cairosvg): serve para raster; NAO serve para extracao vetorial por fonte. Fontes embutidas sao so do texto (titulo/letra).",
+        "opcoes_verovio": {
+          "adjustPageHeight": false,
+          "breaks": "auto",
+          "footer": "none",
+          "header": "auto",
+          "pageHeight": 2970,
+          "pageWidth": 2100,
+          "scale": 40
+        },
+        "paginas": 2,
+        "png_300dpi": {
+          "lc6173951.p1.png": "6711d51f5d87760512684323c396a1a514757d5c651ce27971d965e72f30e298",
+          "lc6173951.p2.png": "88f5615e98417e786b5d9a78486d9c07e6d9dfb955bd416e012270ab2f164bf3"
+        },
+        "reproduzivel_byte_a_byte": "PNG limpo: sim (sha256 estavel em 2 execucoes). PDF: NAO (cairo/pdfunite embutem ids/datas variaveis mesmo com SOURCE_DATE_EPOCH; sha256_PDF muda entre execucoes); a fonte da verdade reproduzivel e o PNG 300 dpi.",
+        "sha256_PDF": "127266a44313cae8e7155cc0c97d0ccb4a8b592c5b71dd1892787e250b78d803"
+      },
+      "scans": {
+        "lc6173951.p1.dificil.png": {
+          "origem_limpa_sha256": "6711d51f5d87760512684323c396a1a514757d5c651ce27971d965e72f30e298",
+          "preset": "dificil",
+          "semente": 1356176938,
+          "sha256": "c5c73ab70ddfa3246f8db7ac2286765c21dfcf5a8de315dd7d16f49d564fc512"
+        },
+        "lc6173951.p1.leve.png": {
+          "origem_limpa_sha256": "6711d51f5d87760512684323c396a1a514757d5c651ce27971d965e72f30e298",
+          "preset": "leve",
+          "semente": 3455287827,
+          "sha256": "3db6da2247a49f7f30cc3ccf2d66b7c405e83b713abde03c0368737666277be6"
+        },
+        "lc6173951.p1.medio.png": {
+          "origem_limpa_sha256": "6711d51f5d87760512684323c396a1a514757d5c651ce27971d965e72f30e298",
+          "preset": "medio",
+          "semente": 536932410,
+          "sha256": "d467444e7dd1b129d0aeca55d203710c7c82b350e33e71d6120181f69aa134c1"
+        },
+        "lc6173951.p2.dificil.png": {
+          "origem_limpa_sha256": "88f5615e98417e786b5d9a78486d9c07e6d9dfb955bd416e012270ab2f164bf3",
+          "preset": "dificil",
+          "semente": 3596493603,
+          "sha256": "7ff65ada5fe793276d1b0536ee54ea4d9cca88fbd8465a95946343d979a53caf"
+        },
+        "lc6173951.p2.leve.png": {
+          "origem_limpa_sha256": "88f5615e98417e786b5d9a78486d9c07e6d9dfb955bd416e012270ab2f164bf3",
+          "preset": "leve",
+          "semente": 2775204071,
+          "sha256": "23cb8d82481f20de07355637c440022f55b13ecb91c53ef6b4da3da18b21afa3"
+        },
+        "lc6173951.p2.medio.png": {
+          "origem_limpa_sha256": "88f5615e98417e786b5d9a78486d9c07e6d9dfb955bd416e012270ab2f164bf3",
+          "preset": "medio",
+          "semente": 2617162662,
+          "sha256": "9463a890aa97f4881036c017304b69d1e929a1562c45c9d5356d0b0a95f95ac2"
+        }
+      },
+      "titulo": "1_Dein"
+    },
+    "lc6594151": {
+      "compositor": "Duchambge,_Pauline",
+      "conferencia_conversao": {
+        "compassos_iguais": true,
+        "mscx": {
+          "compassos": 33,
+          "notas": 422
+        },
+        "musicxml": {
+          "compassos": 33,
+          "notas": 422
+        },
+        "notas_iguais": true
+      },
+      "conjunto": "_",
+      "conversao": {
+        "comando_para_regerar_no_cerebro": "mscore 'scores/Duchambge,_Pauline/_/Ronde_des_pauvres/lc6594151.mscx' -o 'lc6594151.musicxml'   # ou: mscore -j data/corpus_conversion.json (lote oficial)",
+        "origem": ".mxl oficial do espelho (gerado pelo mantenedor com MuseScore)",
+        "status": "NAO VERIFICADO: MuseScore CLI ausente neste ambiente; usado o .mxl oficial do espelho; regerar no cerebro com `python scripts/corpus/corpus_omr.py converter`",
+        "versao_software_declarada_no_xml": [
+          "MuseScore 4.5.2"
+        ]
+      },
+      "id": "lc6594151",
+      "licenca": "CC0-1.0",
+      "licenca_fonte": "metaTag copyright no .mscx (+ LICENSE.txt do repositorio, sha 38c5db5102)",
+      "licenca_metadado_peca": "OpenScore (CC0)",
+      "mscx_contagem": {
+        "compassos_por_pauta": [
+          33,
+          33,
+          33
+        ],
+        "letra": true,
+        "notas": 422,
+        "pausas": 26,
+        "pautas": 3
+      },
+      "mscx_sha256": "2b5545918d1c6be67de28d2b21aa16e1fdfaee323daff0c73b7681c16dd8372d",
+      "musicxml": {
+        "arquivo": "data/corpus-omr/musicxml/lc6594151.musicxml",
+        "contagem": {
+          "compassos_por_parte": [
+            33,
+            33
+          ],
+          "notas": 422,
+          "partes": 2,
+          "pausas": 26,
+          "pautas": 3
+        },
+        "sha256": "97699ac2eef5f9091df0cccbfe8f8a5818f3c51b5a9b82ab5f7dfa399ff3619f"
+      },
+      "mxl_oficial_sha256": "7f4875ac9e2cdb01bf1dcda28b95b5db56bf9c04a4f3af305e814523957e8f54",
+      "origem_mscx": "https://github.com/OpenScore/Lieder/blob/38c5db510224d9facdc4b08d741fc788cfb58ea8/scores/Duchambge,_Pauline/_/Ronde_des_pauvres/lc6594151.mscx",
+      "pdf": {
+        "arquivo": "data/corpus-omr/pdf/lc6594151.pdf",
+        "fontes_embutidas_pdffonts": [
+          "JOXOXU+LiberationSerif",
+          "AFXVGT+LiberationSerif-Bold",
+          "UNUFSX+LiberationSerif-Italic",
+          "GURJHE+LiberationSerif-Italic",
+          "IEYJRI+LiberationSerif",
+          "DABRSM+LiberationSerif-Bold"
+        ],
+        "gerador": "verovio 6.4.1 -> SVG -> cairosvg 2.9.1 (svg2pdf)",
+        "glifos_musicais": "paths (verovio+cairosvg): serve para raster; NAO serve para extracao vetorial por fonte. Fontes embutidas sao so do texto (titulo/letra).",
+        "opcoes_verovio": {
+          "adjustPageHeight": false,
+          "breaks": "auto",
+          "footer": "none",
+          "header": "auto",
+          "pageHeight": 2970,
+          "pageWidth": 2100,
+          "scale": 40
+        },
+        "paginas": 2,
+        "png_300dpi": {
+          "lc6594151.p1.png": "39b7a18d45eaa27f8d142d023108edc6a32beb8f2d9caabe59d899b05f6846f6",
+          "lc6594151.p2.png": "9c3d5603eaeb4d55d722aabfcdee0b74b11f688a5e58cd059dc80998a3c02fbb"
+        },
+        "reproduzivel_byte_a_byte": "PNG limpo: sim (sha256 estavel em 2 execucoes). PDF: NAO (cairo/pdfunite embutem ids/datas variaveis mesmo com SOURCE_DATE_EPOCH; sha256_PDF muda entre execucoes); a fonte da verdade reproduzivel e o PNG 300 dpi.",
+        "sha256_PDF": "a68fe42e7b852cb4b3d615ce1d419e9467863021cd51f51580035aa297f51757"
+      },
+      "scans": {
+        "lc6594151.p1.dificil.png": {
+          "origem_limpa_sha256": "39b7a18d45eaa27f8d142d023108edc6a32beb8f2d9caabe59d899b05f6846f6",
+          "preset": "dificil",
+          "semente": 4011837303,
+          "sha256": "dc8db0870c5b2ccd3ca3efd697eb6a26dd396c2f5a1085094180162ef34b57c3"
+        },
+        "lc6594151.p1.leve.png": {
+          "origem_limpa_sha256": "39b7a18d45eaa27f8d142d023108edc6a32beb8f2d9caabe59d899b05f6846f6",
+          "preset": "leve",
+          "semente": 3384402888,
+          "sha256": "89b38a98989a2167a4d496461b887c36283a6f15db3a77767ddd31d622f93bc9"
+        },
+        "lc6594151.p1.medio.png": {
+          "origem_limpa_sha256": "39b7a18d45eaa27f8d142d023108edc6a32beb8f2d9caabe59d899b05f6846f6",
+          "preset": "medio",
+          "semente": 97942070,
+          "sha256": "bc35c460e6026e7ef89e8e3d08f38b147e56a0abafc29d56d4bae9595d231c46"
+        },
+        "lc6594151.p2.dificil.png": {
+          "origem_limpa_sha256": "9c3d5603eaeb4d55d722aabfcdee0b74b11f688a5e58cd059dc80998a3c02fbb",
+          "preset": "dificil",
+          "semente": 3519554169,
+          "sha256": "a4a1e1db560d1ce8ce2fc5b4f0441724692f91a8fa6ba83ae53f51f69131807c"
+        },
+        "lc6594151.p2.leve.png": {
+          "origem_limpa_sha256": "9c3d5603eaeb4d55d722aabfcdee0b74b11f688a5e58cd059dc80998a3c02fbb",
+          "preset": "leve",
+          "semente": 3853185838,
+          "sha256": "782e2002ed09ec9838b45481dfe02d16ac16502d071a0991631da795d5f96a2f"
+        },
+        "lc6594151.p2.medio.png": {
+          "origem_limpa_sha256": "9c3d5603eaeb4d55d722aabfcdee0b74b11f688a5e58cd059dc80998a3c02fbb",
+          "preset": "medio",
+          "semente": 3247858561,
+          "sha256": "2b3a476683d2953476924eee52a61d2de852b1831107dac241c82959df8b7cd9"
+        }
+      },
+      "titulo": "Ronde_des_pauvres"
+    },
+    "lc6598368": {
+      "compositor": "Farrenc,_Louise",
+      "conferencia_conversao": {
+        "compassos_iguais": true,
+        "mscx": {
+          "compassos": 25,
+          "notas": 225
+        },
+        "musicxml": {
+          "compassos": 25,
+          "notas": 225
+        },
+        "notas_iguais": true
+      },
+      "conjunto": "_",
+      "conversao": {
+        "comando_para_regerar_no_cerebro": "mscore 'scores/Farrenc,_Louise/_/Le_berger_fidèle/lc6598368.mscx' -o 'lc6598368.musicxml'   # ou: mscore -j data/corpus_conversion.json (lote oficial)",
+        "origem": ".mxl oficial do espelho (gerado pelo mantenedor com MuseScore)",
+        "status": "NAO VERIFICADO: MuseScore CLI ausente neste ambiente; usado o .mxl oficial do espelho; regerar no cerebro com `python scripts/corpus/corpus_omr.py converter`",
+        "versao_software_declarada_no_xml": [
+          "MuseScore 4.5.2"
+        ]
+      },
+      "id": "lc6598368",
+      "licenca": "CC0-1.0",
+      "licenca_fonte": "metaTag copyright no .mscx (+ LICENSE.txt do repositorio, sha 38c5db5102)",
+      "licenca_metadado_peca": "OpenScore (CC0)",
+      "mscx_contagem": {
+        "compassos_por_pauta": [
+          25,
+          25
+        ],
+        "letra": true,
+        "notas": 225,
+        "pausas": 24,
+        "pautas": 2
+      },
+      "mscx_sha256": "359b1476140fe6c7746ce7c30228094858aea7225d3833de36a312d7efdde4cd",
+      "musicxml": {
+        "arquivo": "data/corpus-omr/musicxml/lc6598368.musicxml",
+        "contagem": {
+          "compassos_por_parte": [
+            25,
+            25
+          ],
+          "notas": 225,
+          "partes": 2,
+          "pausas": 24,
+          "pautas": 2
+        },
+        "sha256": "ba9b88c19bba93538b855597b4120f841a6256006372ec84c9a8657ea290dcf7"
+      },
+      "mxl_oficial_sha256": "2fd0be994c02d8b9fdac1c8f41bcf4dde82742f36c0a45cb219bff04fb3524e2",
+      "origem_mscx": "https://github.com/OpenScore/Lieder/blob/38c5db510224d9facdc4b08d741fc788cfb58ea8/scores/Farrenc,_Louise/_/Le_berger_fidèle/lc6598368.mscx",
+      "pdf": {
+        "arquivo": "data/corpus-omr/pdf/lc6598368.pdf",
+        "fontes_embutidas_pdffonts": [
+          "GTGZBU+LiberationSerif",
+          "HNBRQB+LiberationSerif-Bold",
+          "KTLCPA+LiberationSerif-Italic"
+        ],
+        "gerador": "verovio 6.4.1 -> SVG -> cairosvg 2.9.1 (svg2pdf)",
+        "glifos_musicais": "paths (verovio+cairosvg): serve para raster; NAO serve para extracao vetorial por fonte. Fontes embutidas sao so do texto (titulo/letra).",
+        "opcoes_verovio": {
+          "adjustPageHeight": false,
+          "breaks": "auto",
+          "footer": "none",
+          "header": "auto",
+          "pageHeight": 2970,
+          "pageWidth": 2100,
+          "scale": 40
+        },
+        "paginas": 1,
+        "png_300dpi": {
+          "lc6598368.p1.png": "31ca19c2dfe059e8512660cf9c570e499a31f4529c7dc1cda34402136c175d38"
+        },
+        "reproduzivel_byte_a_byte": "PNG limpo: sim (sha256 estavel em 2 execucoes). PDF: NAO (cairo/pdfunite embutem ids/datas variaveis mesmo com SOURCE_DATE_EPOCH; sha256_PDF muda entre execucoes); a fonte da verdade reproduzivel e o PNG 300 dpi.",
+        "sha256_PDF": "b1d13b8aad1f3ee6ed0d20fca7495c8da8451f0f9434a6d46c46eff09b658038"
+      },
+      "scans": {
+        "lc6598368.p1.dificil.png": {
+          "origem_limpa_sha256": "31ca19c2dfe059e8512660cf9c570e499a31f4529c7dc1cda34402136c175d38",
+          "preset": "dificil",
+          "semente": 3156428036,
+          "sha256": "5bf05f320c7b2cb0b76eeb08f9e9bfcb9c0acb83d0379a330b733c825aa165f4"
+        },
+        "lc6598368.p1.leve.png": {
+          "origem_limpa_sha256": "31ca19c2dfe059e8512660cf9c570e499a31f4529c7dc1cda34402136c175d38",
+          "preset": "leve",
+          "semente": 1548866798,
+          "sha256": "4826a2e553da743aca7c00939ed490c9ae6dc95faf0be940f1acc9f96c1ffa6b"
+        },
+        "lc6598368.p1.medio.png": {
+          "origem_limpa_sha256": "31ca19c2dfe059e8512660cf9c570e499a31f4529c7dc1cda34402136c175d38",
+          "preset": "medio",
+          "semente": 2094347885,
+          "sha256": "385477128f29e428ea9610ee6ae7603469cf52fbb6457c51272360ca7a7fb26c"
+        }
+      },
+      "titulo": "Le_berger_fidèle"
+    },
+    "lc6610193": {
+      "compositor": "Gonzaga,_Chiquinha",
+      "conferencia_conversao": {
+        "compassos_iguais": true,
+        "mscx": {
+          "compassos": 36,
+          "notas": 574
+        },
+        "musicxml": {
+          "compassos": 36,
+          "notas": 574
+        },
+        "notas_iguais": true
+      },
+      "conjunto": "_",
+      "conversao": {
+        "comando_para_regerar_no_cerebro": "mscore 'scores/Gonzaga,_Chiquinha/_/Dona_Adelaide/lc6610193.mscx' -o 'lc6610193.musicxml'   # ou: mscore -j data/corpus_conversion.json (lote oficial)",
+        "origem": ".mxl oficial do espelho (gerado pelo mantenedor com MuseScore)",
+        "status": "NAO VERIFICADO: MuseScore CLI ausente neste ambiente; usado o .mxl oficial do espelho; regerar no cerebro com `python scripts/corpus/corpus_omr.py converter`",
+        "versao_software_declarada_no_xml": [
+          "MuseScore 4.5.2"
+        ]
+      },
+      "id": "lc6610193",
+      "licenca": "CC0-1.0",
+      "licenca_fonte": "metaTag copyright no .mscx (+ LICENSE.txt do repositorio, sha 38c5db5102)",
+      "licenca_metadado_peca": "OpenScore (CC0)",
+      "mscx_contagem": {
+        "compassos_por_pauta": [
+          36,
+          36,
+          36
+        ],
+        "letra": true,
+        "notas": 574,
+        "pausas": 81,
+        "pautas": 3
+      },
+      "mscx_sha256": "6073400b224c649b60231a064721699206712863b7ecfce14db39c23b02a11d4",
+      "musicxml": {
+        "arquivo": "data/corpus-omr/musicxml/lc6610193.musicxml",
+        "contagem": {
+          "compassos_por_parte": [
+            36,
+            36
+          ],
+          "notas": 574,
+          "partes": 2,
+          "pausas": 81,
+          "pautas": 3
+        },
+        "sha256": "6f788754fb744484a1d56ce1d0aa7dc64a3a6f719b521ececdb2fc7688d73b3f"
+      },
+      "mxl_oficial_sha256": "ea906b680a720b9d56a27d0324f014489dc1db05027d82b6fde4c12c204bae10",
+      "origem_mscx": "https://github.com/OpenScore/Lieder/blob/38c5db510224d9facdc4b08d741fc788cfb58ea8/scores/Gonzaga,_Chiquinha/_/Dona_Adelaide/lc6610193.mscx",
+      "pdf": {
+        "arquivo": "data/corpus-omr/pdf/lc6610193.pdf",
+        "fontes_embutidas_pdffonts": [
+          "SFONWW+LiberationSerif",
+          "XVJXKL+LiberationSerif-Italic",
+          "ZNEGHP+LiberationSerif",
+          "ZCQDZC+LiberationSerif-Italic",
+          "CMQPGA+LiberationSerif",
+          "ZNEGHP+LiberationSerif"
+        ],
+        "gerador": "verovio 6.4.1 -> SVG -> cairosvg 2.9.1 (svg2pdf)",
+        "glifos_musicais": "paths (verovio+cairosvg): serve para raster; NAO serve para extracao vetorial por fonte. Fontes embutidas sao so do texto (titulo/letra).",
+        "opcoes_verovio": {
+          "adjustPageHeight": false,
+          "breaks": "auto",
+          "footer": "none",
+          "header": "auto",
+          "pageHeight": 2970,
+          "pageWidth": 2100,
+          "scale": 40
+        },
+        "paginas": 2,
+        "png_300dpi": {
+          "lc6610193.p1.png": "a771f250a6d04d928ba12e02747f4bc169a563b18d60da6a17fc14767755221f",
+          "lc6610193.p2.png": "b698ad2869f71354a3569eba7c1a4bf6dbdd959d8ac9636304d6ea89c432b616"
+        },
+        "reproduzivel_byte_a_byte": "PNG limpo: sim (sha256 estavel em 2 execucoes). PDF: NAO (cairo/pdfunite embutem ids/datas variaveis mesmo com SOURCE_DATE_EPOCH; sha256_PDF muda entre execucoes); a fonte da verdade reproduzivel e o PNG 300 dpi.",
+        "sha256_PDF": "b06ede029199f0a5b13e4aea23c67fcc86b3ae11aa532d183e63a81963c0765f"
+      },
+      "scans": {
+        "lc6610193.p1.dificil.png": {
+          "origem_limpa_sha256": "a771f250a6d04d928ba12e02747f4bc169a563b18d60da6a17fc14767755221f",
+          "preset": "dificil",
+          "semente": 1042244950,
+          "sha256": "674c6a7aa3590ef2b08d720b07b9a2ace3af412ed03c6487baef0e2fc748a8a9"
+        },
+        "lc6610193.p1.leve.png": {
+          "origem_limpa_sha256": "a771f250a6d04d928ba12e02747f4bc169a563b18d60da6a17fc14767755221f",
+          "preset": "leve",
+          "semente": 2133618121,
+          "sha256": "6325c239e25cf7cff0970bcfed84e8d5ae1ebd5a0edaa253ff144baec635e477"
+        },
+        "lc6610193.p1.medio.png": {
+          "origem_limpa_sha256": "a771f250a6d04d928ba12e02747f4bc169a563b18d60da6a17fc14767755221f",
+          "preset": "medio",
+          "semente": 3172049332,
+          "sha256": "60bd8c93a903c03cb632c5fc8522cdcbd8dd1dea3412ee660523ec801a8e2b35"
+        },
+        "lc6610193.p2.dificil.png": {
+          "origem_limpa_sha256": "b698ad2869f71354a3569eba7c1a4bf6dbdd959d8ac9636304d6ea89c432b616",
+          "preset": "dificil",
+          "semente": 3691055875,
+          "sha256": "e10cdb542f419e783b0e86bbacc4ac2150b38233093adf359b6939cfe9d8c8e1"
+        },
+        "lc6610193.p2.leve.png": {
+          "origem_limpa_sha256": "b698ad2869f71354a3569eba7c1a4bf6dbdd959d8ac9636304d6ea89c432b616",
+          "preset": "leve",
+          "semente": 1607670801,
+          "sha256": "b60b366a8285eb1b348d68b90457b2159c98dff8dc6a9bff5f3b39ada19f6eb2"
+        },
+        "lc6610193.p2.medio.png": {
+          "origem_limpa_sha256": "b698ad2869f71354a3569eba7c1a4bf6dbdd959d8ac9636304d6ea89c432b616",
+          "preset": "medio",
+          "semente": 8867274,
+          "sha256": "250c212c2bc0941526c13145cc4b1e5c16f8eae6260fa2307478220b55fffecd"
+        }
+      },
+      "titulo": "Dona_Adelaide"
+    },
+    "lc6725890": {
+      "compositor": "Webern,_Anton",
+      "conferencia_conversao": {
+        "compassos_iguais": true,
+        "mscx": {
+          "compassos": 19,
+          "notas": 165
+        },
+        "musicxml": {
+          "compassos": 19,
+          "notas": 165
+        },
+        "notas_iguais": true
+      },
+      "conjunto": "5_Lieder_nach_Gedichten_von_Stefan_George,_Op.4",
+      "conversao": {
+        "comando_para_regerar_no_cerebro": "mscore 'scores/Webern,_Anton/5_Lieder_nach_Gedichten_von_Stefan_George,_Op.4/4_So_ich_traurig_bin/lc6725890.mscx' -o 'lc6725890.musicxml'   # ou: mscore -j data/corpus_conversion.json (lote oficial)",
+        "origem": ".mxl oficial do espelho (gerado pelo mantenedor com MuseScore)",
+        "status": "NAO VERIFICADO: MuseScore CLI ausente neste ambiente; usado o .mxl oficial do espelho; regerar no cerebro com `python scripts/corpus/corpus_omr.py converter`",
+        "versao_software_declarada_no_xml": [
+          "MuseScore 4.5.2"
+        ]
+      },
+      "id": "lc6725890",
+      "licenca": "CC0-1.0",
+      "licenca_fonte": "metaTag copyright no .mscx (+ LICENSE.txt do repositorio, sha 38c5db5102)",
+      "licenca_metadado_peca": "OpenScore (CC0)",
+      "mscx_contagem": {
+        "compassos_por_pauta": [
+          19,
+          19,
+          19
+        ],
+        "letra": true,
+        "notas": 165,
+        "pausas": 44,
+        "pautas": 3
+      },
+      "mscx_sha256": "7ed29c24d239170ab8596eddb668e220b2e12c2029c86edcfea4e4fd1ddea7ee",
+      "musicxml": {
+        "arquivo": "data/corpus-omr/musicxml/lc6725890.musicxml",
+        "contagem": {
+          "compassos_por_parte": [
+            19,
+            19
+          ],
+          "notas": 165,
+          "partes": 2,
+          "pausas": 44,
+          "pautas": 3
+        },
+        "sha256": "1f96b449a081b0517ce56d3d747e3bdf667e645af9b8ca052175e728e05cf717"
+      },
+      "mxl_oficial_sha256": "609b32d0829c48ab9a134308d8694fd5b1ee7de89acba11f76084a32f56ca8a3",
+      "origem_mscx": "https://github.com/OpenScore/Lieder/blob/38c5db510224d9facdc4b08d741fc788cfb58ea8/scores/Webern,_Anton/5_Lieder_nach_Gedichten_von_Stefan_George,_Op.4/4_So_ich_traurig_bin/lc6725890.mscx",
+      "pdf": {
+        "arquivo": "data/corpus-omr/pdf/lc6725890.pdf",
+        "fontes_embutidas_pdffonts": [
+          "HGLWWO+LiberationSerif",
+          "HZPBFD+LiberationSerif-Bold",
+          "YGEDSF+Inter-Bold",
+          "SDEGHB+LiberationSerif-Italic",
+          "MUHVWF+LiberationSerif-BoldItalic",
+          "VITQHD+Inter-Medium"
+        ],
+        "gerador": "verovio 6.4.1 -> SVG -> cairosvg 2.9.1 (svg2pdf)",
+        "glifos_musicais": "paths (verovio+cairosvg): serve para raster; NAO serve para extracao vetorial por fonte. Fontes embutidas sao so do texto (titulo/letra).",
+        "opcoes_verovio": {
+          "adjustPageHeight": false,
+          "breaks": "auto",
+          "footer": "none",
+          "header": "auto",
+          "pageHeight": 2970,
+          "pageWidth": 2100,
+          "scale": 40
+        },
+        "paginas": 1,
+        "png_300dpi": {
+          "lc6725890.p1.png": "1804b2483623b08430f30668f8cb3df10400455a2447b97d920ba5295f66d970"
+        },
+        "reproduzivel_byte_a_byte": "PNG limpo: sim (sha256 estavel em 2 execucoes). PDF: NAO (cairo/pdfunite embutem ids/datas variaveis mesmo com SOURCE_DATE_EPOCH; sha256_PDF muda entre execucoes); a fonte da verdade reproduzivel e o PNG 300 dpi.",
+        "sha256_PDF": "481ed258a4261a67003693d9f60650f10f1b63a9f1b0c0594a1f7d43e80c95c4"
+      },
+      "scans": {
+        "lc6725890.p1.dificil.png": {
+          "origem_limpa_sha256": "1804b2483623b08430f30668f8cb3df10400455a2447b97d920ba5295f66d970",
+          "preset": "dificil",
+          "semente": 2426706227,
+          "sha256": "b2184ce5124151a0fdb36b951bfc2022d27dfdc899b832f3418ecd44fd1e1404"
+        },
+        "lc6725890.p1.leve.png": {
+          "origem_limpa_sha256": "1804b2483623b08430f30668f8cb3df10400455a2447b97d920ba5295f66d970",
+          "preset": "leve",
+          "semente": 1885266072,
+          "sha256": "cee379e6223842d645bbe8c9b22e802ee07bc872a681d7ebc8366b670bb1ce54"
+        },
+        "lc6725890.p1.medio.png": {
+          "origem_limpa_sha256": "1804b2483623b08430f30668f8cb3df10400455a2447b97d920ba5295f66d970",
+          "preset": "medio",
+          "semente": 2222589691,
+          "sha256": "1c4087b21af3c0f407e8cae6b96ad85903c7ba679389b0f9b3ce7f017314fa65"
+        }
+      },
+      "titulo": "4_So_ich_traurig_bin"
+    },
+    "lc6885263": {
+      "compositor": "Schumann,_Robert",
+      "conferencia_conversao": {
+        "compassos_iguais": true,
+        "mscx": {
+          "compassos": 35,
+          "notas": 881
+        },
+        "musicxml": {
+          "compassos": 35,
+          "notas": 881
+        },
+        "notas_iguais": true
+      },
+      "conjunto": "Myrthen,_Op.25",
+      "conversao": {
+        "comando_para_regerar_no_cerebro": "mscore 'scores/Schumann,_Robert/Myrthen,_Op.25/02_Freisinn/lc6885263.mscx' -o 'lc6885263.musicxml'   # ou: mscore -j data/corpus_conversion.json (lote oficial)",
+        "origem": ".mxl oficial do espelho (gerado pelo mantenedor com MuseScore)",
+        "status": "NAO VERIFICADO: MuseScore CLI ausente neste ambiente; usado o .mxl oficial do espelho; regerar no cerebro com `python scripts/corpus/corpus_omr.py converter`",
+        "versao_software_declarada_no_xml": [
+          "MuseScore 4.5.2"
+        ]
+      },
+      "id": "lc6885263",
+      "licenca": "CC0-1.0",
+      "licenca_fonte": "metaTag copyright no .mscx (+ LICENSE.txt do repositorio, sha 38c5db5102)",
+      "licenca_metadado_peca": "OpenScore (CC0)",
+      "mscx_contagem": {
+        "compassos_por_pauta": [
+          35,
+          35,
+          35
+        ],
+        "letra": true,
+        "notas": 881,
+        "pausas": 113,
+        "pautas": 3
+      },
+      "mscx_sha256": "73451e561296f74de5efe97c01773e0657c477bd028957e6ef7db62ab423f952",
+      "musicxml": {
+        "arquivo": "data/corpus-omr/musicxml/lc6885263.musicxml",
+        "contagem": {
+          "compassos_por_parte": [
+            35,
+            35
+          ],
+          "notas": 881,
+          "partes": 2,
+          "pausas": 113,
+          "pautas": 3
+        },
+        "sha256": "a11443b1525140536cad0335f7106e0719d90f2461575e2eba01c50ca18852bf"
+      },
+      "mxl_oficial_sha256": "04088382b3aa1615e76c94c9e9b89981f3bcacda55969dad57bae7faf4b45f75",
+      "origem_mscx": "https://github.com/OpenScore/Lieder/blob/38c5db510224d9facdc4b08d741fc788cfb58ea8/scores/Schumann,_Robert/Myrthen,_Op.25/02_Freisinn/lc6885263.mscx",
+      "pdf": {
+        "arquivo": "data/corpus-omr/pdf/lc6885263.pdf",
+        "fontes_embutidas_pdffonts": [
+          "WDSHLD+LiberationSerif",
+          "BHWCTD+LiberationSerif-Bold",
+          "KQIIHY+LiberationSerif-Italic",
+          "TXXMAQ+LiberationSerif-Italic",
+          "WNINOG+LiberationSerif"
+        ],
+        "gerador": "verovio 6.4.1 -> SVG -> cairosvg 2.9.1 (svg2pdf)",
+        "glifos_musicais": "paths (verovio+cairosvg): serve para raster; NAO serve para extracao vetorial por fonte. Fontes embutidas sao so do texto (titulo/letra).",
+        "opcoes_verovio": {
+          "adjustPageHeight": false,
+          "breaks": "auto",
+          "footer": "none",
+          "header": "auto",
+          "pageHeight": 2970,
+          "pageWidth": 2100,
+          "scale": 40
+        },
+        "paginas": 2,
+        "png_300dpi": {
+          "lc6885263.p1.png": "81c2a2bf23c16df6e57bf9854b15a97865d54289573be311a436e4813f795ec1",
+          "lc6885263.p2.png": "1b2c35a46831fa60e39a1e5c71bbd25e41e3c06b8bb79739df58c5d6cd2d201a"
+        },
+        "reproduzivel_byte_a_byte": "PNG limpo: sim (sha256 estavel em 2 execucoes). PDF: NAO (cairo/pdfunite embutem ids/datas variaveis mesmo com SOURCE_DATE_EPOCH; sha256_PDF muda entre execucoes); a fonte da verdade reproduzivel e o PNG 300 dpi.",
+        "sha256_PDF": "f2d455748738714177269a7486273ecd9b2b311b757897771f98a909d73dec32"
+      },
+      "scans": {
+        "lc6885263.p1.dificil.png": {
+          "origem_limpa_sha256": "81c2a2bf23c16df6e57bf9854b15a97865d54289573be311a436e4813f795ec1",
+          "preset": "dificil",
+          "semente": 3879504153,
+          "sha256": "1cc8fae1ac9b188b29b4bf4fbb49b2e7743c3010afa420b1a64bf2a56c35b694"
+        },
+        "lc6885263.p1.leve.png": {
+          "origem_limpa_sha256": "81c2a2bf23c16df6e57bf9854b15a97865d54289573be311a436e4813f795ec1",
+          "preset": "leve",
+          "semente": 3002945330,
+          "sha256": "2a3a018609eb35934d8fcd1c710bd84131ccf3c34089fd86ffc189840af901bf"
+        },
+        "lc6885263.p1.medio.png": {
+          "origem_limpa_sha256": "81c2a2bf23c16df6e57bf9854b15a97865d54289573be311a436e4813f795ec1",
+          "preset": "medio",
+          "semente": 1997876848,
+          "sha256": "d0f300865903c1a12cfbbc955b02d3a81d23fba66df7f4ef0f41a42bf2781147"
+        },
+        "lc6885263.p2.dificil.png": {
+          "origem_limpa_sha256": "1b2c35a46831fa60e39a1e5c71bbd25e41e3c06b8bb79739df58c5d6cd2d201a",
+          "preset": "dificil",
+          "semente": 2114096516,
+          "sha256": "8d2e366f579889dd02aa3da5b733cb26aa8547baa147f745194760596fc7f0a2"
+        },
+        "lc6885263.p2.leve.png": {
+          "origem_limpa_sha256": "1b2c35a46831fa60e39a1e5c71bbd25e41e3c06b8bb79739df58c5d6cd2d201a",
+          "preset": "leve",
+          "semente": 3828044612,
+          "sha256": "f87552078283db88d6c93cd37ae2a804a044437c6559edcd7a58792a2c9a09f3"
+        },
+        "lc6885263.p2.medio.png": {
+          "origem_limpa_sha256": "1b2c35a46831fa60e39a1e5c71bbd25e41e3c06b8bb79739df58c5d6cd2d201a",
+          "preset": "medio",
+          "semente": 3723164406,
+          "sha256": "70521f9a996ed527a913660a8a076cc9e71a04e59fd7c2dc07e9d6f4b83f94ba"
+        }
+      },
+      "titulo": "02_Freisinn"
+    },
+    "lc6995255": {
+      "compositor": "Mendelssohn,_Felix",
+      "conferencia_conversao": {
+        "compassos_iguais": true,
+        "mscx": {
+          "compassos": 29,
+          "notas": 782
+        },
+        "musicxml": {
+          "compassos": 29,
+          "notas": 782
+        },
+        "notas_iguais": true
+      },
+      "conjunto": "6_Gesänge,_Op.86",
+      "conversao": {
+        "comando_para_regerar_no_cerebro": "mscore 'scores/Mendelssohn,_Felix/6_Gesänge,_Op.86/5_Der_Mond,_MWV_K_122/lc6995255.mscx' -o 'lc6995255.musicxml'   # ou: mscore -j data/corpus_conversion.json (lote oficial)",
+        "origem": ".mxl oficial do espelho (gerado pelo mantenedor com MuseScore)",
+        "status": "NAO VERIFICADO: MuseScore CLI ausente neste ambiente; usado o .mxl oficial do espelho; regerar no cerebro com `python scripts/corpus/corpus_omr.py converter`",
+        "versao_software_declarada_no_xml": [
+          "MuseScore 4.5.2"
+        ]
+      },
+      "id": "lc6995255",
+      "licenca": "CC0-1.0",
+      "licenca_fonte": "metaTag copyright no .mscx (+ LICENSE.txt do repositorio, sha 38c5db5102)",
+      "licenca_metadado_peca": "OpenScore (CC0)",
+      "mscx_contagem": {
+        "compassos_por_pauta": [
+          29,
+          29,
+          29
+        ],
+        "letra": true,
+        "notas": 782,
+        "pausas": 47,
+        "pautas": 3
+      },
+      "mscx_sha256": "5c6ff7774d917f6c89fe2ac4daf38467fac5bf7c730dfa6994ceed54b458f75d",
+      "musicxml": {
+        "arquivo": "data/corpus-omr/musicxml/lc6995255.musicxml",
+        "contagem": {
+          "compassos_por_parte": [
+            29,
+            29
+          ],
+          "notas": 782,
+          "partes": 2,
+          "pausas": 47,
+          "pautas": 3
+        },
+        "sha256": "076b49bc27039328f30036d32ddb818a4b0f67c9947a490cb194388b580881bf"
+      },
+      "mxl_oficial_sha256": "684e7317237e9e4236507d00479d2e0bc77b7d5bf590f934453a2c2885bb9f54",
+      "origem_mscx": "https://github.com/OpenScore/Lieder/blob/38c5db510224d9facdc4b08d741fc788cfb58ea8/scores/Mendelssohn,_Felix/6_Gesänge,_Op.86/5_Der_Mond,_MWV_K_122/lc6995255.mscx",
+      "pdf": {
+        "arquivo": "data/corpus-omr/pdf/lc6995255.pdf",
+        "fontes_embutidas_pdffonts": [
+          "MJFMGR+LiberationSerif",
+          "NFCXUH+LiberationSerif-Bold",
+          "TRONRA+LiberationSerif-Italic",
+          "CTBCEP+LiberationSerif-Italic",
+          "PZXMDQ+LiberationSerif"
+        ],
+        "gerador": "verovio 6.4.1 -> SVG -> cairosvg 2.9.1 (svg2pdf)",
+        "glifos_musicais": "paths (verovio+cairosvg): serve para raster; NAO serve para extracao vetorial por fonte. Fontes embutidas sao so do texto (titulo/letra).",
+        "opcoes_verovio": {
+          "adjustPageHeight": false,
+          "breaks": "auto",
+          "footer": "none",
+          "header": "auto",
+          "pageHeight": 2970,
+          "pageWidth": 2100,
+          "scale": 40
+        },
+        "paginas": 2,
+        "png_300dpi": {
+          "lc6995255.p1.png": "18ecba974499e2aab212e75e53788cdd8a607e653927c03465a7a21b90e58214",
+          "lc6995255.p2.png": "5c789a50e6e9cc4dd1bdf86fd22b19c557d8f127568acd0aa3a9270eb5ce56a0"
+        },
+        "reproduzivel_byte_a_byte": "PNG limpo: sim (sha256 estavel em 2 execucoes). PDF: NAO (cairo/pdfunite embutem ids/datas variaveis mesmo com SOURCE_DATE_EPOCH; sha256_PDF muda entre execucoes); a fonte da verdade reproduzivel e o PNG 300 dpi.",
+        "sha256_PDF": "b7c926d6cc02897656be1af56bdc42eaeac5a4592410aa142270f2471d8fb456"
+      },
+      "scans": {
+        "lc6995255.p1.dificil.png": {
+          "origem_limpa_sha256": "18ecba974499e2aab212e75e53788cdd8a607e653927c03465a7a21b90e58214",
+          "preset": "dificil",
+          "semente": 2762874431,
+          "sha256": "f0d0c0a6aa000db86413505e4b35ab420c13d203f4ca77cdfc4b6b00d7c6c583"
+        },
+        "lc6995255.p1.leve.png": {
+          "origem_limpa_sha256": "18ecba974499e2aab212e75e53788cdd8a607e653927c03465a7a21b90e58214",
+          "preset": "leve",
+          "semente": 1876719297,
+          "sha256": "4d4b69befdef85e67a6abe06e9f655b8c94e67c2014d928f4aea4d9f4dd2500d"
+        },
+        "lc6995255.p1.medio.png": {
+          "origem_limpa_sha256": "18ecba974499e2aab212e75e53788cdd8a607e653927c03465a7a21b90e58214",
+          "preset": "medio",
+          "semente": 3857561835,
+          "sha256": "775df51dcd34e953268f6c1b49fb746ab9a48cd84a0936f141f59d584691bd60"
+        },
+        "lc6995255.p2.dificil.png": {
+          "origem_limpa_sha256": "5c789a50e6e9cc4dd1bdf86fd22b19c557d8f127568acd0aa3a9270eb5ce56a0",
+          "preset": "dificil",
+          "semente": 2532637250,
+          "sha256": "668cd558b61f59ecd497c56364a859fd785287931a9b25d3fec72192ff65d1ac"
+        },
+        "lc6995255.p2.leve.png": {
+          "origem_limpa_sha256": "5c789a50e6e9cc4dd1bdf86fd22b19c557d8f127568acd0aa3a9270eb5ce56a0",
+          "preset": "leve",
+          "semente": 1241185304,
+          "sha256": "6b3c6b7775451f86382f4b0fc4cfe11f8c139ad31cc0f33ef3cbb06274dde098"
+        },
+        "lc6995255.p2.medio.png": {
+          "origem_limpa_sha256": "5c789a50e6e9cc4dd1bdf86fd22b19c557d8f127568acd0aa3a9270eb5ce56a0",
+          "preset": "medio",
+          "semente": 29804906,
+          "sha256": "2897c61a8d502012e2580acb4b92e47b187dca0d175489d62f89108996d82bcc"
+        }
+      },
+      "titulo": "5_Der_Mond,_MWV_K_122"
+    },
+    "lc7011202": {
+      "compositor": "Cornelius,_Peter",
+      "conferencia_conversao": {
+        "compassos_iguais": true,
+        "mscx": {
+          "compassos": 20,
+          "notas": 389
+        },
+        "musicxml": {
+          "compassos": 20,
+          "notas": 389
+        },
+        "notas_iguais": true
+      },
+      "conjunto": "Weihnachtslieder,_Op.8",
+      "conversao": {
+        "comando_para_regerar_no_cerebro": "mscore 'scores/Cornelius,_Peter/Weihnachtslieder,_Op.8/3a_Die_Könige/lc7011202.mscx' -o 'lc7011202.musicxml'   # ou: mscore -j data/corpus_conversion.json (lote oficial)",
+        "origem": ".mxl oficial do espelho (gerado pelo mantenedor com MuseScore)",
+        "status": "NAO VERIFICADO: MuseScore CLI ausente neste ambiente; usado o .mxl oficial do espelho; regerar no cerebro com `python scripts/corpus/corpus_omr.py converter`",
+        "versao_software_declarada_no_xml": [
+          "MuseScore 4.5.2"
+        ]
+      },
+      "id": "lc7011202",
+      "licenca": "CC0-1.0",
+      "licenca_fonte": "metaTag copyright no .mscx (+ LICENSE.txt do repositorio, sha 38c5db5102)",
+      "licenca_metadado_peca": "OpenScore (CC0)",
+      "mscx_contagem": {
+        "compassos_por_pauta": [
+          20,
+          20,
+          20
+        ],
+        "letra": true,
+        "notas": 389,
+        "pausas": 93,
+        "pautas": 3
+      },
+      "mscx_sha256": "ad5bd9f4ee63be0f704214f2b42f580bf407c68d7641e1c6e1967b7765dda871",
+      "musicxml": {
+        "arquivo": "data/corpus-omr/musicxml/lc7011202.musicxml",
+        "contagem": {
+          "compassos_por_parte": [
+            20,
+            20
+          ],
+          "notas": 389,
+          "partes": 2,
+          "pausas": 93,
+          "pautas": 3
+        },
+        "sha256": "628ba2a2d4b356aa4da27435551436d09882d79eccf714d13c566c3669bcee9d"
+      },
+      "mxl_oficial_sha256": "22eb8d83daa136ad0eb8e8952b06a6aa91ea36e1e60b0f3745d2a568f30125f6",
+      "origem_mscx": "https://github.com/OpenScore/Lieder/blob/38c5db510224d9facdc4b08d741fc788cfb58ea8/scores/Cornelius,_Peter/Weihnachtslieder,_Op.8/3a_Die_Könige/lc7011202.mscx",
+      "pdf": {
+        "arquivo": "data/corpus-omr/pdf/lc7011202.pdf",
+        "fontes_embutidas_pdffonts": [
+          "AMNRRF+LiberationSerif",
+          "IUTCRU+LiberationSerif-Bold",
+          "RJLAOZ+LiberationSerif-Italic",
+          "DUPZCF+LiberationSerif-Italic",
+          "YZMNAB+LiberationSerif"
+        ],
+        "gerador": "verovio 6.4.1 -> SVG -> cairosvg 2.9.1 (svg2pdf)",
+        "glifos_musicais": "paths (verovio+cairosvg): serve para raster; NAO serve para extracao vetorial por fonte. Fontes embutidas sao so do texto (titulo/letra).",
+        "opcoes_verovio": {
+          "adjustPageHeight": false,
+          "breaks": "auto",
+          "footer": "none",
+          "header": "auto",
+          "pageHeight": 2970,
+          "pageWidth": 2100,
+          "scale": 40
+        },
+        "paginas": 2,
+        "png_300dpi": {
+          "lc7011202.p1.png": "0d90c761f11e6a494edc8a4713219c9f341c0f56c30d4e48c04c8de8afe756d3",
+          "lc7011202.p2.png": "086104bff447f1f8cdacbe174ce642174c75fa1ff93e6e8fe07cf762d7ab82a6"
+        },
+        "reproduzivel_byte_a_byte": "PNG limpo: sim (sha256 estavel em 2 execucoes). PDF: NAO (cairo/pdfunite embutem ids/datas variaveis mesmo com SOURCE_DATE_EPOCH; sha256_PDF muda entre execucoes); a fonte da verdade reproduzivel e o PNG 300 dpi.",
+        "sha256_PDF": "3093088cfca81f88a26c0b103619f38f3396673ba6e5c9c9a4ea83c8a2f66ec2"
+      },
+      "scans": {
+        "lc7011202.p1.dificil.png": {
+          "origem_limpa_sha256": "0d90c761f11e6a494edc8a4713219c9f341c0f56c30d4e48c04c8de8afe756d3",
+          "preset": "dificil",
+          "semente": 242518129,
+          "sha256": "1f836befbae53826629979ef91bdcde3e3c9b2431158bab83a792f3278b00b48"
+        },
+        "lc7011202.p1.leve.png": {
+          "origem_limpa_sha256": "0d90c761f11e6a494edc8a4713219c9f341c0f56c30d4e48c04c8de8afe756d3",
+          "preset": "leve",
+          "semente": 1361545276,
+          "sha256": "07a0c45c10d12abdc3c121fdea57e6ee18e98bfb94b60264d544c0a085475a80"
+        },
+        "lc7011202.p1.medio.png": {
+          "origem_limpa_sha256": "0d90c761f11e6a494edc8a4713219c9f341c0f56c30d4e48c04c8de8afe756d3",
+          "preset": "medio",
+          "semente": 3694254472,
+          "sha256": "ce35afaba034f08242e27d248847bf265768c8ab14912b119a567b7d7c3c1046"
+        },
+        "lc7011202.p2.dificil.png": {
+          "origem_limpa_sha256": "086104bff447f1f8cdacbe174ce642174c75fa1ff93e6e8fe07cf762d7ab82a6",
+          "preset": "dificil",
+          "semente": 4139475119,
+          "sha256": "1209df15c2808a1d32f5d27a78706b335a82b97771535cc790edc69890f68d4a"
+        },
+        "lc7011202.p2.leve.png": {
+          "origem_limpa_sha256": "086104bff447f1f8cdacbe174ce642174c75fa1ff93e6e8fe07cf762d7ab82a6",
+          "preset": "leve",
+          "semente": 1536191898,
+          "sha256": "dc1bb94256919a23eb92e694af9775d32ea3125bf4b8f958ad2efe9d5590d6ea"
+        },
+        "lc7011202.p2.medio.png": {
+          "origem_limpa_sha256": "086104bff447f1f8cdacbe174ce642174c75fa1ff93e6e8fe07cf762d7ab82a6",
+          "preset": "medio",
+          "semente": 2339017309,
+          "sha256": "be25c52d45d3198834cec2f34539dd44c002734bc1d6ccdbf91921007a724b6c"
+        }
+      },
+      "titulo": "3a_Die_Könige"
+    }
+  }
+}

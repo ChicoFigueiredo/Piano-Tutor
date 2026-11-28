@@ -1,0 +1,60 @@
+# cargo-deny do Piano Tutor (ticket evolucao/01; R-N03, T6, T10).
+# Licença do projeto: MIT OR Apache-2.0. Política: nada AGPL/GPL/LGPL é linkado;
+# ferramentas dessas famílias só como processos separados (fora do grafo do Cargo).
+# Rodar localmente: cargo install --locked cargo-deny && cargo deny check licenses bans sources
+# (advisories precisa de rede para baixar o banco RustSec: cargo deny check advisories).
+# Pedir exceção: veja docs/seguranca/LICENCAS-E-DADOS.md (seção "cargo deny").
+
+[graph]
+all-features = false
+
+[licenses]
+allow = [
+    "MIT",
+    "MIT-0",
+    "Apache-2.0",
+    "Apache-2.0 WITH LLVM-exception",
+    "BSD-2-Clause",
+    "BSD-3-Clause",
+    "ISC",
+    "Zlib",
+    "Unicode-3.0",
+    "CC0-1.0",
+]
+confidence-threshold = 0.9
+# Exceções por crate, só quando inevitáveis e justificadas aqui.
+exceptions = [
+    # dirs (piano-tutor-app, piano-tutor-curso) -> dirs-sys -> option-ext (MPL-2.0).
+    # MPL-2.0 é copyleft de arquivo: só obriga a publicar alterações nos PRÓPRIOS arquivos MPL.
+    # Usamos o crate sem modificação, como dependência do registro; não há GPL/LGPL/AGPL.
+    # Nada do código do Piano Tutor é contaminado. Reavaliar se algum dia vendorizarmos/alterarmos.
+    { crate = "option-ext", allow = ["MPL-2.0"] },
+    # bancada-casca -> egui -> epaint: as fontes padrão do egui (Ubuntu-Light, Noto Emoji,
+    # emoji-icon-font) vêm como dado, não como código. OFL-1.1 e Ubuntu Font Licence são
+    # licenças de fonte permissivas para embutir; o código do crate é MIT OR Apache-2.0.
+    { crate = "epaint_default_fonts", allow = ["OFL-1.1", "Ubuntu-font-1.0"] },
+    # bancada-casca -> eframe -> egui-winit -> arboard (área de transferência), só no Windows.
+    # Boost Software License 1.0: permissiva, aprovada pela OSI, sem cláusula copyleft.
+    { crate = "clipboard-win", allow = ["BSL-1.0"] },
+    { crate = "error-code", allow = ["BSL-1.0"] },
+    # piano-tutor-app -> ureq (rustls) -> webpki-roots: lista de raízes CA da Mozilla, como dado.
+    # CDLA-Permissive-2.0 é licença permissiva de dados, sem copyleft.
+    { crate = "webpki-roots", allow = ["CDLA-Permissive-2.0"] },
+]
+
+[bans]
+multiple-versions = "warn"
+wildcards = "deny"
+allow-wildcard-paths = true
+
+[sources]
+unknown-registry = "deny"
+unknown-git = "deny"
+allow-registry = ["https://github.com/rust-lang/crates.io-index"]
+# Única dependência por git: a bancada (pública, MIT OR Apache-2.0), fixada por rev no Cargo.toml.
+allow-git = ["https://github.com/ChicoFigueiredo/bancada"]
+
+[advisories]
+# Cada ignore precisa de justificativa escrita aqui. Hoje não há nenhum: o banco RustSec
+# exige rede e roda em job separado na CI.
+ignore = []

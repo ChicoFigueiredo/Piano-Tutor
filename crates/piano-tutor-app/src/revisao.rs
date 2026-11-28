@@ -30,6 +30,7 @@
 //! [`Lancador`] que abre o MusicXML no MuseScore. Nada disso foi exercido com o MuseScore ou a
 //! voz reais nos testes (**NÃO VERIFICADO** em CI): os testes injetam executores falsos.
 
+use crate::pdf_sincronizado::{EntradaDoMapa, MAX_PAGINAS, MapaCompassos, Regiao};
 use crate::professor_falante::{
     ErroRoteiro, EstadoFala, Fala, ROTEIRO_DE_FABRICA_TOML, Roteiro, pastas_de_programas,
     procurar_executavel,
@@ -163,7 +164,25 @@ fn erro_de_disco(caminho: &Path, e: &std::io::Error) -> ErroRevisao {
 
 // --- Gravação atômica e edição com toml_edit ------------------------------------------------
 
-/// Grava `texto` em `caminho` por arquivo temporário vizinho e `rename`.
+/// Faz `fsync` do diretório `dir`, para o `rename` de dentro dele sobreviver a uma queda de
+/// energia (sem isto o diretório pode voltar ao estado anterior: íntegro, mas sem a última
+/// gravação). No Unix abre o diretório e sincroniza; onde não há essa operação (Windows) é um
+/// no-op que devolve `Ok`. Revisão independente da E01, achado R8.
+pub fn sincronizar_diretorio(dir: &Path) -> std::io::Result<()> {
+    #[cfg(unix)]
+    {
+        fs::File::open(dir)?.sync_all()
+    }
+    #[cfg(not(unix))]
+    {
+        let _ = dir;
+        Ok(())
+    }
+}
+
+/// Grava `texto` em `caminho` por arquivo temporário vizinho e `rename`, e sincroniza o diretório
+/// depois do `rename` (durabilidade; ver [`sincronizar_diretorio`]). Se `caminho` já é um arquivo
+/// comum, o novo herda as permissões dele (segunda revisão da E01, achado N4).
 pub fn gravar_atomico(caminho: &Path, texto: &str) -> Result<(), ErroRevisao> {
     let nome = caminho
         .file_name()
@@ -173,12 +192,28 @@ pub fn gravar_atomico(caminho: &Path, texto: &str) -> Result<(), ErroRevisao> {
     let r = (|| {
         let mut f = fs::File::create(&tmp)?;
         f.write_all(texto.as_bytes())?;
+        // Trocar o arquivo por `rename` não pode mudar as permissões dele (o temporário nasce
+        // com o modo do `umask`): quem já existe como arquivo comum passa suas permissões ao novo.
+        if let Ok(m) = fs::metadata(caminho)
+            && m.is_file()
+        {
+            let _ = f.set_permissions(m.permissions());
+        }
         f.sync_all()?;
         fs::rename(&tmp, caminho)
     })();
     if let Err(e) = r {
         let _ = fs::remove_file(&tmp);
         return Err(erro_de_disco(caminho, &e));
+    }
+    // O arquivo já está no lugar: falhar o `fsync` do diretório só tira a garantia contra queda de
+    // energia, não desfaz a gravação, então não vira erro (nem avisa "falha" de algo que valeu).
+    if let Some(dir) = caminho.parent() {
+        let _ = sincronizar_diretorio(if dir.as_os_str().is_empty() {
+            Path::new(".")
+        } else {
+            dir
+        });
     }
     Ok(())
 }
@@ -330,8 +365,24 @@ struct EstadoToml {
     pdf: Option<String>,
     #[serde(default)]
     pagina_png: Option<String>,
+    /// Páginas PNG do PDF de origem, em ordem (opcional; sem ela vale só `pagina_png`).
+    #[serde(default)]
+    paginas: Vec<String>,
+    /// Mapa compasso → página (e região) opcional (ticket 20); números a partir de 1.
+    #[serde(default)]
+    mapa_compassos: Vec<EntradaDoMapaToml>,
     #[serde(default)]
     historico: Vec<RegistroDeHistorico>,
+}
+
+/// Linha de `[[mapa_compassos]]`: `compasso` e `pagina` a partir de 1; `regiao` opcional
+/// `[x, y, largura, altura]` em frações da página (0 a 1).
+#[derive(Debug, Default, Deserialize)]
+struct EntradaDoMapaToml {
+    compasso: usize,
+    pagina: usize,
+    #[serde(default)]
+    regiao: Option<[f32; 4]>,
 }
 
 /// Uma partitura da oficina, como a lista da tela a mostra.
@@ -347,6 +398,11 @@ pub struct ItemPartitura {
     pub pdf: Option<String>,
     /// PNG da página, já resolvido dentro da oficina (`None` se não informado ou inseguro).
     pub pagina_png: Option<PathBuf>,
+    /// Páginas PNG do PDF de origem, em ordem (já resolvidas dentro da oficina). Vem de
+    /// `paginas`; sem ela, só `pagina_png` (se houver). Vazio = sem PDF para mostrar.
+    pub paginas: Vec<PathBuf>,
+    /// Mapa compasso → página (e região) do `estado.toml`; vazio sem `mapa_compassos`.
+    pub mapa: MapaCompassos,
     pub musicxml: PathBuf,
     pub estado_toml: PathBuf,
     pub divergencias: PathBuf,
@@ -364,6 +420,34 @@ fn dentro_de(raiz: &Path, relativo: &str) -> Option<PathBuf> {
     seguro.then(|| raiz.join(r))
 }
 
+/// Páginas do PDF: `paginas` (todas seguras, ou a lista inteira é ignorada para não deslocar os
+/// números de página do mapa), senão só `pagina_png`. No máximo [`MAX_PAGINAS`].
+fn paginas_da_oficina(raiz: &Path, listadas: &[String], unica: Option<&PathBuf>) -> Vec<PathBuf> {
+    let seguras: Option<Vec<PathBuf>> = listadas.iter().map(|p| dentro_de(raiz, p)).collect();
+    match seguras {
+        Some(v) if !v.is_empty() => v.into_iter().take(MAX_PAGINAS).collect(),
+        _ => unica.cloned().into_iter().collect(),
+    }
+}
+
+/// Converte as linhas do TOML (a partir de 1) no mapa (a partir de 0). Linha com número zero é
+/// ignorada; região inválida vira "sem região" (a página continua valendo).
+fn mapa_do_toml(paginas: usize, linhas: &[EntradaDoMapaToml]) -> MapaCompassos {
+    MapaCompassos::novo(
+        paginas,
+        linhas.iter().filter_map(|l| {
+            let compasso = l.compasso.checked_sub(1)?;
+            let pagina = l.pagina.checked_sub(1)?;
+            let regiao = l.regiao.and_then(|[x, y, w, h]| Regiao::nova(x, y, w, h));
+            Some(EntradaDoMapa {
+                compasso,
+                pagina,
+                regiao,
+            })
+        }),
+    )
+}
+
 impl ItemPartitura {
     /// Lê `partituras/<id>.estado.toml`. Erros viram `problema`, nunca pânico.
     pub fn ler(oficina: &Oficina, id: &str) -> Self {
@@ -378,6 +462,8 @@ impl ItemPartitura {
             proveniencia: String::new(),
             pdf: None,
             pagina_png: None,
+            paginas: Vec::new(),
+            mapa: MapaCompassos::default(),
             musicxml: pasta.join(format!("{id}.musicxml")),
             estado_toml: estado_toml.clone(),
             divergencias: pasta.join(format!("{id}.divergencias.md")),
@@ -405,6 +491,8 @@ impl ItemPartitura {
             .pagina_png
             .as_deref()
             .and_then(|p| dentro_de(&oficina.raiz, p));
+        item.paginas = paginas_da_oficina(&oficina.raiz, &t.paginas, item.pagina_png.as_ref());
+        item.mapa = mapa_do_toml(item.paginas.len(), &t.mapa_compassos);
         item.historico = t.historico;
         match t.estado.as_deref() {
             None => item.problema = Some("falta o campo `estado`".into()),
@@ -988,6 +1076,37 @@ mod testes {
     use super::*;
     use std::fs;
 
+    // --- R8 (revisão independente da E01): durabilidade do rename -----------------------------
+
+    #[test]
+    fn r8_sincronizar_diretorio_abre_e_sincroniza_o_diretorio_no_unix() {
+        let d = tempfile::tempdir().expect("pasta");
+        sincronizar_diretorio(d.path()).expect("sincroniza um diretório que existe");
+        #[cfg(unix)]
+        {
+            let falta = d.path().join("nao-existe");
+            assert!(
+                sincronizar_diretorio(&falta).is_err(),
+                "no Unix o diretório é de fato aberto (fsync de verdade, não um no-op)"
+            );
+        }
+    }
+
+    #[test]
+    fn r8_gravar_atomico_troca_o_arquivo_inteiro_e_nao_deixa_temporario() {
+        let d = tempfile::tempdir().expect("pasta");
+        let alvo = d.path().join("indice.toml");
+        gravar_atomico(&alvo, "um\n").expect("grava");
+        gravar_atomico(&alvo, "dois\n").expect("regrava");
+        assert_eq!(fs::read_to_string(&alvo).expect("lê"), "dois\n");
+        let nomes: Vec<String> = fs::read_dir(d.path())
+            .expect("lê a pasta")
+            .filter_map(Result::ok)
+            .map(|e| e.file_name().to_string_lossy().into_owned())
+            .collect();
+        assert_eq!(nomes, vec!["indice.toml".to_owned()]);
+    }
+
     const ESTADO_TOML: &str = r#"id = "cinco-notas"
 aula = 14
 titulo = "Cinco Notas no Piano"
@@ -1135,6 +1254,57 @@ estado = "em_revisao"
         assert_eq!(por_id("fuga").pagina_png, None);
         let e = por_id("esquisito").mudar_estado(Estado::EmRevisao, None, "2026-11-24");
         assert!(matches!(e, Err(ErroRevisao::Formato(_))), "{e:?}");
+    }
+
+    #[test]
+    fn paginas_e_mapa_do_estado_toml_valem_e_sem_eles_cai_na_pagina_unica() {
+        let d = tmp();
+        let o = oficina_sintetica(d.path());
+        let p = o.pasta_de_partituras();
+        fs::write(
+            p.join("duas.estado.toml"),
+            "estado = \"hipotese\"\npaginas = [\"paginas/a-1.png\", \"paginas/a-2.png\"]\n\
+             [[mapa_compassos]]\ncompasso = 1\npagina = 1\nregiao = [0.1, 0.2, 0.8, 0.1]\n\
+             [[mapa_compassos]]\ncompasso = 5\npagina = 2\n\
+             [[mapa_compassos]]\ncompasso = 9\npagina = 7\n\
+             [[mapa_compassos]]\ncompasso = 0\npagina = 1\n\
+             [[mapa_compassos]]\ncompasso = 3\npagina = 1\nregiao = [0.9, 0.9, 0.5, 0.5]\n",
+        )
+        .expect("w");
+        // Uma lista com caminho inseguro é ignorada por inteiro (os números de página não deslocam).
+        fs::write(
+            p.join("insegura.estado.toml"),
+            "estado = \"hipotese\"\npagina_png = \"paginas/x.png\"\npaginas = [\"paginas/a.png\", \"../fora.png\"]\n",
+        )
+        .expect("w");
+        let itens = o.partituras();
+        let por_id = |id: &str| itens.iter().find(|i| i.id == id).expect(id);
+
+        let duas = por_id("duas");
+        assert_eq!(duas.paginas.len(), 2);
+        assert_eq!(duas.paginas[1], o.raiz.join("paginas/a-2.png"));
+        let m = &duas.mapa;
+        assert_eq!(m.paginas(), 2);
+        // Compasso 9 aponta página 7 (fora), compasso 0 e região inválida são tratados sem pânico.
+        assert_eq!(m.entradas().len(), 3);
+        assert!(m.destino_do_compasso(0).is_some_and(|d| d.regiao.is_some()));
+        assert!(
+            m.destino_do_compasso(2)
+                .is_some_and(|d| d.regiao.is_none() && d.por_pagina)
+        );
+        assert_eq!(m.destino_do_compasso(4).map(|d| d.pagina), Some(1));
+
+        assert_eq!(
+            por_id("insegura").paginas,
+            vec![o.raiz.join("paginas/x.png")]
+        );
+        // Só `pagina_png`: uma página, sem mapa (todos os compassos vão a ela, por página).
+        let cinco = por_id("cinco-notas");
+        assert_eq!(cinco.paginas.len(), 1);
+        assert_eq!(
+            cinco.mapa.destino_do_compasso(3).map(|d| d.por_pagina),
+            Some(true)
+        );
     }
 
     #[test]

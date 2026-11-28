@@ -3,6 +3,7 @@ name = "piano-tutor-diag"
 description = "Diagnóstico de ambiente Linux (SO, Rust, MIDI e áudio) do Piano Tutor"
 version.workspace = true
 edition.workspace = true
+license.workspace = true
 rust-version.workspace = true
 publish = false
 build = "build.rs"

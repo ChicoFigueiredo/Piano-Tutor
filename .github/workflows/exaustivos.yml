@@ -1,0 +1,28 @@
+name: Exaustivos (noturno, não bloqueante)
+
+# Roda os testes `#[ignore]` do corpus (varreduras exaustivas) em release: ~10 minutos, longos
+# demais para o `cargo test` padrão do PR. Nunca bloqueia PR (só agenda e disparo manual).
+# Achado G1 da E01: o exaustivo dos seis comandos só falhava quando alguém o rodava à mão.
+on:
+  schedule:
+    - cron: "17 5 * * *"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  exaustivos:
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@v4
+      - name: Dependências de sistema (ALSA, X11, Wayland, OpenGL)
+        run: >-
+          sudo apt-get update && sudo apt-get install -y
+          libasound2-dev pkg-config
+          libx11-dev libxkbcommon-dev libwayland-dev libgl1-mesa-dev
+          libxcursor-dev libxrandr-dev libxi-dev
+      - name: Testes exaustivos ignorados (release)
+        run: cargo test --release -p piano-tutor-fixtures -- --ignored
+# Não comprova ligação física REVAS, MIDI real, áudio, Linux de referência ou modelos de IA.

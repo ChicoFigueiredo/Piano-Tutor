@@ -2,12 +2,15 @@
 
 Leia antes de começar: `README.md`, `CONTEXT.md`, `docs/planejamento/PLANO-DE-MARCOS.md`, `docs/decisoes/ADR-0004..0008`, `docs/specs/ESPECIFICACAO-COMPLETA-v1.md`, `docs/aceite/MATRIZ-DE-ACEITE.md`, `docs/equipe/WORKFLOW.md` e a ficha `backlog/fases/Fxx.md` atual.
 
+Para as fases E (evolução musical), leitura obrigatória também de `docs/specs/ESPECIFICACAO-EVOLUCAO-MUSICAL.md` e `docs/decisoes/ADR-0015-edicao-nativa-e-plataforma-musical.md`.
+
 ## Mandatos
 
 - **Sempre PT-BR** em documentação, UX, critérios e relatório. Identificadores de código preferencialmente em português sem acentos, mantendo padrões de interoperabilidade (MIDI, MusicXML) e nomes das crates de terceiros.
 - **Uma fase por vez**: começar F00 (provar ambiente, `bancada-casca` e dispositivo) antes de F01. A **ordem de execução segue os marcos** (M1–M5) do `PLANO-DE-MARCOS.md`, não a numeração. Aceite humano obrigatório.
 - **Nenhum falso positivo**: testes não executados = NÃO VERIFICADO; sem REVAS físico = não homologar MIDI real; sem áudio medido = não homologar latência.
-- **Não substituir arquitetura:** Rust para app/áudio/MIDI; `bancada-casca` para shell; Python somente worker opcional de ML; Luau somente hipótese de regras pedagógicas após F13.
+- **Não substituir arquitetura:** Rust para app/áudio/MIDI; `bancada-casca` para shell; Python somente worker opcional de ML; Luau para Roteiros de Aula e plugins assinados pelo titular (ADR-0012, ADR-0015).
+- **Edição de partitura** permitida conforme ADR-0015: toda edição salva uma Versão nova; original e Hipótese nunca são sobrescritos.
 - **Núcleo musical isolado** de GUI, sistema operacional, Python e hardware, testado por unidade.
 - **Não copiar** código GPL, modelos, vídeos, fonts e SoundFonts de terceiros sem controle de licença e permissão. Não commitar mídia de curso.
 - **Não inventar** disponibilidade MIDI ou recursos de velocity/sustain; calibrar KB-330 real.

@@ -10,7 +10,8 @@ use std::path::{Path, PathBuf};
 use comum::{ALINHAMENTO, MUSICXML, ROTEIRO, sha256_hex};
 use piano_tutor_curso::cli::{ErroCli, executar};
 use piano_tutor_curso::{
-    ChavePrivada, ErroPacote, EstadoConteudo, TrechoAula, empacotar, importar, ler_pacote,
+    ChavePrivada, DecideEstado, ErroPacote, EstadoConteudo, TrechoAula, empacotar, importar,
+    importar_com, ler_pacote,
 };
 
 /// Plano sintético: 1 Seção, 3 Lições (2 com Exercícios, 1 de vídeo).
@@ -81,6 +82,24 @@ mao = "direita"
 
 /// Grava o plano e a oficina em `raiz`. Com `completa`, a oficina traz áudio, Alinhamento e Roteiro.
 /// `sem-estado` não tem `estado.toml`: deve entrar como Hipótese.
+/// Índice de Versões como o do app: uma Versão com o hash do conteúdo, no `estado` dado, e (se
+/// `com_decisao`) o registro `[[decisao]]` do revisor.
+fn indice_de_versoes(conteudo: &[u8], estado: &str, com_decisao: bool) -> String {
+    let hash = sha256_hex(conteudo);
+    let mut t = format!(
+        "formato = 1\npartitura = \"x\"\n[origem]\nhipotese = \"{hash}\"\n\
+         [[versao]]\nhash = \"{hash}\"\ntipo = \"hipotese\"\nautor = \"A\"\n\
+         em = \"2026-11-28T00:00:00Z\"\nestado = \"{estado}\"\nbytes = 1\n"
+    );
+    if com_decisao {
+        t.push_str(&format!(
+            "[[decisao]]\nhash = \"{hash}\"\nde = \"em_revisao\"\npara = \"{estado}\"\n\
+             revisor = \"R\"\nem = \"2026-11-28T00:00:00Z\"\nmotivo = \"conferi\"\n"
+        ));
+    }
+    t
+}
+
 fn preparar(raiz: &Path, completa: bool) -> (PathBuf, PathBuf) {
     let plano_path = raiz.join("plano.toml");
     fs::write(&plano_path, plano(&sha256_hex(b"aula sintetica"))).unwrap();
@@ -102,6 +121,15 @@ fn preparar(raiz: &Path, completa: bool) -> (PathBuf, PathBuf) {
         "partituras/tres-notas-volta.estado.toml",
         b"id = \"tres-notas-volta\"\nestado = \"em_revisao\"\n",
     );
+    // A aprovação vale por hash: índice de Versões com registro de decisão (como o app grava).
+    escrever(
+        "partituras/tres-notas.versoes/indice.toml",
+        indice_de_versoes(MUSICXML.as_bytes(), "aprovada", true).as_bytes(),
+    );
+    escrever(
+        "partituras/tres-notas-volta.versoes/indice.toml",
+        indice_de_versoes(MUSICXML.as_bytes(), "em_revisao", false).as_bytes(),
+    );
     if completa {
         escrever("audio/tres-notas.opus", b"OggS-sintetico");
         escrever("alinhamentos/tres-notas.json", ALINHAMENTO.as_bytes());
@@ -120,7 +148,7 @@ fn rodar(args: &[&str]) -> Result<String, ErroCli> {
 // ---------- ida e volta ----------
 
 #[test]
-fn importa_empacota_e_le_com_os_estados_do_estado_toml() {
+fn importa_empacota_e_le_com_os_estados_por_hash() {
     let tmp = tempfile::tempdir().unwrap();
     let (plano, oficina) = preparar(tmp.path(), true);
     let origem = tmp.path().join("origem");
@@ -190,6 +218,64 @@ fn importa_empacota_e_le_com_os_estados_do_estado_toml() {
     );
     assert_eq!(estado_de("tres-notas-volta").audio, None);
     assert_eq!(estado_de("sem-estado").estado, EstadoConteudo::Hipotese);
+}
+
+/// Decisor de teste: decide pelo conteúdo e ignora o `estado.toml`.
+struct SoOConteudo;
+
+impl DecideEstado for SoOConteudo {
+    fn estado_do_exercicio(
+        &self,
+        _oficina: &Path,
+        id: &str,
+        conteudo: Option<&[u8]>,
+    ) -> Result<Option<EstadoConteudo>, ErroPacote> {
+        assert_eq!(
+            conteudo,
+            Some(MUSICXML.as_bytes()),
+            "recebe o conteúdo de {id}"
+        );
+        Ok((id == "sem-estado").then_some(EstadoConteudo::Aprovada))
+    }
+
+    fn aviso_sem_decisao(&self) -> &'static str {
+        "sem decisão por hash"
+    }
+}
+
+#[test]
+fn importar_com_decisor_proprio_nao_usa_o_estado_toml_para_o_estado() {
+    let tmp = tempfile::tempdir().unwrap();
+    let (plano, oficina) = preparar(tmp.path(), true);
+    let origem = tmp.path().join("origem");
+    let resumo = importar_com(&plano, &oficina, &origem, false, &SoOConteudo).unwrap();
+    // O `estado.toml` dizia aprovada/em_revisao: nada disso vale. Só o decisor manda.
+    assert_eq!(resumo.contagem.por_estado(EstadoConteudo::Aprovada), 1);
+    assert_eq!(resumo.contagem.por_estado(EstadoConteudo::Hipotese), 2);
+    assert_eq!(resumo.contagem.por_estado(EstadoConteudo::EmRevisao), 0);
+    assert!(
+        resumo
+            .avisos
+            .iter()
+            .any(|a| a.starts_with("sem decisão por hash: tres-notas")),
+        "{:?}",
+        resumo.avisos
+    );
+    // O que não é estado continua vindo do `estado.toml` (bpm sugerido).
+    let bytes = empacotar(&origem, &ChavePrivada::gerar()).unwrap();
+    let pacote = ler_pacote(&bytes).unwrap();
+    let ex = |id: &str| {
+        pacote
+            .manifesto
+            .exercicios()
+            .find(|e| e.exercicio.id == id)
+            .unwrap()
+            .exercicio
+            .clone()
+    };
+    assert_eq!(ex("tres-notas").estado, EstadoConteudo::Hipotese);
+    assert_eq!(ex("tres-notas").bpm, Some(80));
+    assert_eq!(ex("sem-estado").estado, EstadoConteudo::Aprovada);
 }
 
 #[test]
@@ -347,4 +433,68 @@ fn cli_importar_mostra_o_resumo_e_valida_os_argumentos() {
     ])
     .unwrap();
     assert!(saida.contains("Exercícios: 1"), "{saida}");
+}
+
+// ---------- aprovação por hash também na CLI (ticket 23) ----------
+
+fn importar_pela_cli(plano: &Path, oficina: &Path, destino: &Path) -> String {
+    let s = |p: &Path| p.to_str().unwrap().to_string();
+    rodar(&[
+        "importar",
+        "--plano",
+        &s(plano),
+        "--oficina",
+        &s(oficina),
+        "-o",
+        &s(destino),
+    ])
+    .unwrap()
+}
+
+#[test]
+fn cli_alterar_o_arquivo_muda_o_hash_e_a_aprovacao_nao_vale() {
+    let tmp = tempfile::tempdir().unwrap();
+    let (plano, oficina) = preparar(tmp.path(), false);
+    // Com o conteúdo aprovado: entra Aprovada.
+    let saida = importar_pela_cli(&plano, &oficina, &tmp.path().join("o1"));
+    assert!(saida.contains("aprovada 1"), "{saida}");
+    // O estado.toml segue dizendo "aprovada", mas o arquivo muda: outro hash, sem aprovação.
+    let arquivo = oficina.join("partituras/tres-notas.musicxml");
+    let mut alterado = fs::read(&arquivo).unwrap();
+    alterado.extend_from_slice(b"<!-- mexi -->");
+    fs::write(&arquivo, alterado).unwrap();
+    let saida = importar_pela_cli(&plano, &oficina, &tmp.path().join("o2"));
+    assert!(saida.contains("aprovada 0"), "{saida}");
+    assert!(saida.contains("sem Versão registrada"), "{saida}");
+}
+
+#[test]
+fn cli_estado_toml_aprovada_sem_decisao_nao_aprova() {
+    let tmp = tempfile::tempdir().unwrap();
+    let (plano, oficina) = preparar(tmp.path(), false);
+    // Índice escrito à mão: Versão "aprovada" sem registro [[decisao]]; o estado.toml também.
+    fs::write(
+        oficina.join("partituras/tres-notas.versoes/indice.toml"),
+        indice_de_versoes(MUSICXML.as_bytes(), "aprovada", false),
+    )
+    .unwrap();
+    let saida = importar_pela_cli(&plano, &oficina, &tmp.path().join("o1"));
+    assert!(saida.contains("aprovada 0"), "{saida}");
+    // Sem índice nenhum, o estado.toml "aprovada" também não vale.
+    fs::remove_dir_all(oficina.join("partituras/tres-notas.versoes")).unwrap();
+    let saida = importar_pela_cli(&plano, &oficina, &tmp.path().join("o2"));
+    assert!(saida.contains("aprovada 0"), "{saida}");
+}
+
+#[test]
+fn indice_malformado_e_erro_e_nunca_aprovacao() {
+    let tmp = tempfile::tempdir().unwrap();
+    let (plano, oficina) = preparar(tmp.path(), false);
+    fs::write(
+        oficina.join("partituras/tres-notas.versoes/indice.toml"),
+        "isto não é toml [[",
+    )
+    .unwrap();
+    let err = importar(&plano, &oficina, &tmp.path().join("o"), false).unwrap_err();
+    assert!(matches!(err, ErroPacote::Importacao(_)), "{err:?}");
 }

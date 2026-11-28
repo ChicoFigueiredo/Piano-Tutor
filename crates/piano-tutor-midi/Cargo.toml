@@ -3,6 +3,7 @@ name = "piano-tutor-midi"
 description = "Entrada MIDI do Piano Tutor: portas, conexão, hot-plug, log NDJSON e capacidades observadas"
 version.workspace = true
 edition.workspace = true
+license.workspace = true
 rust-version.workspace = true
 publish = false
 

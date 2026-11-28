@@ -40,3 +40,22 @@ Ver [ADR-0006](../decisoes/ADR-0006-regras-de-gate.md): NÃO VERIFICADO bloqueia
 ## Como o Claude orquestra a entrega
 
 Ver [Fluxo de trabalho](../equipe/WORKFLOW.md#orquestração-no-claude).
+
+## Evolução musical (E00–E09)
+
+Roadmap reordenado conforme [00-DECISOES](../evolucao-musical/e00/00-DECISOES.md), com a ADR [ADR-0015](../decisoes/ADR-0015-edicao-nativa-e-plataforma-musical.md).
+
+| Fase | Entrega |
+|---|---|
+| E00 | Diagnóstico, pesquisas, decisões, spec revisada, ADR-0015, backlog |
+| E01 | Oficina de correção: modelo editável com IdNota e preservação do XML, render egui + Bravura, PDF ao lado, alterar altura/duração, inserir/remover nota/pausa/acorde, desfazer/refazer, autosave, salvar Versão, praticar a Versão; letra/cifra/dedilhado exibidos e preservados |
+| E02 | Acervo: SQLite com migrações, cópia por SHA-256, importação em lote, busca FTS |
+| E03 | Editor completo: letra, cifra, dedilhado, ligaduras, ligaduras de expressão, tercinas, vozes, repetições; perfil de atalhos MuseScore |
+| E04 | REVAS no editor: step-time, acorde, re-pitch, gravação com quantização não destrutiva |
+| E05 | Reconhecimento: Audiveris e HOMR como processos, roteamento vetor/scan, divergências na Oficina; benchmark no corpus público |
+| E06 | MCP somente leitura → escrita com dry-run, diff e aprovação |
+| E07 | Professor inteligente: harness própria, 4 provedores, teto US$ 10/mês |
+| E08 | Plugins: Luau assinado e Python isolado |
+| E09 | Produção: somente pesquisa e spike |
+
+> **F07 deixa de ser teto** da evolução musical (ADR-0015). Os aceites de leitura, playback, navegação, segurança e exportação de F07 continuam como regressões obrigatórias; a edição nativa vem em E01–E03.

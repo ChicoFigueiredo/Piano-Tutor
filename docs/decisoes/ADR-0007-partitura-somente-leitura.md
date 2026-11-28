@@ -1,7 +1,11 @@
 # ADR-0007 — F07 somente leitura, precedida de spike de notação
 
-**Status:** ACEITA — 2026-11-22
+**Status:** SUBSTITUÍDA por ADR-0015 — 2026-11-27
 
 Antes de F07, um **spike** de tempo limitado compara (a) layout próprio em egui com a fonte SMuFL Bravura e (b) Verovio (C++, LGPL-3.0) gerando SVG, nos mesmos ≥ 5 arquivos MusicXML licenciados. Cada opção é avaliada por legibilidade a 100%/150%, duas claves, desempenho, licença e esforço de integração. O resultado vira uma ADR de escolha de motor. **F07 entrega só visualizar, navegar, sincronizar com o playback e exportar MusicXML.** A edição de notas fica para depois de F13.
 
 **Por quê:** a própria spec (§15) reconhece que o Bravura não resolve o layout. Visualização, edição e round-trip numa fase só era o maior risco de prazo do projeto, e F13 precisa apenas de leitura.
+
+**Nota de 2026-11-27:** substituída por [ADR-0015](ADR-0015-edicao-nativa-e-plataforma-musical.md). A edição de notas, adiada para depois de F13, passa a ser requisito; o aceite de leitura, playback, navegação e exportação de F07 segue como regressão.
+
+**Nota de 2026-11-27 (ticket evolucao/09):** o spike que esta ADR pedia **foi feito**: layout próprio em egui com a fonte SMuFL Bravura contra o Verovio (só como oráculo, em processo separado), nas peças do corpus de fixtures, a 100% e 150%. O resultado é a [ADR-0018](ADR-0018-motor-de-render-egui-bravura.md) (escolha do motor de render), que fecha a pendência de render desta ADR (esta ADR fica **parcialmente superada nesse ponto**); a parte de escopo (somente leitura) já era da [ADR-0015](ADR-0015-edicao-nativa-e-plataforma-musical.md). Relatório e capturas em `docs/evolucao-musical/e01/spike-render/`. O julgamento visual de legibilidade continua **NÃO VERIFICADO** até o titular assinar o checklist.

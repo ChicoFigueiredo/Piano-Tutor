@@ -13,6 +13,7 @@
 //! o desenho.
 
 use crate::app::data_de_hoje;
+use crate::pdf_sincronizado::{AVISO_SEM_PDF, Destino, PedidoDeRolagem};
 use crate::professor_falante::{Fala, Momento, Roteiro, Voz, VozMuda, voz_do_sistema};
 use crate::revisao::{
     ESTADOS, Estado, FonteDeRoteiro, ImagemRgba, ItemPartitura, Lancador, LancadorMuseScore,
@@ -22,8 +23,8 @@ use crate::revisao::{
 use crate::som::ServicoSom;
 use crate::tela_partitura::{BPM_MAX, BPM_MIN, EstadoPartitura, desenhar_vista};
 use bancada_casca::egui::{
-    self, Button, Color32, ColorImage, ComboBox, Frame, Image, Margin, Panel, RichText, ScrollArea,
-    Slider, TextEdit, TextureHandle, TextureOptions, Ui, load::SizedTexture, vec2,
+    self, Button, Color32, ColorImage, ComboBox, Frame, Image, Margin, Panel, Rect, RichText,
+    ScrollArea, Slider, TextEdit, TextureHandle, TextureOptions, Ui, load::SizedTexture, vec2,
 };
 use std::collections::HashMap;
 use std::path::{Path, PathBuf};
@@ -82,6 +83,22 @@ struct Pagina {
     erro: Option<String>,
 }
 
+/// Ligação do painel do PDF com a partitura (ticket 20, A17).
+#[derive(Default)]
+struct SincroniaPdf {
+    /// Página (índice a partir de 0) mostrada no painel.
+    pagina_atual: usize,
+    /// Último compasso da partitura já tratado (evita refazer a rolagem a cada quadro).
+    compasso_visto: Option<usize>,
+    /// Compasso (índice a partir de 0) a que o painel foi levado.
+    compasso_alvo: Option<usize>,
+    destino: Option<Destino>,
+    /// Rolagem a aplicar no próximo desenho do painel.
+    rolar: Option<PedidoDeRolagem>,
+    /// Fração (0 a 1) da altura da página que está no topo do painel.
+    y_visivel: f32,
+}
+
 /// Estado da tela de revisão.
 pub struct EstadoRevisao {
     dados: Option<PathBuf>,
@@ -108,6 +125,7 @@ pub struct EstadoRevisao {
     pub arquivo_mudou: bool,
     divergencias: Option<String>,
     pagina: Pagina,
+    sinc: SincroniaPdf,
     pub zoom_da_pagina: f32,
     /// Zoom automático: a página ocupa a largura da coluna.
     pub ajustar_pagina: bool,
@@ -152,6 +170,7 @@ impl EstadoRevisao {
             arquivo_mudou: false,
             divergencias: None,
             pagina: Pagina::default(),
+            sinc: SincroniaPdf::default(),
             zoom_da_pagina: 1.0,
             ajustar_pagina: true,
             rejeitando: false,
@@ -242,6 +261,24 @@ impl EstadoRevisao {
             self.fonte_atual = 0;
         }
         self.carregar_roteiro();
+        self.migrar_aprovacoes_antigas();
+    }
+
+    /// Migração única das aprovações do `estado.toml` para o índice de Versões (ticket 23):
+    /// idempotente, roda ao abrir as Oficinas e avisa o que migrou.
+    fn migrar_aprovacoes_antigas(&mut self) {
+        let mut total = crate::migracao_aprovacao::RelatorioDaMigracao::default();
+        for o in &self.oficinas {
+            total.juntar(crate::migracao_aprovacao::migrar_aprovacoes(o));
+        }
+        if let Some(texto) = total.aviso() {
+            let erro = !total.problemas.is_empty();
+            self.aviso = Some(if erro {
+                Aviso::erro(texto)
+            } else {
+                Aviso::ok(texto)
+            });
+        }
     }
 
     pub fn trocar_oficina(&mut self, i: usize) {
@@ -266,6 +303,7 @@ impl EstadoRevisao {
         self.arquivo_mudou = false;
         self.divergencias = None;
         self.pagina = Pagina::default();
+        self.sinc = SincroniaPdf::default();
         self.rejeitando = false;
         self.nota_da_rejeicao.clear();
     }
@@ -691,7 +729,7 @@ impl EstadoRevisao {
         let Some(item) = self.item_selecionado() else {
             return;
         };
-        let Some(caminho) = item.pagina_png.clone() else {
+        let Some(caminho) = item.paginas.get(self.sinc.pagina_atual).cloned() else {
             return;
         };
         let mtime = std::fs::metadata(&caminho).and_then(|m| m.modified()).ok();
@@ -719,6 +757,79 @@ impl EstadoRevisao {
             }
             Err(e) => self.pagina.erro = Some(e),
         }
+    }
+
+    // --- PDF ao lado, sincronizado por compasso (ticket 20) ---
+
+    /// Quantas páginas de PDF a partitura selecionada tem (0 = sem PDF de origem).
+    pub fn total_de_paginas(&self) -> usize {
+        self.item_selecionado().map_or(0, |i| i.paginas.len())
+    }
+
+    /// Página (a partir de 0) mostrada no painel do PDF.
+    pub fn pagina_do_pdf(&self) -> usize {
+        self.sinc.pagina_atual
+    }
+
+    /// Último destino calculado ao apontar um compasso na partitura.
+    pub fn destino_do_pdf(&self) -> Option<Destino> {
+        self.sinc.destino
+    }
+
+    /// Rolagem ainda não aplicada pelo painel.
+    pub fn rolagem_pendente_do_pdf(&self) -> Option<PedidoDeRolagem> {
+        self.sinc.rolar
+    }
+
+    /// Aviso discreto do painel: sem PDF, mapa só por página ou sem mapa.
+    pub fn aviso_do_pdf(&self) -> Option<&'static str> {
+        let item = self.item_selecionado()?;
+        if !item.mapa.tem_pdf() {
+            return Some(AVISO_SEM_PDF);
+        }
+        self.sinc.compasso_alvo?;
+        item.mapa.aviso(self.sinc.destino)
+    }
+
+    /// Compasso (a partir de 0) que a rolagem atual do PDF indica.
+    pub fn compasso_indicado_pelo_pdf(&self) -> Option<usize> {
+        self.item_selecionado()?
+            .mapa
+            .compasso_na_pagina(self.sinc.pagina_atual, self.sinc.y_visivel)
+    }
+
+    /// Vai à página `n` (a partir de 0) do PDF, no topo; fora do PDF, não faz nada.
+    pub fn ir_para_pagina_do_pdf(&mut self, n: usize) {
+        if n < self.total_de_paginas() {
+            self.sinc.pagina_atual = n;
+            self.sinc.rolar = Some(PedidoDeRolagem { pagina: n, y: 0.0 });
+            self.sinc.y_visivel = 0.0;
+        }
+    }
+
+    /// Se o compasso apontado na partitura mudou, leva o painel do PDF a ele. Devolve `true`
+    /// quando algo mudou (a tela pede novo quadro para carregar a página).
+    pub fn sincronizar_pdf(&mut self) -> bool {
+        let foco = self.partitura.compasso_em_foco();
+        if foco == self.sinc.compasso_visto {
+            return false;
+        }
+        self.sinc.compasso_visto = foco;
+        let Some(c) = foco else {
+            return false;
+        };
+        let Some(item) = self.item_selecionado() else {
+            return false;
+        };
+        let destino = item.mapa.destino_do_compasso(c);
+        self.sinc.compasso_alvo = Some(c);
+        self.sinc.destino = destino;
+        if let Some(d) = destino {
+            self.sinc.pagina_atual = d.pagina;
+            self.sinc.rolar = Some(d.rolagem());
+            self.sinc.y_visivel = d.rolagem().y;
+        }
+        true
     }
 
     /// Tamanho da página decodificada (para testes e para o zoom automático).
@@ -1003,11 +1114,16 @@ fn desenhar_corpo(ui: &mut Ui, e: &mut EstadoRevisao, som: &mut ServicoSom) {
         desenhar_aviso(ui, a);
     }
     ui.add_space(4.0);
+    e.sincronizar_pdf();
     e.garantir_pagina(ui.ctx());
     ui.columns(2, |colunas| {
         desenhar_coluna_da_pagina(&mut colunas[0], e);
         desenhar_coluna_da_partitura(&mut colunas[1], e, som);
     });
+    // Um clique na partitura leva o PDF no quadro seguinte.
+    if e.sincronizar_pdf() {
+        ui.ctx().request_repaint();
+    }
 }
 
 fn desenhar_botoes_de_estado(
@@ -1093,6 +1209,38 @@ fn desenhar_botoes_de_estado(
 
 fn desenhar_coluna_da_pagina(ui: &mut Ui, e: &mut EstadoRevisao) {
     ui.label(RichText::new("Página do PDF").strong());
+    let total = e.total_de_paginas();
+    if total == 0 {
+        ui.label(RichText::new(AVISO_SEM_PDF).weak());
+        return;
+    }
+    ui.horizontal_wrapped(|ui| {
+        let atual = e.sinc.pagina_atual;
+        if ui
+            .add_enabled(atual > 0, Button::new("◀"))
+            .on_hover_text("Página anterior do PDF")
+            .clicked()
+        {
+            e.ir_para_pagina_do_pdf(atual - 1);
+        }
+        ui.label(format!("página {} de {total}", atual + 1));
+        if ui
+            .add_enabled(atual + 1 < total, Button::new("▶"))
+            .on_hover_text("Próxima página do PDF")
+            .clicked()
+        {
+            e.ir_para_pagina_do_pdf(atual + 1);
+        }
+        if let Some(c) = e.sinc.compasso_alvo {
+            ui.label(format!("compasso {} da partitura", c + 1));
+        }
+        if let Some(c) = e.compasso_indicado_pelo_pdf() {
+            ui.label(RichText::new(format!("PDF indica o compasso {}", c + 1)).weak());
+        }
+    });
+    if let Some(a) = e.aviso_do_pdf() {
+        ui.label(RichText::new(a).weak());
+    }
     ui.horizontal_wrapped(|ui| {
         ui.spacing_mut().slider_width = 90.0;
         let largura = (ui.available_width() - 16.0).max(100.0);
@@ -1128,7 +1276,8 @@ fn desenhar_coluna_da_pagina(ui: &mut Ui, e: &mut EstadoRevisao) {
     let Some(textura) = e.pagina.textura.clone() else {
         let msg = match (
             &e.pagina.erro,
-            e.item_selecionado().and_then(|i| i.pagina_png.as_ref()),
+            e.item_selecionado()
+                .and_then(|i| i.paginas.get(e.sinc.pagina_atual)),
         ) {
             (Some(erro), _) => format!("Não consegui ler a página: {erro}"),
             (None, Some(c)) => format!("Página não encontrada: {}", c.display()),
@@ -1144,13 +1293,43 @@ fn desenhar_coluna_da_pagina(ui: &mut Ui, e: &mut EstadoRevisao) {
     } else {
         e.zoom_da_pagina.clamp(ZOOM_PAGINA_MIN, ZOOM_PAGINA_MAX)
     };
-    let area = ScrollArea::both()
+    let tam = vec2(w as f32 * zoom, h as f32 * zoom);
+    let regiao = e
+        .sinc
+        .destino
+        .filter(|d| d.pagina == e.sinc.pagina_atual)
+        .and_then(|d| d.regiao);
+    let mut area = ScrollArea::both()
         .id_salt("rev-pagina")
-        .auto_shrink([false, false])
-        .show(ui, |ui| {
-            let tam = vec2(w as f32 * zoom, h as f32 * zoom);
-            ui.add(Image::new(SizedTexture::new(textura.id(), tam)));
-        });
+        .auto_shrink([false, false]);
+    // A rolagem só vale quando a textura mostrada já é a da página pedida.
+    let textura_e_da_pagina = e
+        .item_selecionado()
+        .and_then(|i| i.paginas.get(e.sinc.pagina_atual))
+        == e.pagina.chave.as_ref().map(|(c, _)| c);
+    if textura_e_da_pagina && let Some(p) = e.sinc.rolar.take() {
+        area = area.vertical_scroll_offset(p.y * tam.y);
+    }
+    let area = area.show(ui, |ui| {
+        let r = ui.add(Image::new(SizedTexture::new(textura.id(), tam)));
+        if let Some(g) = regiao {
+            let caixa = Rect::from_min_size(
+                r.rect.min + vec2(g.x * tam.x, g.y * tam.y),
+                vec2(g.largura * tam.x, g.altura * tam.y),
+            );
+            ui.painter()
+                .rect_filled(caixa, 0.0, AMARELO.gamma_multiply(0.25));
+            ui.painter().rect_stroke(
+                caixa,
+                0.0,
+                egui::Stroke::new(2.0, AMARELO),
+                egui::StrokeKind::Outside,
+            );
+        }
+    });
+    if tam.y > 0.0 {
+        e.sinc.y_visivel = (area.state.offset.y / tam.y).clamp(0.0, 1.0);
+    }
     // Ctrl + roda do mouse também dá zoom.
     if ui.rect_contains_pointer(area.inner_rect) {
         let dz = ui.input(|i| i.zoom_delta());
@@ -1448,6 +1627,7 @@ mod testes {
     use super::*;
     use crate::professor_falante::VozFalsa;
     use crate::revisao::LancadorFalso;
+    use crate::selecao_partitura::Comando;
     use crate::som::apoio_testes::servico_pronto;
     use bancada_casca::egui::{Context, Event, Modifiers, RawInput, Rect, pos2};
     use piano_tutor_midi::{Relogio, RelogioManual};
@@ -1524,6 +1704,31 @@ estado = "em_revisao"
     fn som() -> ServicoSom {
         let relogio: Arc<dyn Relogio> = Arc::new(RelogioManual::novo());
         servico_pronto(relogio).0
+    }
+
+    #[test]
+    fn abrir_a_oficina_migra_aprovacao_antiga_uma_vez_e_avisa() {
+        let d = dados_sinteticos();
+        let estado_toml = d
+            .path()
+            .join("fontes/tutor-teste/oficina/partituras/cinco-notas.estado.toml");
+        let antigo = fs::read_to_string(&estado_toml).expect("l");
+        fs::write(
+            &estado_toml,
+            antigo.replace("estado = \"hipotese\"", "estado = \"aprovada\""),
+        )
+        .expect("w");
+        let mut e = estado(&d);
+        e.recarregar_oficinas();
+        let a = e.aviso.clone().expect("aviso da migração");
+        assert!(!a.erro && a.texto.contains("cinco-notas"), "{a:?}");
+        let item = &e.itens[0];
+        let v = crate::versoes::Versoes::da_partitura(item);
+        assert!(v.aprovacao_do_arquivo(&item.musicxml).expect("l").is_some());
+        // Segunda abertura: nada a migrar, nenhum aviso novo.
+        e.aviso = None;
+        e.recarregar_oficinas();
+        assert!(e.aviso.is_none(), "{:?}", e.aviso);
     }
 
     #[test]
@@ -1980,6 +2185,235 @@ estado = "em_revisao"
         quadro(&ctx, &mut e, &mut s, 1280.0, 800.0);
         assert!(e.erro_da_pagina().is_some());
         assert!(e.tamanho_da_pagina().is_none());
+    }
+
+    // --- PDF ao lado, sincronizado por compasso (ticket 20, A17) ---
+
+    fn pasta_da_oficina(d: &tempfile::TempDir) -> PathBuf {
+        d.path().join("fontes/tutor-teste/oficina")
+    }
+
+    /// Troca o `estado.toml` e grava as duas páginas PNG sintéticas.
+    fn com_duas_paginas(d: &tempfile::TempDir, mapa: &str) {
+        let o = pasta_da_oficina(d);
+        for n in 1..=2 {
+            fs::write(o.join(format!("paginas/p-{n}.png")), png_sintetico()).expect("png");
+        }
+        fs::write(
+            o.join("partituras/cinco-notas.estado.toml"),
+            format!(
+                "{}paginas = [\"paginas/p-1.png\", \"paginas/p-2.png\"]\n{mapa}",
+                ESTADO_TOML.replace("pagina_png = \"paginas/cinco-notas.png\"\n", "")
+            ),
+        )
+        .expect("estado");
+    }
+
+    /// Avança a seleção por nota até apontar o compasso `c` (índice a partir de 0).
+    fn apontar_compasso(e: &mut EstadoRevisao, c: usize) {
+        for _ in 0..200 {
+            if e.partitura.compasso_em_foco() == Some(c) {
+                return;
+            }
+            e.partitura.navegar(Comando::Seguinte);
+        }
+        panic!("não achei o compasso {c}");
+    }
+
+    fn hashes(d: &tempfile::TempDir) -> Vec<(PathBuf, String)> {
+        use sha2::{Digest, Sha256};
+        let mut v = Vec::new();
+        for pasta in ["paginas", "partituras"] {
+            let mut nomes: Vec<_> = fs::read_dir(pasta_da_oficina(d).join(pasta))
+                .expect("pasta")
+                .map(|x| x.expect("entrada").path())
+                .collect();
+            nomes.sort();
+            for n in nomes {
+                let h: String = Sha256::digest(fs::read(&n).expect("lê"))
+                    .iter()
+                    .map(|b| format!("{b:02x}"))
+                    .collect();
+                v.push((n, h));
+            }
+        }
+        v
+    }
+
+    #[test]
+    fn selecionar_compasso_leva_o_pdf_a_regiao_mapeada_e_destaca() {
+        let d = dados_sinteticos();
+        com_duas_paginas(
+            &d,
+            "[[mapa_compassos]]\ncompasso = 1\npagina = 1\nregiao = [0.1, 0.1, 0.8, 0.2]\n\
+             [[mapa_compassos]]\ncompasso = 3\npagina = 2\nregiao = [0.1, 0.5, 0.8, 0.2]\n",
+        );
+        let mut e = estado(&d);
+        let mut s = som();
+        let ctx = Context::default();
+        quadro(&ctx, &mut e, &mut s, 1280.0, 800.0);
+        e.selecionar(0, &mut s);
+        quadro(&ctx, &mut e, &mut s, 1280.0, 800.0);
+        assert_eq!(e.total_de_paginas(), 2);
+        assert_eq!(e.pagina_do_pdf(), 0);
+        assert_eq!(e.aviso_do_pdf(), None, "nada apontado ainda");
+
+        apontar_compasso(&mut e, 2); // compasso 3 da partitura
+        assert!(e.sincronizar_pdf());
+        let dest = e.destino_do_pdf().expect("destino");
+        assert_eq!(e.pagina_do_pdf(), 1);
+        assert!(!dest.por_pagina && dest.regiao.is_some());
+        assert_eq!(e.aviso_do_pdf(), None, "com região, sem aviso de página");
+        let pedido = e.rolagem_pendente_do_pdf().expect("rolagem");
+        assert_eq!(pedido.pagina, 1);
+        assert!((pedido.y - 0.47).abs() < 1e-6);
+        // Desenhar aplica a rolagem (pedido consumido) e destaca a região sem pânico.
+        for _ in 0..3 {
+            quadro(&ctx, &mut e, &mut s, 1280.0, 800.0);
+        }
+        assert!(e.rolagem_pendente_do_pdf().is_none());
+        assert_eq!(e.tamanho_da_pagina(), Some([4, 6]));
+        // Sem mudar o foco, não refaz.
+        assert!(!e.sincronizar_pdf());
+    }
+
+    #[test]
+    fn sem_regiao_leva_a_pagina_inteira_e_informa_que_o_mapa_e_por_pagina() {
+        let d = dados_sinteticos();
+        com_duas_paginas(
+            &d,
+            "[[mapa_compassos]]\ncompasso = 1\npagina = 1\n\
+             [[mapa_compassos]]\ncompasso = 3\npagina = 2\n",
+        );
+        let mut e = estado(&d);
+        let mut s = som();
+        let ctx = Context::default();
+        quadro(&ctx, &mut e, &mut s, 1280.0, 800.0);
+        e.selecionar(0, &mut s);
+        apontar_compasso(&mut e, 4);
+        assert!(e.sincronizar_pdf());
+        let dest = e.destino_do_pdf().expect("destino");
+        assert_eq!(
+            (e.pagina_do_pdf(), dest.regiao, dest.por_pagina),
+            (1, None, true)
+        );
+        assert_eq!(
+            e.aviso_do_pdf(),
+            Some(crate::pdf_sincronizado::AVISO_POR_PAGINA)
+        );
+        assert_eq!(e.rolagem_pendente_do_pdf().map(|p| p.y), Some(0.0));
+        // Rolar o PDF indica o compasso: o painel está na página 2, a partir do compasso 3.
+        assert_eq!(e.compasso_indicado_pelo_pdf(), Some(2));
+        e.ir_para_pagina_do_pdf(0);
+        assert_eq!(e.compasso_indicado_pelo_pdf(), Some(0));
+        e.ir_para_pagina_do_pdf(9);
+        assert_eq!(e.pagina_do_pdf(), 0, "página fora do PDF é ignorada");
+    }
+
+    #[test]
+    fn sem_pdf_de_origem_a_oficina_funciona_e_mostra_aviso_discreto() {
+        let d = dados_sinteticos();
+        fs::write(
+            pasta_da_oficina(&d).join("partituras/cinco-notas.estado.toml"),
+            "id = \"cinco-notas\"\ntitulo = \"Cinco Notas\"\nestado = \"hipotese\"\n",
+        )
+        .expect("estado");
+        let mut e = estado(&d);
+        let mut s = som();
+        let ctx = Context::default();
+        quadro(&ctx, &mut e, &mut s, 1280.0, 800.0);
+        e.selecionar(0, &mut s);
+        for _ in 0..2 {
+            quadro(&ctx, &mut e, &mut s, 1280.0, 800.0);
+        }
+        assert!(e.partitura_pronta(), "a partitura abre sem PDF");
+        assert_eq!(e.total_de_paginas(), 0);
+        assert_eq!(
+            e.aviso_do_pdf(),
+            Some(crate::pdf_sincronizado::AVISO_SEM_PDF)
+        );
+        apontar_compasso(&mut e, 1);
+        e.sincronizar_pdf();
+        assert!(e.destino_do_pdf().is_none());
+        quadro(&ctx, &mut e, &mut s, 1280.0, 800.0);
+    }
+
+    #[test]
+    fn a_sincronia_nunca_altera_o_pdf_nem_as_paginas_nem_o_estado() {
+        let d = dados_sinteticos();
+        com_duas_paginas(&d, "[[mapa_compassos]]\ncompasso = 2\npagina = 2\n");
+        let antes = hashes(&d);
+        let mut e = estado(&d);
+        let mut s = som();
+        let ctx = Context::default();
+        quadro(&ctx, &mut e, &mut s, 1280.0, 800.0);
+        e.selecionar(0, &mut s);
+        for c in [0, 1, 5] {
+            apontar_compasso(&mut e, c);
+            for _ in 0..3 {
+                quadro(&ctx, &mut e, &mut s, 1280.0, 800.0);
+            }
+        }
+        e.ir_para_pagina_do_pdf(1);
+        quadro(&ctx, &mut e, &mut s, 1280.0, 800.0);
+        assert_eq!(hashes(&d), antes);
+    }
+
+    #[test]
+    fn pagina_acima_do_limite_vira_mensagem_e_nao_derruba_a_tela() {
+        let d = dados_sinteticos();
+        com_duas_paginas(&d, "");
+        // PNG com cabeçalho válido que declara 20000x20000 pixels (acima do limite).
+        let mut enorme = vec![0x89, b'P', b'N', b'G', 0x0d, 0x0a, 0x1a, 0x0a];
+        let mut ihdr = Vec::new();
+        ihdr.extend_from_slice(&20_000u32.to_be_bytes());
+        ihdr.extend_from_slice(&20_000u32.to_be_bytes());
+        ihdr.extend_from_slice(&[8, 2, 0, 0, 0]);
+        for (tipo, dados) in [(b"IHDR", ihdr), (b"IDAT", vec![0u8; 4])] {
+            enorme.extend_from_slice(&(dados.len() as u32).to_be_bytes());
+            let mut corpo = tipo.to_vec();
+            corpo.extend_from_slice(&dados);
+            enorme.extend_from_slice(&corpo);
+            enorme.extend_from_slice(&png_crc(&corpo).to_be_bytes());
+        }
+        fs::write(pasta_da_oficina(&d).join("paginas/p-1.png"), enorme).expect("png");
+        let mut e = estado(&d);
+        let mut s = som();
+        let ctx = Context::default();
+        quadro(&ctx, &mut e, &mut s, 1280.0, 800.0);
+        e.selecionar(0, &mut s);
+        for _ in 0..2 {
+            quadro(&ctx, &mut e, &mut s, 1280.0, 800.0);
+        }
+        assert!(
+            e.erro_da_pagina()
+                .is_some_and(|m| m.contains("grande demais")),
+            "{:?}",
+            e.erro_da_pagina()
+        );
+        assert!(e.partitura_pronta());
+        // A outra página continua acessível.
+        e.ir_para_pagina_do_pdf(1);
+        for _ in 0..2 {
+            quadro(&ctx, &mut e, &mut s, 1280.0, 800.0);
+        }
+        assert_eq!(e.tamanho_da_pagina(), Some([4, 6]));
+    }
+
+    /// CRC-32 dos PNG (só para montar o cabeçalho do teste).
+    fn png_crc(dados: &[u8]) -> u32 {
+        let mut c = 0xffff_ffffu32;
+        for b in dados {
+            c ^= u32::from(*b);
+            for _ in 0..8 {
+                c = if c & 1 == 1 {
+                    0xedb8_8320 ^ (c >> 1)
+                } else {
+                    c >> 1
+                };
+            }
+        }
+        !c
     }
 
     #[test]

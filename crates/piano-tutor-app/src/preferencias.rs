@@ -116,6 +116,8 @@ pub struct PreferenciasPartitura {
     pub papel_branco: bool,
     pub seguir: bool,
     pub zoom: f32,
+    /// Seleção de nota em alto contraste (ticket 12).
+    pub alto_contraste: bool,
 }
 
 impl Default for PreferenciasPartitura {
@@ -125,6 +127,7 @@ impl Default for PreferenciasPartitura {
             papel_branco: false,
             seguir: true,
             zoom: 1.0,
+            alto_contraste: false,
         }
     }
 }
@@ -136,6 +139,7 @@ impl PreferenciasPartitura {
         let _ = writeln!(s, "papel_branco={}", u8::from(self.papel_branco));
         let _ = writeln!(s, "seguir={}", u8::from(self.seguir));
         let _ = writeln!(s, "zoom={:.3}", self.zoom);
+        let _ = writeln!(s, "alto_contraste={}", u8::from(self.alto_contraste));
         s
     }
 
@@ -156,6 +160,7 @@ impl PreferenciasPartitura {
                 "rolagem" => p.modo = ModoRolagem::de_chave(v).unwrap_or(p.modo),
                 "papel_branco" => p.papel_branco = booleano(v, p.papel_branco),
                 "seguir" => p.seguir = booleano(v, p.seguir),
+                "alto_contraste" => p.alto_contraste = booleano(v, p.alto_contraste),
                 "zoom" => {
                     p.zoom = v
                         .parse::<f32>()
@@ -309,6 +314,7 @@ mod testes {
             papel_branco: true,
             seguir: false,
             zoom: 1.5,
+            alto_contraste: true,
         };
         assert_eq!(PreferenciasPartitura::de_texto(&p.para_texto()), p);
         // Arquivo antigo ou vazio: padrões; chaves desconhecidas e valores inválidos ignorados.
