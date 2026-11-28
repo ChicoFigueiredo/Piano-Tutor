@@ -56,6 +56,17 @@ impl Default for TabelaIds {
 
 const CABECALHO: &str = "piano-tutor-ids v1";
 
+/// Ids novos que uma única edição pode criar, no máximo (folga larga: uma edição mexe num
+/// compasso). Ver [`TabelaIds::primeiro_livre`].
+const RESERVA_POR_EDICAO: u64 = 1 << 20;
+
+/// Maior valor aceito para o contador `proximo` (2^62). Um contador legítimo é do tamanho do
+/// número de notas já criadas, muito abaixo disto; o teto deixa metade do `u64` de folga, de modo
+/// que somar os ids novos de uma edição nunca estoura, e um arquivo lateral hostil
+/// (`proximo=18446744073709551615`) é recusado como tabela inválida em vez de derrubar o programa
+/// (revisão independente da E01, achado R4).
+pub const TETO_DO_CONTADOR_DE_IDS: u64 = 1 << 62;
+
 impl TabelaIds {
     pub fn proximo(&self) -> u64 {
         self.proximo
@@ -74,10 +85,31 @@ impl TabelaIds {
         self.serie
     }
 
-    pub(crate) fn alocar(&mut self) -> IdNota {
+    /// Reserva o próximo id. Aritmética verificada: contador no teto vira erro, nunca pânico.
+    pub(crate) fn alocar(&mut self) -> Result<IdNota, ErroDocumento> {
         let id = IdNota(self.proximo);
-        self.proximo += 1;
-        id
+        self.proximo = self.proximo_apos(1)?;
+        Ok(id)
+    }
+
+    /// O contador depois de reservar `quantos` ids, ou `Overflow` se passaria do teto.
+    pub(crate) fn proximo_apos(&self, quantos: u64) -> Result<u64, ErroDocumento> {
+        self.proximo
+            .checked_add(quantos)
+            .filter(|p| *p <= TETO_DO_CONTADOR_DE_IDS)
+            .ok_or_else(|| {
+                ErroDocumento::Overflow(format!(
+                    "contador de identidades de nota no limite ({})",
+                    self.proximo
+                ))
+            })
+    }
+
+    /// Primeiro id livre para uma edição que cria poucas notas (`RESERVA_POR_EDICAO`), conferindo
+    /// antes que o contador comporta a reserva (as edições somam `novos` ao contador depois).
+    pub(crate) fn primeiro_livre(&self) -> Result<u64, ErroDocumento> {
+        self.proximo_apos(RESERVA_POR_EDICAO)?;
+        Ok(self.proximo)
     }
 
     /// Arquivo lateral em texto simples (uma linha por nota).
@@ -110,9 +142,13 @@ impl TabelaIds {
         }
         let mut t = Self::default();
         let mut tem_proximo = false;
+        let mut usados: BTreeSet<u64> = BTreeSet::new();
         for l in linhas {
             if let Some(v) = l.strip_prefix("proximo=") {
                 t.proximo = v.parse().map_err(|_| invalida("proximo"))?;
+                if t.proximo > TETO_DO_CONTADOR_DE_IDS {
+                    return Err(invalida("proximo acima do teto do contador"));
+                }
                 tem_proximo = true;
             } else if let Some(v) = l.strip_prefix("serie=") {
                 t.serie = Some(u64::from_str_radix(v, 16).map_err(|_| invalida("serie"))?);
@@ -137,14 +173,21 @@ impl TabelaIds {
                     _ => return Err(invalida("linha")),
                 };
                 let id: u64 = id.parse().map_err(|_| invalida("id"))?;
-                if id >= t.proximo && tem_proximo {
-                    return Err(invalida("id maior ou igual ao contador"));
+                // Dois ids iguais colapsariam em silêncio (só o último seria endereçável).
+                if !usados.insert(id) {
+                    return Err(invalida("id repetido"));
                 }
-                t.mapa.insert(chave, IdNota(id));
+                if t.mapa.insert(chave, IdNota(id)).is_some() {
+                    return Err(invalida("chave repetida"));
+                }
             }
         }
         if !tem_proximo {
             return Err(invalida("sem contador"));
+        }
+        // Valem todos os ids contra o contador final, em qualquer ordem das linhas.
+        if usados.last().is_some_and(|maior| *maior >= t.proximo) {
+            return Err(invalida("id maior ou igual ao contador"));
         }
         Ok(t)
     }

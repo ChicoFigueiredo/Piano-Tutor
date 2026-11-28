@@ -164,7 +164,24 @@ fn erro_de_disco(caminho: &Path, e: &std::io::Error) -> ErroRevisao {
 
 // --- Gravação atômica e edição com toml_edit ------------------------------------------------
 
-/// Grava `texto` em `caminho` por arquivo temporário vizinho e `rename`.
+/// Faz `fsync` do diretório `dir`, para o `rename` de dentro dele sobreviver a uma queda de
+/// energia (sem isto o diretório pode voltar ao estado anterior: íntegro, mas sem a última
+/// gravação). No Unix abre o diretório e sincroniza; onde não há essa operação (Windows) é um
+/// no-op que devolve `Ok`. Revisão independente da E01, achado R8.
+pub fn sincronizar_diretorio(dir: &Path) -> std::io::Result<()> {
+    #[cfg(unix)]
+    {
+        fs::File::open(dir)?.sync_all()
+    }
+    #[cfg(not(unix))]
+    {
+        let _ = dir;
+        Ok(())
+    }
+}
+
+/// Grava `texto` em `caminho` por arquivo temporário vizinho e `rename`, e sincroniza o diretório
+/// depois do `rename` (durabilidade; ver [`sincronizar_diretorio`]).
 pub fn gravar_atomico(caminho: &Path, texto: &str) -> Result<(), ErroRevisao> {
     let nome = caminho
         .file_name()
@@ -180,6 +197,15 @@ pub fn gravar_atomico(caminho: &Path, texto: &str) -> Result<(), ErroRevisao> {
     if let Err(e) = r {
         let _ = fs::remove_file(&tmp);
         return Err(erro_de_disco(caminho, &e));
+    }
+    // O arquivo já está no lugar: falhar o `fsync` do diretório só tira a garantia contra queda de
+    // energia, não desfaz a gravação, então não vira erro (nem avisa "falha" de algo que valeu).
+    if let Some(dir) = caminho.parent() {
+        let _ = sincronizar_diretorio(if dir.as_os_str().is_empty() {
+            Path::new(".")
+        } else {
+            dir
+        });
     }
     Ok(())
 }
@@ -1041,6 +1067,37 @@ impl Lancador for LancadorFalso {
 mod testes {
     use super::*;
     use std::fs;
+
+    // --- R8 (revisão independente da E01): durabilidade do rename -----------------------------
+
+    #[test]
+    fn r8_sincronizar_diretorio_abre_e_sincroniza_o_diretorio_no_unix() {
+        let d = tempfile::tempdir().expect("pasta");
+        sincronizar_diretorio(d.path()).expect("sincroniza um diretório que existe");
+        #[cfg(unix)]
+        {
+            let falta = d.path().join("nao-existe");
+            assert!(
+                sincronizar_diretorio(&falta).is_err(),
+                "no Unix o diretório é de fato aberto (fsync de verdade, não um no-op)"
+            );
+        }
+    }
+
+    #[test]
+    fn r8_gravar_atomico_troca_o_arquivo_inteiro_e_nao_deixa_temporario() {
+        let d = tempfile::tempdir().expect("pasta");
+        let alvo = d.path().join("indice.toml");
+        gravar_atomico(&alvo, "um\n").expect("grava");
+        gravar_atomico(&alvo, "dois\n").expect("regrava");
+        assert_eq!(fs::read_to_string(&alvo).expect("lê"), "dois\n");
+        let nomes: Vec<String> = fs::read_dir(d.path())
+            .expect("lê a pasta")
+            .filter_map(Result::ok)
+            .map(|e| e.file_name().to_string_lossy().into_owned())
+            .collect();
+        assert_eq!(nomes, vec!["indice.toml".to_owned()]);
+    }
 
     const ESTADO_TOML: &str = r#"id = "cinco-notas"
 aula = 14

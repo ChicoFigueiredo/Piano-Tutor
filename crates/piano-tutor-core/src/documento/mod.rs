@@ -47,7 +47,7 @@ pub use exibicao::{
 pub use exportar::{Impressao, Patch, Patches, impressao_de};
 pub use grafia::{nome_da_altura, nome_do_midi};
 pub use historico::{LIMITE_PADRAO_DO_HISTORICO, ResultadoDoHistorico};
-pub use ids::{ChaveNota, TabelaIds};
+pub use ids::{ChaveNota, TETO_DO_CONTADOR_DE_IDS, TabelaIds};
 pub use servico::{DocumentoAberto, ErroServico, Formato, IdsPorNota};
 
 use crate::partitura::Fracao;

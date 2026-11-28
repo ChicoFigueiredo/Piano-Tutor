@@ -12,12 +12,14 @@
 
 **Blocked by:** 14 (Selecionar nota e mudar a altura com seta (semitom, oitava, escala))
 
-**Status:** em andamento — módulo pronto e revisado pelo supervisor; critérios de tela abertos até a UI ser ligada (após tickets 15 e 19) (módulo `versoes.rs`; falta ligar a UI: botão "Salvar como Versão", campo de nota e lista na tela da Oficina/Partitura)
+**Status:** feito, aguarda revisão — critérios reabertos pela revisão independente (R2, R3) corrigidos e fechados com teste; falta a re-revisão independente do gate 27 (item 3) e o aceite humano. NÃO VERIFICADO em janela real.
 
 - [x] A8: dada uma Hipótese aberta, salvar duas correções cria duas Versões encadeadas (pai→filho) e o hash da Hipótese permanece idêntico antes e depois (teste).
 - [x] Salvar nunca sobrescreve arquivo de Versão existente; salvar sem mudanças não cria Versão vazia (ou pede confirmação, decisão registrada). (decisão: sem mudança = não cria Versão, devolve `SemMudancas`)
 - [x] Cada Versão registra hash de conteúdo, hash do pai, autor, data, nota de motivo e estado de conteúdo (nova Versão de edição nasce Em revisão); estados reaproveitam a máquina existente.
-- [ ] A lista de Versões mostra autor, data, nota e estado, e abrir uma Versão antiga a carrega em modo leitura ou como novo ponto de partida (decisão registrada). (modelo `linhas()`; decisão: abrir é somente leitura, ponto de partida = salvar com `pai` = hash; UI pendente)
+- [x] A lista de Versões mostra autor, data, nota e estado, e abrir uma Versão antiga a carrega em modo leitura ou como novo ponto de partida (decisão registrada). (modelo `linhas()`; "Abrir" = leitura; "Continuar a partir desta Versão" = a Versão vira o documento em edição e a próxima Versão salva é filha dela: `tela_partitura::testes_continuar` (7 testes: continuar de v1, da Hipótese, de uma Versão aberta em leitura, recusa com edição não salva, com rascunho pendente, Versão inexistente, quadro egui) e `testes_revisao::r3_*`)
+- [x] Exportar nunca sobrescreve a Hipótese, o arquivo aberto, objetos de Versão nem o `.ids` lateral deles (comparação por caminho canonizado e, no Unix, por inode), e grava atômico (tmp+rename; sem "Sobrescrever", tmp+`hard_link`). (R2: `tela_partitura::testes_exportar` 7 testes; `documento_partitura::conferir_destino_de_exportacao`)
+- [x] O `pai` de uma Versão salva é a Versão de onde o documento partiu (Hipótese reaberta = Hipótese; continuar de v1 = v1; mesma sessão = a última salva), nunca a ponta por default; cenário de duas sessões coberto. (R3: `testes_revisao::r3_duas_sessoes_*`, `Versoes::salvar_a_partir_de`)
 - [x] Gravação atômica (arquivo temporário e renomear); queda no meio da gravação deixa a Versão anterior íntegra (teste de interrupção simulada).
 - [x] O arquivo original (PDF e MusicXML de origem) é verificado por hash após qualquer ação da Oficina. (`verificar_originais()`; a tela deve chamá-lo após cada ação)
 - [x] Material comprado nunca é copiado para fora da pasta de dados do usuário; o formato de armazenamento está documentado para a migração futura ao Acervo. (formato documentado no cabeçalho de `versoes.rs`)
@@ -31,3 +33,9 @@
 
 
 **Supervisor (2026-11-28, revisão independente):** reabertos. R3: salvar passa sempre `pai = None` e não há como partir de uma Versão antiga pela tela. R2: Exportar/Sobrescrever pode reescrever a Hipótese. Ver docs/evolucao-musical/e01/REVISAO-CODIGO.md.
+
+
+**Correção da revisão independente (2026-11-28):** R2 e R3 corrigidos, cada um com o teste que reproduz escrito antes (red registrado: 6 de 7 testes de `testes_exportar` e 4 dos 5 de `testes_revisao` falhavam; depois do código, verdes).
+- R3: `salvar_versao` passa `d.base_de_ids()` a `Versoes::salvar_a_partir_de` (novo; `Pai::Partida`): a Versão de partida se está no índice, senão a Hipótese; `salvar(None)`/`salvar_com_ids(None)` seguem como "ponta" para quem chama a API antiga. A tela ganhou "Continuar a partir desta Versão" na lista (desativado com dica se há edição não salva ou rascunho pendente, para nada se perder em silêncio; edição não salva = salvar como Versão ou desfazer antes). Decisão registrada: abrir pela lista continua somente leitura; continuar é uma ação à parte.
+- R2: a exportação recusa (com mensagem) destino igual ao arquivo aberto, à Hipótese do item vinculado, à Hipótese de qualquer item da Oficina (`partituras/<id>.musicxml` com `<id>.estado.toml`) ou a qualquer arquivo dentro de `<id>.versoes/`, e o `.ids` lateral de cada um; `gravar` confere o texto antes de gravar e grava por `gravar_atomico` (com Sobrescrever) ou tmp+`hard_link` (sem), e relê para comparar.
+- Aceite dos critérios acima é de testes sem janela; Windows e macOS NÃO VERIFICADOS (a comparação por inode é só Unix; no Windows vale o caminho canonizado).

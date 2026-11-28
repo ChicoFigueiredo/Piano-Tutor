@@ -534,10 +534,10 @@ fn planejar_insercao(
 
     // --- Edita uma cópia do compasso ---------------------------------------------------------
     let mut comp = a.comp0.clone();
-    let primeiro_novo = doc.ids.proximo;
+    let primeiro_novo = doc.ids.primeiro_livre()?;
     let mut novos: u64 = 0;
     let mut novo_id = || {
-        let id = IdNota(primeiro_novo + novos);
+        let id = IdNota(primeiro_novo.saturating_add(novos));
         novos += 1;
         id
     };

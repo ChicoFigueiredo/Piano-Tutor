@@ -5,6 +5,7 @@
 //! documento`); aqui ficam apenas a leitura e a gravação de arquivos, com os limites de tamanho.
 
 use crate::ids_lateral::{self, IdsGravados, SituacaoDosIds};
+use crate::revisao::{gravar_atomico, sincronizar_diretorio};
 use crate::selecao_partitura::IndiceLeitura;
 use crate::versoes::{Hash, hash_do_conteudo};
 use piano_tutor_core::documento::{
@@ -233,6 +234,25 @@ impl DocumentoPartitura {
         Ok(d)
     }
 
+    /// Abre o conteúdo de uma Versão como documento **editável** ("Continuar a partir desta
+    /// Versão"). As identidades guardadas com a Versão (`ids`) são usadas se servem (senão o texto
+    /// abre sem elas, como sempre, sem erro fatal). A base do documento é a própria Versão: a
+    /// próxima Versão salva é filha dela.
+    pub fn de_versao(
+        nome: String,
+        texto: &str,
+        ids: Option<IdsGravados>,
+        hash: &str,
+    ) -> Result<Self, ErroServico> {
+        let (aberto, situacao, _) = ids_lateral::abrir_tolerante(ids.map(Ok), |t| {
+            DocumentoAberto::abrir_texto_com_ids(&nome, texto, t)
+        })?;
+        let mut d = Self::de_aberto(nome, aberto);
+        d.ids_lateral = situacao;
+        d.base_de_ids = Some(hash.to_owned());
+        Ok(d)
+    }
+
     /// O que houve com o arquivo lateral de identidades ao abrir (ticket 17b).
     pub fn situacao_dos_ids(&self) -> &SituacaoDosIds {
         &self.ids_lateral
@@ -364,30 +384,36 @@ impl DocumentoPartitura {
     }
 
     /// Grava o MusicXML exportado pelo serviço em `destino` e confere relendo o arquivo.
+    ///
+    /// A gravação é atômica: o texto vai a um temporário vizinho e entra no lugar por `rename`
+    /// (com `Sobrescrever`) ou por `hard_link`, que falha se o destino já existe (sem
+    /// `Sobrescrever`). Uma queda no meio deixa o arquivo anterior inteiro, nunca pela metade. O
+    /// texto é conferido contra o documento **antes** de gravar, então um export que não confere
+    /// não troca arquivo nenhum. Quem chama confere o destino com
+    /// [`conferir_destino_de_exportacao`] (este método não sabe o que é Hipótese).
     pub fn gravar(&self, destino: &Path, sobrescrever: bool) -> Result<(), String> {
         let texto = self.aberto.exportar().map_err(|e| e.to_string())?;
-        let mut aberto = std::fs::OpenOptions::new();
-        aberto.write(true);
+        self.aberto
+            .conferir_exportacao(&texto)
+            .map_err(|e| e.to_string())?;
         if sobrescrever {
-            aberto.create(true).truncate(true);
+            gravar_atomico(destino, &texto).map_err(|e| e.to_string())?;
         } else {
-            aberto.create_new(true);
+            gravar_sem_substituir(destino, &texto).map_err(|e| {
+                format!(
+                    "{}: {e} (marque \"Sobrescrever\" para trocar um arquivo)",
+                    destino.display()
+                )
+            })?;
         }
-        use std::io::Write;
-        let mut f = aberto.open(destino).map_err(|e| {
-            format!(
-                "{}: {e} (marque \"Sobrescrever\" para trocar um arquivo)",
-                destino.display()
-            )
-        })?;
-        f.write_all(texto.as_bytes())
-            .map_err(|e| format!("{}: {e}", destino.display()))?;
-        drop(f);
         let lido =
             std::fs::read_to_string(destino).map_err(|e| format!("{}: {e}", destino.display()))?;
-        self.aberto
-            .conferir_exportacao(&lido)
-            .map_err(|e| e.to_string())?;
+        if lido != texto {
+            return Err(format!(
+                "{}: o arquivo gravado não confere com o exportado",
+                destino.display()
+            ));
+        }
         // O arquivo lateral de identidades vai ao lado do texto gravado (ticket 17b). Falhar aqui
         // não desfaz a exportação, mas também não passa em silêncio.
         let lateral = ids_lateral::caminho_lateral(destino);
@@ -399,6 +425,140 @@ impl DocumentoPartitura {
             )
         })
     }
+}
+
+/// Cria `destino` com `texto` por temporário vizinho e `hard_link` (que falha se o destino já
+/// existe): nunca substitui um arquivo e nunca deixa o destino pela metade.
+fn gravar_sem_substituir(destino: &Path, texto: &str) -> std::io::Result<()> {
+    use std::io::Write as _;
+    let nome = destino
+        .file_name()
+        .map(|n| n.to_string_lossy().into_owned())
+        .unwrap_or_default();
+    let tmp = destino.with_file_name(format!(".{nome}.{}.tmp", std::process::id()));
+    let r = (|| {
+        let mut f = std::fs::File::create(&tmp)?;
+        f.write_all(texto.as_bytes())?;
+        f.sync_all()?;
+        match std::fs::hard_link(&tmp, destino) {
+            Ok(()) => Ok(()),
+            // Sem suporte a link físico: `rename` só se o destino ainda não existe.
+            Err(e) if e.kind() != std::io::ErrorKind::AlreadyExists && !destino.exists() => {
+                std::fs::rename(&tmp, destino)
+            }
+            Err(e) => Err(e),
+        }
+    })();
+    let _ = std::fs::remove_file(&tmp);
+    if r.is_ok()
+        && let Some(dir) = destino.parent()
+    {
+        let _ = sincronizar_diretorio(if dir.as_os_str().is_empty() {
+            Path::new(".")
+        } else {
+            dir
+        });
+    }
+    r
+}
+
+/// Caminho canônico mesmo que o arquivo ainda não exista (canoniza a pasta e junta o nome).
+fn canonico(p: &Path) -> PathBuf {
+    if let Ok(c) = p.canonicalize() {
+        return c;
+    }
+    let pai = p
+        .parent()
+        .filter(|x| !x.as_os_str().is_empty())
+        .unwrap_or_else(|| Path::new("."));
+    match (pai.canonicalize(), p.file_name()) {
+        (Ok(c), Some(n)) => c.join(n),
+        _ => p.to_path_buf(),
+    }
+}
+
+/// `a` e `b` são o mesmo arquivo? Pelo caminho canônico (resolve `..`, `.` e atalhos) e, no Unix,
+/// também por dispositivo e inode (pega link físico e diferença de maiúsculas em disco que não
+/// diferencia).
+fn mesmo_arquivo(a: &Path, b: &Path) -> bool {
+    if canonico(a) == canonico(b) {
+        return true;
+    }
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::MetadataExt as _;
+        if let (Ok(ma), Ok(mb)) = (std::fs::metadata(a), std::fs::metadata(b)) {
+            return ma.dev() == mb.dev() && ma.ino() == mb.ino();
+        }
+    }
+    false
+}
+
+/// `<stem>.musicxml` numa pasta `partituras/` com `<stem>.estado.toml` ao lado é a Hipótese de um
+/// item da Oficina (é como a Revisão e a tela Partitura reconhecem o item).
+fn e_hipotese_da_oficina(arquivo: &Path) -> bool {
+    let Some(pasta) = arquivo.parent() else {
+        return false;
+    };
+    if !pasta.file_name().is_some_and(|n| n == "partituras") {
+        return false;
+    }
+    let Some(nome) = arquivo.file_name().and_then(|n| n.to_str()) else {
+        return false;
+    };
+    // O `.ids` lateral da Hipótese conta como a própria Hipótese.
+    let nome = nome
+        .strip_suffix(&format!(".{}", ids_lateral::EXTENSAO))
+        .unwrap_or(nome);
+    nome.strip_suffix(".musicxml")
+        .filter(|id| !id.is_empty())
+        .is_some_and(|id| pasta.join(format!("{id}.estado.toml")).is_file())
+}
+
+/// O destino de uma exportação é seguro? Recusa, com a razão em português, gravar sobre:
+/// - um dos `protegidos` (o arquivo aberto, a Hipótese da partitura vinculada), ou o `.ids`
+///   lateral deles;
+/// - a Hipótese de qualquer item da Oficina (`partituras/<id>.musicxml` com `<id>.estado.toml`);
+/// - qualquer arquivo dentro de uma pasta de Versões (`<id>.versoes/`): objetos, `.ids`, índice.
+///
+/// As comparações são por caminho canonizado (resolve `..`, `.` e atalhos) e, no Unix, por
+/// inode (link físico). Vale também para o `.ids` lateral que a exportação grava ao lado do
+/// destino. A Hipótese e o arquivo original nunca mudam por uma exportação (A8, ticket 21;
+/// revisão independente da E01, achado R2).
+pub fn conferir_destino_de_exportacao(
+    destino: &Path,
+    protegidos: &[(&Path, &str)],
+) -> Result<(), String> {
+    let recusa = |o_que: &str| {
+        Err(format!(
+            "o destino é {o_que}: a exportação nunca o sobrescreve (a Hipótese e os originais \
+             não são alterados). Escolha outro arquivo."
+        ))
+    };
+    let lateral = ids_lateral::caminho_lateral(destino);
+    for candidato in [destino, lateral.as_path()] {
+        for (protegido, o_que) in protegidos {
+            let lateral_do_protegido = ids_lateral::caminho_lateral(protegido);
+            if mesmo_arquivo(candidato, protegido)
+                || mesmo_arquivo(candidato, &lateral_do_protegido)
+            {
+                return recusa(o_que);
+            }
+        }
+        let c = canonico(candidato);
+        if e_hipotese_da_oficina(&c) {
+            return recusa("a Hipótese de uma partitura da Oficina");
+        }
+        let em_pasta_de_versoes = c.ancestors().skip(1).any(|a| {
+            a.file_name()
+                .and_then(|n| n.to_str())
+                .is_some_and(|n| n.ends_with(".versoes"))
+        });
+        if em_pasta_de_versoes {
+            return recusa("um arquivo da pasta de Versões da Oficina");
+        }
+    }
+    Ok(())
 }
 
 #[cfg(test)]
@@ -587,5 +747,33 @@ mod testes {
         let falso = dir.join("falso.mxl");
         std::fs::write(&falso, "não é zip").expect("grava");
         assert!(DocumentoPartitura::de_arquivo(&falso, "?").is_err());
+    }
+
+    #[test]
+    fn r4_ids_lateral_hostil_e_ignorado_sem_panico_e_o_texto_abre() {
+        let dir = pasta("ids-hostil");
+        let xml = dir.join("hostil.musicxml");
+        std::fs::write(&xml, EMBUTIDAS[3].1).expect("grava");
+        let lateral = ids_lateral::caminho_lateral(&xml);
+        for hostil in [
+            "piano-tutor-ids v1\nproximo=18446744073709551615\n",
+            "piano-tutor-ids v1\nproximo=10\npos\tP1\t0\t0\t1\npos\tP1\t0\t1\t1\n",
+            "piano-tutor-ids v1\nxml\ta\t7\nproximo=2\n",
+        ] {
+            std::fs::write(&lateral, hostil).expect("grava");
+            let d = DocumentoPartitura::de_arquivo(&xml, "?").expect("abre sem a tabela");
+            assert!(
+                matches!(d.situacao_dos_ids(), SituacaoDosIds::Recusado(_)),
+                "{:?}",
+                d.situacao_dos_ids()
+            );
+            let sem =
+                DocumentoPartitura::de_texto("x".into(), EMBUTIDAS[3].1.to_owned()).expect("abre");
+            assert_eq!(
+                d.partitura(),
+                sem.partitura(),
+                "o mesmo texto, as mesmas notas"
+            );
+        }
     }
 }
