@@ -54,7 +54,10 @@ impl EstadoPartitura {
                 if r.alterou {
                     // Ao retirar a nota selecionada, a seleção passa para outra do acorde (o
                     // inverso diz qual); senão, `reancorar` a solta com o aviso de sempre.
-                    if let ComandoDeEdicao::AdicionarAltura { nota: outra, .. } = &r.inverso
+                    // O inverso é `AdicionarAltura` ou, com altura repetida (uníssono, enarmônico),
+                    // `RestaurarAltura` (T6 da terceira revisão).
+                    if let ComandoDeEdicao::AdicionarAltura { nota: outra, .. }
+                    | ComandoDeEdicao::RestaurarAltura { nota: outra, .. } = &r.inverso
                         && matches!(r.aplicado, ComandoDeEdicao::RetirarAltura { .. })
                     {
                         self.selecao.selecionar(&d.leitura, *outra);

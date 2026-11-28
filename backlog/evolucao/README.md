@@ -173,6 +173,21 @@ Histórias 1–32 da E01: 1–2 (10, 20); 3–4, 28 (12); 5–7 (14); 8–9 (16)
 - Tickets 01 e 04 bloqueiam a E05 (e o 01 também E06/E07) e podem correr desde já em paralelo à E01.
 - Numeração de ADR: 0015 e 0016 existem; os ADRs novos dos spikes 08 e 09 tomam a próxima numeração livre (0017 em diante).
 
+## Dívida registrada da terceira revisão da E01 (2026-11-28)
+
+Achados P3 de `docs/evolucao-musical/e01/REVISAO-CODIGO.md` ("Terceira revisão") **não corrigidos** na E01; cada um fica com o épico que expõe a superfície onde ele aparece. Os demais da revisão (T1, T2, T3, T6, T7) foram corrigidos.
+
+**E06 / MCP** (só alcançáveis por API; resolver antes de expor os comandos):
+
+- **T4.** `RestaurarAltura` é `pub` e contorna a recusa de altura repetida de `AdicionarAltura` (acorde de uníssono ilimitado por API; reversível). Restringir a `pub(crate)` ou recusar fora do contexto de desfazer.
+- **T5.** `DefinirAltura` aceita acidente incoerente com a altura (Fá natural com `sharp`; Fá♯ com `quarter-sharp`/`other`); `AdicionarAltura` e `InserirNota` conferem, este não. Conferir `alter_do_acidente` com a altura.
+- **T10.** (a) `<accidental ação="1">` (atributo de nome XML não ASCII) faz `MudarAltura` e o inverso serem recusados; (b) voz/pauta inválida sai como «altura inválida» (`ErroDocumento::AlturaInvalida` reaproveitado em `validar_rotulo`); (c) voz/pauta com espaço ou letra acentuada são recusadas, embora `voice` seja `xs:string` no MusicXML; (d) `<accidental/>` auto-fechado: `MudarAltura` funciona, mas o inverso não devolve o elemento (o desfazer por snapshot é exato).
+
+**E03 / Editor completo** (gravação e leitura de arquivos pela interface):
+
+- **T8.** O `.ids` lateral é gravado com `gravar_atomico`, sem `conferir_destino_gravavel`: a política "não contorna permissão nem troca atalho" do destino da exportação vale só para o arquivo principal (o `.ids` é regenerável).
+- **T9.** `pdf_lateral.rs`: o erro de leitura da página PNG fica em cache por caminho; a página que aparece depois da abertura não é relida (só reabrir a partitura). Aceitável se o PNG nunca é produzido depois da abertura; reavaliar se a E03 gerar páginas sob demanda.
+
 ## Respostas do supervisor às dúvidas do to-tickets (2026-11-27)
 
 1. Os spikes 08 e 09 geram ADRs novas (0017 em diante); a ADR-0015 só as referencia.

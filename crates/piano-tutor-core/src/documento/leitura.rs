@@ -3,6 +3,7 @@
 
 use super::erro::ErroDocumento;
 use super::exportar::impressao_de;
+use super::grafia::PedacosDoArquivo;
 use super::ids::{ChaveNota, TabelaIds};
 use super::texto::{Abertura, No, Peca, Texto, fim_da_abertura};
 use super::{Altura, Compasso, Documento, IdNota, Nota, Parte};
@@ -71,6 +72,45 @@ fn decompor(node: Node<'_, '_>, base: &str, prof: usize) -> Result<No, ErroDocum
         nome: n.to_owned(),
         pecas,
     })
+}
+
+/// Colhe os pedaços de `<accidental>` dos **elementos que o parser leu** (T1 da terceira
+/// revisão): comentário, CDATA e instrução de processamento não são elementos e nunca entram.
+/// Prefixo de namespace só vale se declarado na raiz (escopo de qualquer nota) ou na própria marca.
+fn colher_pedacos(doc: &roxmltree::Document<'_>, base: &str) -> PedacosDoArquivo {
+    const ABRE: &str = "<accidental";
+    const BRANCOS: [char; 4] = [' ', '\t', '\r', '\n'];
+    let mut pedacos = PedacosDoArquivo::default();
+    let escopo: Vec<&str> = doc
+        .root_element()
+        .namespaces()
+        .filter_map(|n| n.name())
+        .collect();
+    for el in doc
+        .descendants()
+        .filter(|n| n.is_element() && nome(*n) == "accidental")
+    {
+        let Some(raw) = base.get(el.range()) else {
+            continue;
+        };
+        let Some(depois) = raw.strip_prefix(ABRE) else {
+            continue; // prefixada (`<m:accidental>`) ou vinda de entidade: não são bytes do arquivo
+        };
+        if !depois.starts_with([' ', '\t', '\r', '\n', '>']) {
+            continue;
+        }
+        let Some(Abertura::Aberta(fim)) = fim_da_abertura(raw, ABRE.len()) else {
+            continue;
+        };
+        let Some(c) = raw.rfind("</accidental") else {
+            continue;
+        };
+        if c < fim || raw[c + "</accidental".len()..].trim_matches(BRANCOS) != ">" {
+            continue;
+        }
+        pedacos.registrar(&raw[fim..c], &raw[ABRE.len()..fim - 1], &escopo);
+    }
+    pedacos
 }
 
 fn ler_altura(pitch: Node<'_, '_>) -> Option<Altura> {
@@ -251,11 +291,13 @@ impl Documento {
                 declaracoes_divisions: declaracoes,
             });
         }
+        let pedacos = colher_pedacos(&doc, texto);
         Ok(Self {
             original: texto.to_owned(),
             partes,
             indice,
             ids: tabela,
+            pedacos,
         })
     }
 }

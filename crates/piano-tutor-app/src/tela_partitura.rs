@@ -18,6 +18,8 @@ mod testes_exportar;
 mod testes_revisao;
 #[cfg(test)]
 mod testes_revisao2;
+#[cfg(test)]
+mod testes_revisao3;
 mod versoes_base;
 use crate::autosave::{Autosave, ConfigAutosave, ErroAutosave, Rascunho};
 use crate::cursor_entrada::{
@@ -1454,7 +1456,14 @@ impl EstadoPartitura {
     /// nunca vira documento "(leitura)" nem fica guardado para ser descartado por "Voltar à
     /// edição". Se a recuperação falha, nada muda além do aviso: o rascunho segue pendente, a
     /// edição segue bloqueada e o usuário decide (descartar ou tentar de novo; achado N2).
+    ///
+    /// Só age com um rascunho **pendente** (T7b da terceira revisão): chamada de novo depois de
+    /// uma recuperação, ou sem rascunho, não faz nada. Do contrário releria o rascunho antigo do
+    /// disco e substituiria as edições feitas depois.
     pub fn recuperar_rascunho(&mut self) {
+        if self.rascunho_pendente.is_none() {
+            return;
+        }
         let nome = self.nome().trim_end_matches(" (leitura)").to_owned();
         let Some(a) = self.autosave.as_mut() else {
             return;
@@ -1512,6 +1521,9 @@ impl EstadoPartitura {
         self.recuperado = false;
         self.rascunho_escrito = false;
         self.ultimo_hash_rascunho = None;
+        // O aviso de uma recuperação que falhou ("O rascunho continua guardado...") ficou falso
+        // (T7a da terceira revisão).
+        self.aviso_versoes = None;
     }
 
     /// Há gravação do rascunho em andamento fora da thread da interface?

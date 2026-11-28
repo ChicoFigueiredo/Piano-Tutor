@@ -22,6 +22,7 @@
 
 use super::Altura;
 use crate::partitura::{self, Fracao};
+use std::collections::HashSet;
 
 const LETRAS: [char; 7] = ['C', 'D', 'E', 'F', 'G', 'A', 'B'];
 const SEMITONS: [i32; 7] = [0, 2, 4, 5, 7, 9, 11];
@@ -173,7 +174,38 @@ fn espaco_xml(b: u8) -> bool {
     matches!(b, b' ' | b'\t' | b'\r' | b'\n')
 }
 
-/// Referências de entidade bem formadas: as cinco predefinidas e as numéricas.
+/// Produção `Char` do XML 1.0: o que pode aparecer num documento (T2 da terceira revisão).
+/// Recusa controles (menos tab, LF e CR), `U+FFFE` e `U+FFFF`; os substitutos (`U+D800` a
+/// `U+DFFF`) e o que passa de `U+10FFFF` nem são `char` em Rust.
+pub(crate) fn caractere_xml(c: char) -> bool {
+    matches!(
+        c,
+        '\t' | '\n' | '\r' | '\u{20}'..='\u{D7FF}' | '\u{E000}'..='\u{FFFD}' | '\u{10000}'..='\u{10FFFF}'
+    )
+}
+
+/// A referência numérica (`&#...;` ou `&#x...;`, sem o `&` e o `;`) nomeia um `Char` do XML?
+fn referencia_numerica_valida(nome: &str) -> bool {
+    let valor = match nome.strip_prefix("#x") {
+        Some(h) => {
+            if h.is_empty() || !h.bytes().all(|c| c.is_ascii_hexdigit()) {
+                return false;
+            }
+            u32::from_str_radix(h, 16)
+        }
+        None => match nome.strip_prefix('#') {
+            Some(d) if !d.is_empty() && d.bytes().all(|c| c.is_ascii_digit()) => d.parse::<u32>(),
+            _ => return false,
+        },
+    };
+    valor
+        .ok()
+        .and_then(char::from_u32)
+        .is_some_and(caractere_xml)
+}
+
+/// Referências de entidade bem formadas: as cinco predefinidas e as numéricas que nomeiam um
+/// caractere válido do XML 1.0 (`&#0;`, `&#xFFFE;`, substitutos e `> U+10FFFF` são recusados).
 fn entidades_validas(valor: &str) -> bool {
     let mut resto = valor;
     while let Some(i) = resto.find('&') {
@@ -183,12 +215,7 @@ fn entidades_validas(valor: &str) -> bool {
         };
         let nome = &depois[..fim];
         let ok = matches!(nome, "amp" | "lt" | "gt" | "quot" | "apos")
-            || nome
-                .strip_prefix("#x")
-                .is_some_and(|h| !h.is_empty() && h.bytes().all(|c| c.is_ascii_hexdigit()))
-            || nome
-                .strip_prefix('#')
-                .is_some_and(|d| !d.is_empty() && d.bytes().all(|c| c.is_ascii_digit()));
+            || referencia_numerica_valida(nome);
         if !ok {
             return false;
         }
@@ -253,45 +280,101 @@ fn abertura_bem_formada(abertura: &str, restrito: bool) -> bool {
         i += 1;
         let v0 = i;
         while i < b.len() && b[i] != aspa {
-            if b[i] == b'<' || (b[i] < 0x20 && !espaco_xml(b[i])) {
-                return false;
-            }
             i += 1;
         }
-        if i == b.len() || !entidades_validas(&abertura[v0..i]) {
+        if i == b.len() {
+            return false;
+        }
+        let valor = &abertura[v0..i];
+        if valor.contains('<') || !valor.chars().all(caractere_xml) || !entidades_validas(valor) {
             return false;
         }
         i += 1;
     }
 }
 
+/// Nomes dos atributos de uma marca de abertura já conferida por [`abertura_bem_formada`].
+fn nomes_dos_atributos(abertura: &str) -> Vec<&str> {
+    let b = abertura.as_bytes();
+    let mut nomes = Vec::new();
+    let mut i = 0;
+    while i < b.len() {
+        while i < b.len() && espaco_xml(b[i]) {
+            i += 1;
+        }
+        let n0 = i;
+        while i < b.len() && b[i] != b'=' && !espaco_xml(b[i]) {
+            i += 1;
+        }
+        if n0 == i {
+            break;
+        }
+        nomes.push(&abertura[n0..i]);
+        while i < b.len() && b[i] != b'"' && b[i] != b'\'' {
+            i += 1;
+        }
+        let Some(&aspa) = b.get(i) else { break };
+        i += 1;
+        while i < b.len() && b[i] != aspa {
+            i += 1;
+        }
+        i += 1;
+    }
+    nomes
+}
+
+/// Todo atributo com prefixo de namespace usa um prefixo em escopo: `xml`, um dos `escopo`
+/// (declarados fora do elemento, nos ancestrais) ou um `xmlns:prefixo` da própria marca.
+fn prefixos_em_escopo(abertura: &str, escopo: &[&str]) -> bool {
+    let nomes = nomes_dos_atributos(abertura);
+    nomes.iter().all(|nome| {
+        let Some((prefixo, _)) = nome.split_once(':') else {
+            return true;
+        };
+        prefixo == "xml"
+            || prefixo == "xmlns"
+            || escopo.contains(&prefixo)
+            || nomes
+                .iter()
+                .any(|n| n.strip_prefix("xmlns:") == Some(prefixo))
+    })
+}
+
 /// Pedaços de `<accidental>` que **já existem no arquivo** (conteúdos e marcas de abertura, byte
 /// a byte). São confiáveis: o princípio de preservação (ADR-0017) manda que o que o modelo não
-/// conhece sobreviva, inclusive atributos fora do esquema, e o `inverso` precisa devolvê-los. Quem
-/// os colhe confere só a sintaxe; quem os usa só aceita pedaço **idêntico** a um deles.
+/// conhece sobreviva, inclusive atributos fora do esquema, e o `inverso` precisa devolvê-los.
+/// Quem os colhe lê **elementos que o parser reconheceu** (comentário, CDATA e instrução de
+/// processamento não contam) e aqui só confere a sintaxe; quem os usa só aceita pedaço
+/// **idêntico** a um deles. Colhidos uma vez por abertura (conjuntos: consulta sem varredura).
 #[derive(Clone, Debug, Default)]
 pub struct PedacosDoArquivo {
-    conteudos: Vec<String>,
-    aberturas: Vec<String>,
+    conteudos: HashSet<String>,
+    aberturas: HashSet<String>,
 }
 
 impl PedacosDoArquivo {
     /// Registra um `<accidental>` do arquivo (conteúdo e o texto depois de `<accidental`), se a
-    /// sintaxe é a de um elemento XML bem formado.
-    pub fn registrar(&mut self, conteudo: &str, abertura: &str) {
+    /// sintaxe é a de um elemento XML bem formado, o conteúdo só tem `Char` do XML sem `]]>` e
+    /// todo prefixo de namespace dos atributos está em `escopo` (ou declarado na própria marca).
+    pub fn registrar(&mut self, conteudo: &str, abertura: &str, escopo: &[&str]) {
         let conteudo_ok = !conteudo.contains(['<', SEPARADOR_BRUTO])
+            && !conteudo.contains("]]>")
+            && conteudo.chars().all(caractere_xml)
             && !conteudo
                 .chars()
                 .any(|c| c.is_control() && !c.is_whitespace())
             && entidades_validas(conteudo);
-        if !conteudo_ok || !abertura_bem_formada(abertura, false) {
+        if !conteudo_ok
+            || !abertura_bem_formada(abertura, false)
+            || !prefixos_em_escopo(abertura, escopo)
+        {
             return;
         }
-        if !self.conteudos.iter().any(|c| c == conteudo) {
-            self.conteudos.push(conteudo.to_owned());
+        if !self.conteudos.contains(conteudo) {
+            self.conteudos.insert(conteudo.to_owned());
         }
-        if !self.aberturas.iter().any(|a| a == abertura) {
-            self.aberturas.push(abertura.to_owned());
+        if !self.aberturas.contains(abertura) {
+            self.aberturas.insert(abertura.to_owned());
         }
     }
 }
@@ -682,5 +765,54 @@ mod testes {
             p.numero_midi(),
             midi(a('A', -1, 3)).and_then(|m| u8::try_from(m).ok())
         );
+    }
+
+    #[test]
+    fn referencia_de_caractere_segue_a_producao_char_do_xml() {
+        for ruim in [
+            "&#0;",
+            "&#8;",
+            "&#xB;",
+            "&#xD800;",
+            "&#xFFFE;",
+            "&#xFFFF;",
+            "&#x110000;",
+            "&#99999999999;",
+            "&#x;",
+        ] {
+            assert!(!entidades_validas(ruim), "{ruim}");
+        }
+        for boa in ["&#9;", "&#xA;", "&#13;", "&#x20;", "&#xFFFD;", "&#x10FFFF;"] {
+            assert!(entidades_validas(boa), "{boa}");
+        }
+        assert!(!abertura_valida(" cautionary=\"\u{FFFE}\""));
+        assert!(!abertura_valida(" cautionary=\"\u{1}\""));
+        assert!(abertura_valida(" cautionary=\"\u{10000}\""));
+    }
+
+    #[test]
+    fn pedacos_do_arquivo_exigem_prefixo_em_escopo_e_sem_fim_de_cdata() {
+        let mut p = PedacosDoArquivo::default();
+        p.registrar("sharp", " xmlns:foo=\"u\" foo:bar=\"1\"", &[]);
+        p.registrar("sharp]]>y", "", &[]);
+        p.registrar("sharp", " cautionary=\"&#0;\"", &[]);
+        assert!(grafia_de_acidente_aceita(
+            "sharp xmlns:foo=\"u\" foo:bar=\"1\"",
+            &p
+        ));
+        assert!(!grafia_de_acidente_aceita("sharp]]>y", &p));
+        assert!(!grafia_de_acidente_aceita("sharp cautionary=\"&#0;\"", &p));
+        let mut sem_escopo = PedacosDoArquivo::default();
+        sem_escopo.registrar("sharp", " foo:bar=\"1\"", &[]);
+        assert!(!grafia_de_acidente_aceita(
+            "sharp foo:bar=\"1\"",
+            &sem_escopo
+        ));
+        let mut com_escopo = PedacosDoArquivo::default();
+        com_escopo.registrar("sharp", " foo:bar=\"1\"", &["foo"]);
+        assert!(grafia_de_acidente_aceita(
+            "sharp foo:bar=\"1\"",
+            &com_escopo
+        ));
     }
 }

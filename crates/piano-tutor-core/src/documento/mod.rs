@@ -163,6 +163,8 @@ pub struct Documento {
     partes: Vec<Parte>,
     indice: HashMap<IdNota, (usize, usize, usize)>,
     ids: TabelaIds,
+    /// Pedaços de `<accidental>` dos elementos que o parser leu (colhidos uma vez, na abertura).
+    pedacos: grafia::PedacosDoArquivo,
 }
 
 impl Documento {

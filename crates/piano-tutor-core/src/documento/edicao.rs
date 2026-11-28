@@ -121,33 +121,6 @@ fn grafia_do_acidente(a: &No, base: &str) -> Option<String> {
 }
 
 impl Documento {
-    /// Os conteúdos e marcas de abertura de todos os `<accidental>` do texto original.
-    fn pedacos_do_arquivo(&self) -> PedacosDoArquivo {
-        let base = self.original.as_str();
-        let mut pedacos = PedacosDoArquivo::default();
-        let mut de = 0;
-        while let Some(i) = base[de..].find("<accidental") {
-            let ini = de + i;
-            de = ini + "<accidental".len();
-            if !matches!(
-                base.as_bytes().get(de),
-                Some(b' ' | b'\t' | b'\r' | b'\n' | b'>')
-            ) {
-                continue;
-            }
-            let Some(Abertura::Aberta(fim)) = fim_da_abertura(base, de) else {
-                continue;
-            };
-            let abertura = &base[de..fim - 1];
-            let resto = &base[fim..];
-            let Some(c) = resto.find('<') else { continue };
-            if resto[c..].starts_with("</accidental") {
-                pedacos.registrar(&resto[..c], abertura);
-            }
-        }
-        pedacos
-    }
-
     /// A grafia é aceitável? Vinda de fora, **validação estrita**: nome de acidente da lista
     /// fechada do MusicXML, atributos da lista permitida, valores entre aspas e escapados (`>`
     /// dentro do valor vale). A exceção são bytes que o próprio arquivo já tem (atributo fora do
@@ -155,7 +128,7 @@ impl Documento {
     /// `<accidental>` do original, não são revalidados (ADR-0017), e nada fora disso entra.
     pub(super) fn validar_grafia(&self, grafia: &str) -> Result<(), ErroDocumento> {
         if grafia_de_acidente_aceita(grafia, &PedacosDoArquivo::default())
-            || grafia_de_acidente_aceita(grafia, &self.pedacos_do_arquivo())
+            || grafia_de_acidente_aceita(grafia, &self.pedacos)
         {
             Ok(())
         } else {
