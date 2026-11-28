@@ -332,7 +332,7 @@ fn planejar_adicao(
 
     // --- Edita uma cópia do compasso ---------------------------------------------------------
     let mut comp = a.comp0.clone();
-    let id_novo = IdNota(doc.ids.proximo);
+    let id_novo = IdNota(doc.ids.primeiro_livre()?);
     // Depois da principal, e depois das notas do acorde que já estavam em ordem crescente.
     let mut ref_ord = p0;
     for k in p0 + 1..=q {

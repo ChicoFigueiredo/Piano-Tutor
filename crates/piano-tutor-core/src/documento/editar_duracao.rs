@@ -139,7 +139,8 @@ impl DocumentoAberto {
         }
         let numero = comp.numero.clone();
         self.documento.partes[pd].compassos[ci] = comp;
-        self.documento.ids.proximo += novos;
+        // Os `novos` cabem: o contador foi conferido contra o teto antes de reservar os ids.
+        self.documento.ids.proximo = self.documento.ids.proximo.saturating_add(novos);
         self.partitura.partes[pt].compassos[ci] = tocar;
         self.ids.definir_compasso(pt, ci, ids);
         resultado.compassos_afetados.push(PosCompasso {
@@ -771,9 +772,9 @@ fn planejar(
     // --- Edita uma cópia do compasso ---------------------------------------------------------
     let mut comp = comp0.clone();
     let mut novos: u64 = 0;
-    let primeiro_novo = doc.ids.proximo;
+    let primeiro_novo = doc.ids.primeiro_livre()?;
     let mut novo_id = || {
-        let id = IdNota(primeiro_novo + novos);
+        let id = IdNota(primeiro_novo.saturating_add(novos));
         novos += 1;
         id
     };

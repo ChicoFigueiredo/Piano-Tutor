@@ -190,3 +190,20 @@ novo.recuperar_rascunho();                 // "não há rascunho de recuperaçã
 **A.3 (R2)**: `editar_uma_nota(&mut e); e.sobrescrever = true; e.exportar(<caminho do xml aberto>)` devolve `Ok` e o conteúdo do arquivo muda.
 
 **A.4 (fuzz misto)**: `crates/piano-tutor-fixtures/tests/zz_revisao_mista.rs` (~180 linhas; semente fixa, 40 edições por peça, retrato = texto + notas + modelo + ids), executado com `cargo test --offline -p piano-tutor-fixtures --test zz_revisao_mista -- --nocapture`. **A.5**: sondas de ids (`proximo` máximo, duplicados), números gigantes, entidade em nota, voz dupla e escape, no mesmo crate. Os arquivos das sondas ficaram no scratchpad da sessão, que é efêmero; o texto acima é o registro durável. Reproduzir R4 e R6: `TabelaIds::de_texto("piano-tutor-ids v1\nproximo=18446744073709551615\n")` seguido de `DocumentoAberto::abrir_texto_com_ids`; e quatro linhas `pos\tP1\t0\t<n>\t1` com `proximo=10`.
+
+## Correções aplicadas (2026-11-28, depois do relatório)
+
+Cada correção nasceu de um teste que falhava (red registrado) e depois passou. Estado: **corrigido, aguarda re-revisão independente** (o relatório acima descreve o código anterior às correções e não foi reescrito). Evidência: `cargo fmt --all --check` ok; `cargo clippy --workspace --all-targets -- -D warnings` ok; `cargo test --workspace --offline`: 1559 passaram, 0 falharam, 12 ignorados (antes: 1530/0/11).
+
+| Id | Correção | Teste (red → green) |
+| --- | --- | --- |
+| R1 | Salvar Versão fica **bloqueado** enquanto há rascunho de recuperação pendente (dica "recupere ou descarte"); decisão e motivo no ticket 24. | `tela_partitura::testes_revisao::r1_*` (2 de 2 falhavam) |
+| R2 | Exportar recusa destino = arquivo aberto, Hipótese (do item e de qualquer item da Oficina), qualquer arquivo de `<id>.versoes/` e o `.ids` deles (caminho canonizado e inode no Unix); grava tmp+rename / tmp+`hard_link`. | `tela_partitura::testes_exportar` (6 de 7 falhavam) |
+| R3 | `pai` = Versão de partida do documento (`Versoes::salvar_a_partir_de`); a tela ganhou "Continuar a partir desta Versão". | `testes_revisao::r3_*` (2 de 3 falhavam), `testes_continuar` (7) |
+| R4 | Contador com `checked_add` e teto `TETO_DO_CONTADOR_DE_IDS` (2^62); `.ids` com `proximo` acima do teto é tabela inválida e o texto abre sem ela. | `piano-tutor-fixtures/tests/documento_ids_hostis.rs` (5 de 6 falhavam), `documento_partitura::testes::r4_*` |
+| R6 | `.ids` com id repetido, chave repetida ou id >= contador (em qualquer ordem das linhas) é tabela inválida. | mesmo arquivo |
+| R8 | `gravar_atomico` (e a gravação de objetos de Versão e da exportação sem substituir) faz `fsync` do diretório depois do `rename`/`link` (Unix; no-op no Windows; falha do fsync do diretório não vira erro). | `revisao::testes::r8_*` (não compilavam: a função não existia). Durabilidade em queda de energia em si: NÃO VERIFICADA (o teste só prova que o diretório é aberto e sincronizado) |
+| R10 | Fuzz misto adotado, semente fixa `0xDEAD_BEEF_1234_5678`: 8 edições por peça no CI (~3,5 s em depuração, 125 edições e 188 recusas); versão grande (40 por peça, ~16 s) `#[ignore]`. | `documento_fuzz_misto.rs` (já verde: adoção, sem red) |
+
+Não tratados nesta rodada, por pedido: R5 (PDF na aba Partitura, outra equipe), R7, R9, R11 e os itens 3 a 7 do gate 27.
+

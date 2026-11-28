@@ -66,7 +66,13 @@
 //!   [`ResultadoDoSalvar::SemMudancas`]. Conteúdo igual ao de qualquer outra Versão devolve
 //!   [`ResultadoDoSalvar::JaExiste`]: o hash é a identidade, então não há Versão duplicada.
 //! - Abrir uma Versão antiga é **somente leitura** ([`VersaoAberta`]); para continuar a partir
-//!   dela, salve passando o hash dela como `pai` (ramifica a cadeia).
+//!   dela, a tela oferece "Continuar a partir desta Versão" (abre a Versão como documento em
+//!   edição, com ela como base), e a próxima Versão salva é filha dela (ramifica a cadeia).
+//! - O `pai` de uma Versão salva pela tela é a Versão **de onde o documento partiu**
+//!   ([`Versoes::salvar_a_partir_de`]): a Hipótese reaberta, a Versão da qual se continuou ou a
+//!   que a sessão salvou por último. Nunca a ponta por default: uma sessão que reabre a Hipótese
+//!   e salva dá uma filha da Hipótese, não de uma ponta cujo conteúdo ela não contém (revisão
+//!   independente da E01, achado R3).
 //! - Material comprado nunca sai da pasta de dados do usuário: a pasta de Versões é derivada do
 //!   `estado.toml` da própria partitura da Oficina, e o PDF é só lido para o hash (nunca copiado).
 //! - A aprovação por hash (ticket 23) e o diff (ticket 22) usam `hash` e `pai` deste índice.
@@ -120,7 +126,7 @@
 use crate::ids_lateral::{self, IdsGravados};
 use crate::revisao::{
     Estado, ItemPartitura, NOTA_DA_APROVACAO_DIRETA, aprovacao_direta_valida, estado_de_texto,
-    estado_para_texto, gravar_atomico, rotulo_do_estado, transicao_valida,
+    estado_para_texto, gravar_atomico, rotulo_do_estado, sincronizar_diretorio, transicao_valida,
 };
 use piano_tutor_core::documento::{DocumentoAberto, Formato, TabelaIds};
 use serde::Deserialize;
@@ -676,6 +682,19 @@ pub(crate) enum Queda {
     NoMeioDoIndice,
 }
 
+/// De qual Versão a nova é filha (o `pai` gravado no índice).
+#[derive(Clone, Copy, Debug)]
+enum Pai<'a> {
+    /// A Versão pedida (`salvar` com `Some`); inexistente é erro.
+    Exato(&'a str),
+    /// A ponta da cadeia (`salvar` com `None`: a API antiga, para quem não sabe de onde parte).
+    Ponta,
+    /// De onde o documento em edição partiu: essa Versão se ela existe no índice; senão a
+    /// Hipótese (a origem, primeira do índice). Nunca a ponta, a menos que o documento tenha
+    /// partido dela (revisão independente da E01, achado R3).
+    Partida(Option<&'a str>),
+}
+
 /// As Versões de uma partitura da Oficina.
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct Versoes {
@@ -683,6 +702,15 @@ pub struct Versoes {
     pasta: PathBuf,
     hipotese: PathBuf,
     pdf: Option<PathBuf>,
+}
+
+impl<'a> Pai<'a> {
+    const fn de(pai: Option<&'a str>) -> Self {
+        match pai {
+            Some(h) => Self::Exato(h),
+            None => Self::Ponta,
+        }
+    }
 }
 
 impl Versoes {
@@ -720,6 +748,11 @@ impl Versoes {
     /// Pasta do repositório (`<id>.versoes`).
     pub fn pasta(&self) -> &Path {
         &self.pasta
+    }
+
+    /// O arquivo da Hipótese (`<id>.musicxml`), que nunca é escrito aqui nem pela exportação.
+    pub fn hipotese(&self) -> &Path {
+        &self.hipotese
     }
 
     fn arquivo_do_indice(&self) -> PathBuf {
@@ -847,7 +880,15 @@ impl Versoes {
         autor: &str,
         em: &str,
     ) -> Result<ResultadoDoSalvar, ErroVersoes> {
-        self.salvar_completo(pai, conteudo, None, nota, autor, em, Queda::Nenhuma)
+        self.salvar_completo(
+            Pai::de(pai),
+            conteudo,
+            None,
+            nota,
+            autor,
+            em,
+            Queda::Nenhuma,
+        )
     }
 
     /// Como [`Self::salvar`], guardando junto as identidades das notas (`objetos/<hash>.ids`,
@@ -862,7 +903,32 @@ impl Versoes {
         autor: &str,
         em: &str,
     ) -> Result<ResultadoDoSalvar, ErroVersoes> {
-        self.salvar_completo(pai, conteudo, ids, nota, autor, em, Queda::Nenhuma)
+        self.salvar_completo(Pai::de(pai), conteudo, ids, nota, autor, em, Queda::Nenhuma)
+    }
+
+    /// Salva `conteudo` como Versão filha da Versão **de onde o documento partiu** (`partida`: a
+    /// Hipótese aberta, a Versão da qual se continua, a que o documento salvou por último). Se
+    /// `partida` não é uma Versão do índice (ou não se sabe), a filha é da Hipótese, nunca da
+    /// ponta: a ponta só é o pai quando o documento descende dela. Sem mudança em relação ao pai
+    /// não cria Versão (`SemMudancas`). Mesmas garantias de [`Self::salvar_com_ids`].
+    pub fn salvar_a_partir_de(
+        &self,
+        partida: Option<&str>,
+        conteudo: &str,
+        ids: Option<IdsDaVersao<'_>>,
+        nota: Option<&str>,
+        autor: &str,
+        em: &str,
+    ) -> Result<ResultadoDoSalvar, ErroVersoes> {
+        self.salvar_completo(
+            Pai::Partida(partida),
+            conteudo,
+            ids,
+            nota,
+            autor,
+            em,
+            Queda::Nenhuma,
+        )
     }
 
     #[cfg(test)]
@@ -875,13 +941,13 @@ impl Versoes {
         em: &str,
         queda: Queda,
     ) -> Result<ResultadoDoSalvar, ErroVersoes> {
-        self.salvar_completo(pai, conteudo, None, nota, autor, em, queda)
+        self.salvar_completo(Pai::de(pai), conteudo, None, nota, autor, em, queda)
     }
 
     #[allow(clippy::too_many_arguments)]
     fn salvar_completo(
         &self,
-        pai: Option<&str>,
+        pai: Pai<'_>,
         conteudo: &str,
         ids: Option<IdsDaVersao<'_>>,
         nota: Option<&str>,
@@ -895,7 +961,7 @@ impl Versoes {
     #[allow(clippy::too_many_arguments)]
     fn salvar_sem_trava(
         &self,
-        pai: Option<&str>,
+        pai: Pai<'_>,
         conteudo: &str,
         ids: Option<IdsDaVersao<'_>>,
         nota: Option<&str>,
@@ -910,13 +976,18 @@ impl Versoes {
         }
         let indice = self.registrar_origem_com(autor, em, Queda::Nenhuma)?;
         let pai_hash = match pai {
-            Some(h) => indice
+            Pai::Exato(h) => indice
                 .versao(h)
                 .map(|v| v.hash.clone())
                 .ok_or_else(|| ErroVersoes::PaiInexistente(h.to_owned()))?,
-            None => indice
+            Pai::Ponta => indice
                 .versoes
                 .last()
+                .map(|v| v.hash.clone())
+                .ok_or_else(|| ErroVersoes::Formato("índice sem Versões".into()))?,
+            Pai::Partida(partida) => partida
+                .and_then(|h| indice.versao(h))
+                .or_else(|| indice.versoes.first())
                 .map(|v| v.hash.clone())
                 .ok_or_else(|| ErroVersoes::Formato("índice sem Versões".into()))?,
         };
@@ -1192,6 +1263,10 @@ impl Versoes {
             }
         })();
         let _ = fs::remove_file(&tmp);
+        // O objeto precisa estar no diretório antes de o índice (gravado depois) o citar.
+        if r.is_ok() {
+            let _ = sincronizar_diretorio(dir);
+        }
         r.map_err(|e| disco(destino, &e))
     }
 

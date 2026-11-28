@@ -226,9 +226,9 @@ impl Documento {
                             }
                             let id = match previa.and_then(|t| t.mapa.get(&chave)) {
                                 Some(id) => *id,
-                                None => tabela.alocar(),
+                                None => tabela.alocar()?,
                             };
-                            tabela.proximo = tabela.proximo.max(id.0 + 1);
+                            tabela.proximo = tabela.proximo.max(id.0.saturating_add(1));
                             tabela.mapa.insert(chave, id);
                             indice.insert(id, (pi, ci, ordinal));
                             notas.push(ler_nota(c, id, idx, divisions));

@@ -10,6 +10,13 @@ pub use crate::atalhos_partitura::{AcaoAtalho, Destino, MapaAtalhos, MovimentoDe
 
 mod acorde;
 mod pdf_lateral;
+#[cfg(test)]
+mod testes_continuar;
+#[cfg(test)]
+mod testes_exportar;
+#[cfg(test)]
+mod testes_revisao;
+mod versoes_base;
 use crate::autosave::{Autosave, ConfigAutosave, ErroAutosave, Rascunho};
 use crate::cursor_entrada::{
     AvisoDeEntrada, Conteudo, CursorDeEntrada, Faixa, PosicaoDeEntrada, altura_da_letra,
@@ -325,6 +332,8 @@ pub struct EstadoPartitura {
     versoes: Option<Versoes>,
     /// PDF original ao lado da edição (ticket 20); só vale com `versoes` (item da Oficina).
     pdf_lateral: pdf_lateral::PdfLateral,
+    /// Arquivo de onde o documento foi aberto (`abrir_caminho`): a exportação nunca o sobrescreve.
+    arquivo_aberto: Option<PathBuf>,
     /// Lista de Versões (relida ao abrir e ao salvar, não a cada quadro).
     lista_de_versoes: Vec<LinhaDaLista>,
     /// Nota de motivo da próxima Versão (opcional).
@@ -484,6 +493,7 @@ impl EstadoPartitura {
             pratica: None,
             versoes: None,
             pdf_lateral: pdf_lateral::PdfLateral::default(),
+            arquivo_aberto: None,
             lista_de_versoes: Vec::new(),
             comparacao: Comparacao::default(),
             campo_nota_versao: String::new(),
@@ -534,6 +544,7 @@ impl EstadoPartitura {
     fn carregar_documento(&mut self, d: DocumentoPartitura) {
         // Outro documento: o vínculo com a Oficina e a leitura de Versão não valem mais.
         self.versoes = None;
+        self.arquivo_aberto = None;
         self.lista_de_versoes.clear();
         self.comparacao = Comparacao::default();
         self.aviso_versoes = None;
@@ -1364,6 +1375,7 @@ impl EstadoPartitura {
             Ok(d) => {
                 let recusa = recusa_dos_ids(&d);
                 self.carregar_documento(d);
+                self.arquivo_aberto = Some(c.to_path_buf());
                 self.erro = None;
                 self.aviso = recusa;
                 self.vincular_a_oficina(c);
@@ -1547,7 +1559,11 @@ impl EstadoPartitura {
 
     /// Dá para salvar uma Versão agora? (partitura da Oficina, fora do modo leitura)
     pub fn pode_salvar_versao(&self) -> bool {
-        self.versoes.is_some() && self.documento.is_some() && self.leitura.is_none()
+        self.versoes.is_some()
+            && self.documento.is_some()
+            && self.leitura.is_none()
+            // Salvar apagaria o rascunho de recuperação que ainda espera decisão (achado R1).
+            && self.rascunho_pendente.is_none()
     }
 
     /// Por que o botão "Salvar como Versão" está desativado (`None` se está ativo).
@@ -1556,6 +1572,11 @@ impl EstadoPartitura {
             None
         } else if self.leitura.is_some() {
             Some("Volte à edição antes de salvar uma Versão.")
+        } else if self.rascunho_pendente.is_some() && self.versoes.is_some() {
+            Some(
+                "Há trabalho não salvo de uma sessão anterior: recupere ou descarte o rascunho \
+                 antes de salvar uma Versão.",
+            )
         } else {
             Some(
                 "Arquivo solto: só partituras da Oficina (pasta partituras/ com estado.toml) \
@@ -1863,9 +1884,11 @@ impl EstadoPartitura {
             tabela: &tabela,
             derivada_de: d.base_de_ids(),
         };
+        // O pai é a Versão de onde o documento partiu (a Hipótese reaberta, a Versão da qual se
+        // continuou, a que esta sessão salvou por último), não a ponta da cadeia (achado R3).
         let r = v
-            .salvar_com_ids(
-                None,
+            .salvar_a_partir_de(
+                d.base_de_ids(),
                 &texto,
                 Some(ids),
                 (!nota.is_empty()).then_some(nota),
@@ -1900,7 +1923,8 @@ impl EstadoPartitura {
                 "Esse conteúdo já é o de uma Versão: nada foi criado.".into()
             }
         });
-        // O trabalho virou Versão: o rascunho de recuperação não faz mais sentido.
+        // O trabalho virou Versão: o rascunho desta sessão não faz mais sentido. (Um rascunho de
+        // outra sessão, ainda pendente de decisão, bloqueia o salvar lá em cima: nunca chega aqui.)
         if let Some(a) = self.autosave.as_mut()
             && let Err(e) = a.ao_salvar_versao()
         {
@@ -2599,6 +2623,15 @@ impl EstadoPartitura {
             .documento
             .as_ref()
             .ok_or_else(|| "nenhuma partitura carregada".to_owned())?;
+        // Nunca sobre o arquivo aberto, a Hipótese, as Versões nem o `.ids` deles (achado R2).
+        let mut protegidos: Vec<(&Path, &str)> = Vec::new();
+        if let Some(a) = self.arquivo_aberto.as_deref() {
+            protegidos.push((a, "o arquivo aberto"));
+        }
+        if let Some(v) = self.versoes.as_ref() {
+            protegidos.push((v.hipotese(), "a Hipótese desta partitura"));
+        }
+        crate::documento_partitura::conferir_destino_de_exportacao(&c, &protegidos)?;
         d.gravar(&c, self.sobrescrever)?;
         Ok(c)
     }
@@ -3600,6 +3633,7 @@ fn desenhar_versoes(ui: &mut Ui, e: &mut EstadoPartitura, som: &mut ServicoSom) 
         );
     });
     let mut abrir = None;
+    let mut continuar = None;
     let mut praticar = None;
     let mut decidir: Option<(String, AcaoDeRevisao, bool)> = None;
     egui::ScrollArea::vertical()
@@ -3611,6 +3645,22 @@ fn desenhar_versoes(ui: &mut Ui, e: &mut EstadoPartitura, som: &mut ServicoSom) 
                     ui.label(l.em_texto());
                     if l.abrivel && ui.small_button("Abrir").clicked() {
                         abrir = Some(l.hash.clone());
+                    }
+                    if l.abrivel {
+                        let motivo = e.motivo_sem_continuar_da_versao();
+                        let b = ui.add_enabled(
+                            motivo.is_none(),
+                            Button::new("Continuar a partir desta Versão").small(),
+                        );
+                        let b = match motivo {
+                            Some(m) => b.on_disabled_hover_text(m),
+                            None => b.on_hover_text(
+                                "Abre esta Versão para editar: a próxima Versão salva é filha dela",
+                            ),
+                        };
+                        if b.clicked() {
+                            continuar = Some(l.hash.clone());
+                        }
                     }
                     if l.abrivel {
                         let rejeitada = l.estado == Some(EstadoDeRevisao::Rejeitada);
@@ -3674,6 +3724,9 @@ fn desenhar_versoes(ui: &mut Ui, e: &mut EstadoPartitura, som: &mut ServicoSom) 
     }
     if let Some(h) = abrir {
         e.abrir_versao(&h);
+    }
+    if let Some(h) = continuar {
+        e.continuar_a_partir_da_versao(&h);
     }
     if let Some((h, acao, direta)) = decidir {
         // A recusa vira aviso na tela.
@@ -3794,7 +3847,7 @@ mod testes {
     use piano_tutor_core::tempo::Relogio;
     use std::sync::Arc;
 
-    fn quadro(ctx: &Context, e: &mut EstadoPartitura, som: &mut ServicoSom) {
+    pub(super) fn quadro(ctx: &Context, e: &mut EstadoPartitura, som: &mut ServicoSom) {
         let entrada = RawInput {
             screen_rect: Some(Rect::from_min_size(pos2(0.0, 0.0), vec2(1280.0, 800.0))),
             ..Default::default()
@@ -4532,7 +4585,7 @@ mod testes {
         quadro(ctx, e, som);
     }
 
-    fn banco() -> (ServicoSom, Context) {
+    pub(super) fn banco() -> (ServicoSom, Context) {
         let (som, _m) = servico_pronto(Arc::new(RelogioManual::novo()) as Arc<dyn Relogio>);
         (som, Context::default())
     }
@@ -5521,7 +5574,7 @@ mod testes {
     // --- Ticket 21: Versões na tela --------------------------------------------------------
 
     /// Oficina temporária com a partitura `ode` (Hipótese = a embutida) aberta na tela.
-    fn com_oficina() -> (tempfile::TempDir, EstadoPartitura, PathBuf) {
+    pub(super) fn com_oficina() -> (tempfile::TempDir, EstadoPartitura, PathBuf) {
         let d = tempfile::tempdir().expect("pasta");
         let pasta = d.path().join("oficina/partituras");
         std::fs::create_dir_all(&pasta).expect("cria");
@@ -5534,7 +5587,7 @@ mod testes {
         (d, e, xml)
     }
 
-    fn editar_uma_nota(e: &mut EstadoPartitura) {
+    pub(super) fn editar_uma_nota(e: &mut EstadoPartitura) {
         e.navegar(Comando::Seguinte);
         assert!(
             e.mudar_altura(UnidadeDeAltura::Semitom, SentidoDaAltura::Acima)
@@ -5656,7 +5709,7 @@ mod testes {
     // --- Ticket 24: autosave e recuperação na tela -----------------------------------------
 
     /// Roda o tick até a gravação em thread terminar (a interface não espera: só o teste).
-    fn tick_ate_gravar(e: &mut EstadoPartitura, agora_ms: u64) {
+    pub(super) fn tick_ate_gravar(e: &mut EstadoPartitura, agora_ms: u64) {
         e.autosave_tick(agora_ms);
         for _ in 0..400 {
             if !e.gravando_rascunho() {
@@ -5668,7 +5721,7 @@ mod testes {
         panic!("a gravação do rascunho não terminou");
     }
 
-    fn arquivo_do_rascunho(xml: &Path) -> PathBuf {
+    pub(super) fn arquivo_do_rascunho(xml: &Path) -> PathBuf {
         xml.with_file_name("ode.recuperacao")
             .join(crate::autosave::ARQUIVO_DO_RASCUNHO)
     }
