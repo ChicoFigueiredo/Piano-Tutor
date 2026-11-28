@@ -1,6 +1,6 @@
 # ADR-0017 — Modelo de documento: híbrido (IdNota + faixa de bytes + bit sujo)
 
-**Status:** PROPOSTA com evidência medida (spike do ticket 08, E01); aceite humano pendente · **Detalha:** [ADR-0015](ADR-0015-edicao-nativa-e-plataforma-musical.md) (só referenciada, não alterada) · **Insumo:** `docs/evolucao-musical/e00/03-PESQUISA-EDITOR.md` seção 5, abordagem C · **Evidência:** [spike-08-medicao.txt](../evolucao-musical/e01/evidencias/spike-08-medicao.txt)
+**Status:** PROPOSTA com evidência medida (spike do ticket 08 e implementação da E01, tickets 10 a 26, atualizada no gate do ticket 27 em 2026-11-28); aceite humano pendente (a aceitação é do titular) · **Detalha:** [ADR-0015](ADR-0015-edicao-nativa-e-plataforma-musical.md) (referenciada por ela; ver também [ADR-0018](ADR-0018-motor-de-render-egui-bravura.md)) · **Rastreabilidade:** [MATRIZ-RASTREABILIDADE.md](../evolucao-musical/e01/MATRIZ-RASTREABILIDADE.md) · **Insumo:** `docs/evolucao-musical/e00/03-PESQUISA-EDITOR.md` seção 5, abordagem C · **Evidência:** [spike-08-medicao.txt](../evolucao-musical/e01/evidencias/spike-08-medicao.txt)
 
 ## Decisão
 
@@ -110,3 +110,45 @@ cargo test -p piano-tutor-fixtures                                   # tudo, em 
 cargo test --release -p piano-tutor-fixtures --test documento_a2 -- --ignored --nocapture   # 1717 edições
 cargo test --release -p piano-tutor-fixtures --test documento_medicao -- --nocapture --test-threads=1
 ```
+
+## Atualização do gate da E01 (ticket 27, 2026-11-28)
+
+O status **continua PROPOSTA**: esta seção só acrescenta a evidência da implementação (tickets 10 a 26). A decisão acima não mudou. Cada afirmação aponta para a linha da [matriz de rastreabilidade](../evolucao-musical/e01/MATRIZ-RASTREABILIDADE.md); "rodado" significa que o teste passou em `cargo test --workspace` no gate, e "registro" significa que a fonte é um documento versionado, não reexecutado.
+
+### O que a E01 confirmou
+
+| Ponto da decisão | Evidência da E01 | Matriz |
+|---|---|---|
+| A hipótese vale com os 5 ajustes | O módulo do spike foi promovido ao núcleo (`piano_tutor_core::documento`) e virou o serviço `DocumentoAberto` (ticket 10). A1 passa pelo serviço nas 16 fixtures e também para o XML dentro de `.mxl`; o dono de `IdNota` é o núcleo (risco 5 do spike resolvido). | A1, T10.1 |
+| Edição de altura toca só o compasso | Seis comandos de altura (semitom, grau, oitava) pelo comando tipado `MudarAltura`; A2, A3 e A6 passam por comando, em 6 fixtures com duas vozes. O acidente é calculado por `documento/grafia.rs` (armadura e acidente em vigor), como a linha "Acidente explícito" já previa. | A2, A3, A6, T14.* |
+| Desfazer por snapshot do compasso | A5 passa em todo o corpus (N desfazeres = original, N refazeres = estado final, byte a byte); histórico com limite de 16 MiB estimado e aviso ao descartar a edição mais antiga (ticket 15). | A5, T15.* |
+| Soma da voz é invariante | Duração e inserção/remoção mantêm a soma de cada voz com `Fracao` exata (denominadores 3 e 5 testados); estouro é recusado sem entrada no undo (tickets 16 e 17). | A4, T16.*, T17.* |
+| Acorde e pausa | Inserir, remover, acrescentar e retirar altura passam no corpus inteiro e desfazem byte a byte (tickets 17 e 18). | T17.*, T18.* |
+| Recusa tipada, nunca aceitação errada | DTD continua ligado porque o corpus tem `DOCTYPE`, mas entidade externa nunca é resolvida; o ticket 11 achou e corrigiu uma explosão quadrática de entidades (`xml_seguro::verificar_entidades`) e adicionou fuzz (1,88 milhão de mutações em 120 s, 0 falhas). | A13, T11.* |
+
+### Decisões tomadas durante a E01 que mexem nesta ADR
+
+1. **Arquivo lateral de ids: adotado** (ticket 17 e 17b), por decisão do supervisor, a confirmar pelo titular. O risco 3 do spike era "falta de decisão"; a decisão foi gravar `<arquivo>.ids` ao lado do texto exportado, `objetos/<hash>.ids` por Versão e `rascunho.ids` no autosave, sempre amarrado ao texto por impressão digital (o núcleo ganhou `serie`, a linhagem das identidades). Tabela ausente, estragada ou de outro texto é recusada com aviso e o documento abre sem ela. Gravar `id` no XML foi descartado (sujaria compassos não editados e quebraria A1 e A2). Para Versões irmãs, a linha opcional `derivada-de=<hash>` evita parear ids que descendem do mesmo ancestral.
+2. **`divisions` não muda** (ticket 16, decisão do supervisor): uma duração fora da grade atual é recusada com `DuracaoExigeMudarDivisions`, dizendo o que seria preciso. A alternativa "declarar `<divisions>` novo só no compasso editado" segue **não implementada e NÃO VERIFICADA**. Consequência medida: a peça de 100 compassos do ticket 26 teve de ser adaptada (`divisions` 1 para 4) para permitir colcheia e ponto.
+3. **A exibição lê o texto atual**, não o original (ticket 17): depois de inserir ou remover notas, os ordinais do texto original deixam de valer.
+4. **`conferir_exportacao`** voltou a conferir as identidades por inteiro depois de edição que cria ou tira notas (o ticket 16 a reduzira à contagem de notas; restaurada no 17).
+
+### Custo medido na peça de 100 compassos (ticket 26, release, VM de nuvem ocupada)
+
+Mediana, em ms: abrir MusicXML 1,94; abrir `.mxl` 2,01; exportar 0,13; exportar e conferir 2,40; altura 0,005; duração 0,02; inserir/remover 0,016; acorde 0,02; desfazer 0,0005. Nenhum comando passou de 100 ms (pior máximo isolado: 16,1 ms, diff entre Versões). Isso é **observação desta VM**: a meta de 100 ms continua "a calibrar" e o PC de referência é NÃO VERIFICADO. Fonte: `docs/evolucao-musical/e01/desempenho/RELATORIO.md`. A **memória do documento continua NÃO MEDIDA** (só o limite estimado do histórico).
+
+### Riscos remanescentes, depois da E01
+
+| # | Risco do spike | Situação |
+|---|---|---|
+| 1 | Corpus real amigável | **Aberto.** Nenhuma exportação real de MuseScore, Finale, Sibelius, Audiveris ou HOMR foi testada: NÃO VERIFICADO. |
+| 2 | Trocar `divisions` | **Aberto**, decidido como recusa; alternativa não implementada. |
+| 3 | Persistência de `IdNota` sob edição estrutural | **Resolvido pela decisão 1**, com ressalva: `*.ids` é um segundo arquivo que o usuário pode separar do texto; nesse caso o documento abre pela ordem do documento e o diff cai no conteúdo. A confirmação do titular está pendente. |
+| 4 | `Fracao` do núcleo satura em silêncio | **Aberto**: o teste de caracterização `fracao_do_nucleo_satura_em_silencio_no_estouro` continua existindo; os comandos usam `i128` e erros explícitos. |
+| 5 | Dois tipos `IdNota` | **Resolvido** no ticket 10 (um tipo no núcleo). |
+| 6 | Memória e latência de uma execução | **Parcial**: baseline do ticket 26 (latência, uma VM); memória NÃO MEDIDA. |
+| 7 (novo) | Estado do `.ids` e do rascunho só testado em Linux | Trava de arquivo (`File::lock`) testada só com threads no Linux; dois processos reais, Windows e macOS: NÃO VERIFICADO. |
+
+### O que continua NÃO VERIFICADO (não convertido em PASS por inferência)
+
+Som real da nota editada; prática com o REVAS físico e latências; estabilidade prolongada; janela real (aparência, GPU, HiDPI); Windows e macOS; leitor de tela. A lista completa, com o que fecha cada um, está na seção "NÃO VERIFICADO" da matriz.

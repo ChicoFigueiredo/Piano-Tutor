@@ -2,7 +2,7 @@
 
 **Status:** PROPOSTA — 2026-11-27. Passa a ACEITA quando o titular assinar o [checklist visual](../evolucao-musical/e01/spike-render/CHECKLIST-VISUAL.md). Até lá, a legibilidade é **NÃO VERIFICADA**. · **Confirma:** [ADR-0015](ADR-0015-edicao-nativa-e-plataforma-musical.md) · **Supera parcialmente:** [ADR-0007](ADR-0007-partitura-somente-leitura.md) no ponto do render · **Evidência:** [relatório do spike](../evolucao-musical/e01/spike-render/RELATORIO.md) (ticket evolucao/09)
 
-(A 0017 é do spike de modelo, em paralelo.)
+**Atualização do gate da E01 (ticket 27, 2026-11-28):** o status continua **PROPOSTA**: a legibilidade segue NÃO VERIFICADA e a aceitação é do titular. A evidência da implementação da E01 está na seção "Atualização do gate da E01" no fim deste arquivo. O ADR do modelo de documento é a [ADR-0017](ADR-0017-modelo-de-documento-hibrido.md); a rastreabilidade está na [matriz](../evolucao-musical/e01/MATRIZ-RASTREABILIDADE.md).
 
 ## Decisão
 
@@ -58,3 +58,28 @@ Reabrir esta ADR e reavaliar o Verovio (ou outro motor) se **qualquer** um acont
 - **Colisões**: contadas por caixa (superestimam, sobretudo bandeirola contra cabeça); servem para apontar onde olhar, não como medida de qualidade.
 - **Verovio**: só o pacote Python 6.4.1, em processo próprio; o custo de partida do processo e a transferência do SVG não foram medidos.
 - **Estimativas de esforço**: são do agente, não medidas.
+
+## Atualização do gate da E01 (ticket 27, 2026-11-28)
+
+O status **continua PROPOSTA** e a legibilidade **continua NÃO VERIFICADA**: nenhum dos dois checklists visuais foi preenchido (o do spike em `spike-render/CHECKLIST-VISUAL.md` e o do ticket 19 em `capturas-19/LEIA-ME.md`). Esta seção só acrescenta o que a E01 construiu e mediu depois do spike. Rastreabilidade na [matriz](../evolucao-musical/e01/MATRIZ-RASTREABILIDADE.md); o modelo de documento está na [ADR-0017](ADR-0017-modelo-de-documento-hibrido.md).
+
+### O que a E01 confirmou da decisão
+
+| Ponto da decisão | Evidência da E01 | Matriz |
+|---|---|---|
+| Layout e geometria sem tipos do egui | Camada própria (`geometria.rs`) com adaptador único para o egui; o golden de primitivas das 5 partituras embutidas a 100% e 150% passa idêntico ao capturado antes da migração (ticket 06). | T06.1 a T06.4 |
+| Identidade de nota e hit test | `Item::nota` é preenchido (cabeça, ponto de aumento, acidente); `Layout::nota_em` e `acertar` com tolerância definida; clique numa cabeça seleciona a mesma `IdNota` do serviço (tickets 10 e 12). Medido: 0,55 µs por consulta no spike; mediana 1,5 µs na peça de 100 compassos no ticket 26 (release, VM de nuvem). | T06.4, T12.1, T26.1 |
+| Lacuna de severidade alta: letra | **Fechada em parte** (ticket 19): `calcular_layout_com_exibicao` reserva uma linha de altura por estrofe e a pauta seguinte desce; a largura da sílaba entra no espaçamento; a cifra fica acima do número do compasso; o dedilhado usa glifos SMuFL (`partitura_visual/bravura.rs`, fonte registrada em `app::config`). O caso do Schubert com 3 estrofes, que invadia a pauta de baixo no spike, passou a ter teste (`tres_estrofes_reservam_uma_linha_cada_e_nao_invadem_a_pauta_de_baixo`). **Ainda falta:** linha de prolongamento de melisma, elisão desenhada, alinhamento à esquerda da cabeça, `♯` e `♭` como glifos na cifra. | A18, T19.1 |
+| Foco e seleção acessíveis | Contraste da seleção contra o papel medido (WCAG): normal ≥ 3:1 e alto contraste ≥ 7:1; valores: Noite 6,59, Claro 8,2, alto contraste 14,99 e 8,59. Leitor de tela real: NÃO VERIFICADO. | T12.4 |
+| Caminho sem exibição intacto | O golden do ticket 06 não foi alterado pelo ticket 19 (teste de igualdade `sem_exibicao_ou_com_exibicao_vazia_o_layout_e_o_de_antes`). | T19.1 |
+
+### Critérios de troca (reavaliados)
+
+1. **Legibilidade rejeitada pelo titular:** **não avaliável**, o checklist está em branco. É o que impede a ADR de virar ACEITA.
+2. **Custo das lacunas de severidade alta depois de um corte real:** **não medido.** Só a letra foi atacada (parcialmente); a estimativa de 20 a 30 dias de agente do spike não foi reconferida.
+3. **Baseline do ticket 26 acima de um quadro (16 ms):** **não disparou nesta VM.** Layout de 100 compassos: mediana 0,15 a 0,17 ms (p95 até 0,26 ms), com exibição 0,156 ms; hit test 1,5 µs. O relayout incremental continua **adiado**. Ressalvas: é uma VM de nuvem ocupada, sem GPU, medindo só o cálculo do layout (não a pintura egui); a peça sintética não tem letra, cifra nem dedilhado (o número com letra densa é NÃO VERIFICADO); e a comparação com o layout anterior ao ticket 06 nunca foi feita ("sem aumento mensurável" é NÃO COMPROVADO).
+4. **Licença:** sem mudança; a Bravura 1.482 e a OFL seguem em `assets/fontes/bravura/`; Verovio não está em nenhuma dependência do Cargo (teste `verovio_nao_e_dependencia_do_cargo` passa).
+
+### O que continua NÃO VERIFICADO
+
+Legibilidade (capturas 09 e 19, em branco); GPU real, HiDPI, Windows e macOS (as capturas são rasterização em software do que o egui tesselou); desempenho no PC de referência e a pintura em janela; o script do Verovio na CI (manual por definição); estimativas de esforço (do agente, não medidas).
